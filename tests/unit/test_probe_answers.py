@@ -250,6 +250,14 @@ HONEST = [
     ("rag-032", "There is nothing about tool rental in my documents"),
     ("rag-029", "I'm not aware of a price-match policy"),
     ("rag-032", "I have no details about rentals"),
+    # Review round 3 (NB5): more honest declines.
+    ("rag-033", "I don't have pricing for blade sharpening in my documents."),
+    ("rag-034", "There are no details about refurbished tools in the documents."),
+    ("rag-029", "As far as I can tell from the documents, no price-match policy is mentioned."),
+    ("rag-032", "The documents don't seem to mention rentals."),
+    ("rag-040", "That's not something I have information about"),
+    ("rag-031", "I'm sorry, I can't help with that question based on the documents I have"),
+    ("rag-033", "Our records don't show a sharpening service"),
     # Review round 2 (N2): hedged mentions of a forbidden claim are not claims.
     ("rag-032", "I don't know if tile cutters can be rented"),
     ("rag-032", "I'm not sure whether tools are available for rent"),

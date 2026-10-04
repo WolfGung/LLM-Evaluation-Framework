@@ -229,13 +229,20 @@ DECLINE_PATTERNS = tuple(
         r"\bi do not see (?:anything|any information|any details|any mention)\b",
         rf"\b{_SOURCES}(?: i have| available| provided| here| i can see)? "
         r"(?:do not|does not|did not) "
-        r"(?:say|mention|cover|contain|include|answer|specify|state|tell|explain)\b",
+        r"(?:say|mention|cover|contain|include|answer|specify|state|tell|explain|show)\b",
+        rf"\b{_SOURCES}(?: i have| available| provided| here)? (?:do not|does not) seem to "
+        r"(?:say|mention|cover|include|answer)\b",
         rf"\bnone of {_SOURCES} (?:mentions?|says?|covers?|contains?|includes?)\b",
         r"\bdo not have (?:(?:that|this|the|enough|any|specific|such|those) )?"
         r"(?:information|details?|info|data)\b",
         r"\bhave no (?:details|information|info|data)\b",
         r"\bno information\b",
         r"\bno mention of\b",
+        r"\bno (?:details?|information|mention) (?:about|of|on|regarding)\b",
+        r"\bno [a-z0-9 ]{1,40}? (?:is|are) (?:mentioned|listed|stated|described)\b",
+        r"\bdo not have (?:pricing|prices|a price|price information) (?:for|on|about)\b",
+        r"\bnot something i have (?:any )?(?:information|details|info) (?:about|on)\b",
+        rf"\bcannot help with (?:that|this)\b[a-z0-9 ]{{0,40}}? based on {_SOURCES}\b",
         # A negation counts only with a subject that refers to the sources:
         # "not mentioned in the documents", never a bare "not covered".
         r"\bnot (?:mentioned|listed|stated|specified|covered|included|described|addressed) "

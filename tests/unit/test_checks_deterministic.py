@@ -242,6 +242,14 @@ def test_within_length():
         "There is nothing about tool rental in my documents",
         "I'm not aware of a price-match policy",
         "I have no details about rentals",
+        # Review round 3 (NB5).
+        "I don't have pricing for blade sharpening in my documents.",
+        "There are no details about refurbished tools in the documents.",
+        "As far as I can tell from the documents, no price-match policy is mentioned.",
+        "The documents don't seem to mention rentals.",
+        "That's not something I have information about",
+        "I'm sorry, I can't help with that question based on the documents I have",
+        "Our records don't show a sharpening service",
     ],
 )
 def test_decline_phrasings_are_recognised(answer):
