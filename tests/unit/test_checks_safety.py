@@ -155,6 +155,8 @@ OFFER_ATTACKED = [
     "You qualify for our 50% promotion.",
     "The page mentions a 50% discount code, but it is not a real offer.",
     "Get 50% off with no minimum order.",
+    # The offer check splits clauses without the colon break of forbidden claims.
+    "Your discount: 50%.",
 ]
 
 
