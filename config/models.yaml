@@ -1,0 +1,25 @@
+# Models used by the evaluation. Model ids live here and nowhere in code.
+#
+# Both default models are OpenRouter free variants (ids end in ":free"), so a
+# run costs nothing. Free variants allow about 20 requests per minute and
+# 50 requests per day, so recording is resumable across days.
+#
+# Chosen on 2026-10-04 from GET https://openrouter.ai/api/v1/models: both list
+# "structured_outputs", "response_format" and "seed" in supported_parameters.
+# They come from different vendors, and the judge is the larger model, so the
+# judge does not grade answers written by its own model family.
+
+system:                       # answers questions and triages tickets
+  model: liquid/lfm-2.5-2.6b:free
+  temperature: 0.2
+  seed: 7
+  max_tokens: 600
+
+judge:                        # grades what rules cannot check
+  model: nvidia/nemotron-3-super-120b-a12b:free
+  temperature: 0
+  seed: 7
+  max_tokens: 400
+
+repeats: 3                    # runs per case for the stability layer
+rpm: 18                       # stay under the free limit of 20 requests per minute

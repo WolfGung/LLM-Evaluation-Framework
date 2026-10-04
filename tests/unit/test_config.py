@@ -1,0 +1,126 @@
+"""Configuration loading and validation.
+
+Synthetic data: the YAML documents and environment mappings below are made up
+for the tests; only `test_repository_config_*` reads the real config file.
+"""
+
+from pathlib import Path
+
+import pytest
+
+from llmeval.config import (
+    ConfigError,
+    Mode,
+    load_config,
+    load_models_config,
+    load_settings,
+)
+
+REPO_CONFIG = Path(__file__).resolve().parents[2] / "config" / "models.yaml"
+
+VALID_YAML = """
+system: {model: vendor-a/small:free, temperature: 0.2, seed: 7, max_tokens: 600}
+judge: {model: vendor-b/large:free, temperature: 0, seed: 7, max_tokens: 400}
+repeats: 3
+rpm: 18
+"""
+
+
+def write(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / "models.yaml"
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_valid_config_loads(tmp_path):
+    config = load_models_config(write(tmp_path, VALID_YAML))
+
+    assert config.system.model == "vendor-a/small:free"
+    assert config.judge.temperature == 0
+    assert config.repeats == 3
+    assert config.rpm == 18
+
+
+def test_judge_must_differ_from_system(tmp_path):
+    same = VALID_YAML.replace("vendor-b/large:free", "vendor-a/small:free")
+
+    with pytest.raises(ConfigError, match="self-preference"):
+        load_models_config(write(tmp_path, same))
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("repeats: 3", "repeats: 0"),
+        ("rpm: 18", "rpm: 0"),
+        ("max_tokens: 400", "max_tokens: 0"),
+        ("temperature: 0,", "temperature: 3,"),
+        ("rpm: 18", "rpm: 18\nunknown_field: 1"),
+    ],
+)
+def test_invalid_values_are_rejected(tmp_path, old, new):
+    with pytest.raises(ConfigError):
+        load_models_config(write(tmp_path, VALID_YAML.replace(old, new)))
+
+
+def test_missing_file_names_the_path(tmp_path):
+    missing = tmp_path / "nope.yaml"
+
+    with pytest.raises(ConfigError, match="nope.yaml"):
+        load_models_config(missing)
+
+
+def test_repository_config_is_valid_and_free():
+    config = load_models_config(REPO_CONFIG)
+
+    assert config.system.model.endswith(":free")
+    assert config.judge.model.endswith(":free")
+    assert config.judge.temperature == 0
+    assert config.repeats == 3
+    assert config.rpm == 18
+
+
+def test_settings_defaults():
+    settings = load_settings({})
+
+    assert settings.mode is Mode.REPLAY
+    assert settings.max_run_cost_usd == 1.00
+    assert settings.api_key is None
+
+
+def test_settings_from_environment():
+    settings = load_settings(
+        {"LLMEVAL_MODE": "record", "MAX_RUN_COST_USD": "0.25", "OPENROUTER_API_KEY": "k-123"}
+    )
+
+    assert settings.mode is Mode.RECORD
+    assert settings.max_run_cost_usd == 0.25
+    assert settings.api_key is not None
+    assert settings.api_key.get_secret_value() == "k-123"
+
+
+def test_settings_never_show_the_key():
+    settings = load_settings({"OPENROUTER_API_KEY": "k-very-secret"})
+
+    assert "k-very-secret" not in repr(settings)
+    assert "k-very-secret" not in str(settings)
+
+
+def test_empty_key_counts_as_missing():
+    assert load_settings({"OPENROUTER_API_KEY": "  "}).api_key is None
+
+
+@pytest.mark.parametrize(
+    "env",
+    [{"LLMEVAL_MODE": "fake"}, {"MAX_RUN_COST_USD": "-1"}, {"MAX_RUN_COST_USD": "lots"}],
+)
+def test_invalid_settings_are_rejected(env):
+    with pytest.raises(ConfigError):
+        load_settings(env)
+
+
+def test_load_config_combines_file_and_environment(tmp_path):
+    config = load_config(write(tmp_path, VALID_YAML), {"LLMEVAL_MODE": "live"})
+
+    assert config.models.judge.model == "vendor-b/large:free"
+    assert config.settings.mode is Mode.LIVE

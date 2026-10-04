@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=84.0,<85"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-evaluation-framework"
+version = "0.1.0"
+description = "Evaluate LLM features the way a test engineer evaluates ordinary code."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Pavel Zhukov Atum" }]
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "httpx>=0.28,<1",
+    "pydantic>=2.13,<3",
+    "pyyaml>=6.0,<7",
+    "fastapi>=0.142,<1",
+    "uvicorn>=0.54,<1",
+    "typer>=0.27,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.1,<10",
+    "ruff>=0.16,<1",
+    "allure-pytest>=2.16,<3",
+]
+
+[tool.setuptools.packages.find]
+include = ["llmeval*", "app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = ["error"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
