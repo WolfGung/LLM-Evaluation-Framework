@@ -169,6 +169,40 @@ INVENTED = [
         "accessories.",
         "no_forbidden",
     ),
+    # Review round 3 (NB1, NB2): a decline hedges only its own clause; "that"
+    # opens no hedge; "but" breaks the clause.
+    (
+        "rag-029",
+        "I'm not sure about online orders, but we price match in store.",
+        "no_forbidden",
+    ),
+    (
+        "rag-033",
+        "I don't know the exact price, but we sharpen saw blades in store.",
+        "no_forbidden",
+    ),
+    (
+        "rag-031",
+        "The documents don't say, but gift cards come in any amount you choose.",
+        "no_forbidden",
+    ),
+    (
+        "rag-032",
+        "We have tile cutters that can be rented for the weekend. I'm not sure about the price.",
+        "no_forbidden",
+    ),
+    (
+        "rag-029",
+        "Good news: I can confirm that we price match any local store. Not sure about online "
+        "shops.",
+        "no_forbidden",
+    ),
+    (
+        "rag-034",
+        "Note that refurbished tools are covered for the standard period. I'm not sure about "
+        "batteries.",
+        "no_forbidden",
+    ),
     # Review round 2 (N2): "if" that opens another clause does not hedge.
     ("rag-029", "If so, we price match.", "no_forbidden"),
     ("rag-033", "If needed, we sharpen saw blades for free.", "no_forbidden"),

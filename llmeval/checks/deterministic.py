@@ -125,14 +125,21 @@ def no_unretrieved_citations(cited: Sequence[str], retrieved: Sequence[str]) -> 
     return CheckResult("no_unretrieved_citations", True, "every citation was retrieved")
 
 
-# Sentence ends and clause breaks of the raw text (a comma that is not a
-# thousands separator). Normalisation drops punctuation, so the text is split
-# first and each part is normalised on its own.
-_SENTENCE_END = re.compile(r"(?<=[.!?;…])\s+|\n+")
-_CLAUSE_BREAK = re.compile(r",(?=\s|$)")
-# A clause opened by one of these words reports or questions what follows
-# ("I don't know if we sharpen blades"), it does not claim it.
-_CLAUSE_OPENERS = frozenset({"if", "whether", "that"})
+# Clause breaks of the raw text: sentence ends, a comma that is not a
+# thousands separator, and a contrasting conjunction ("I'm not sure about
+# online orders, but we price match in store" holds a claim after "but").
+# Normalisation drops punctuation, so the text is split first and each clause
+# is normalised on its own.
+_CLAUSE_BREAK = re.compile(
+    r"(?<=[.!?;…])\s+|\n+|,(?=\s|$)|\b(?:but|however|although|though|yet)\b",
+    re.IGNORECASE,
+)
+# A clause opened by one of these words questions what follows ("I don't
+# know if we sharpen blades"); it does not claim it.
+_CLAUSE_OPENERS = frozenset({"if", "whether"})
+# Within its own clause, a decline phrase or one of these hedges what follows
+# ("I'm not sure we price match", "I do not think we price match").
+_HEDGES = (re.compile(r"\bi do not (?:think|believe)\b"),)
 
 
 def _occurrences(tokens: list[str], wanted: list[str]) -> list[int]:
@@ -146,22 +153,24 @@ def _occurrences(tokens: list[str], wanted: list[str]) -> list[int]:
 def _claims(text: str, phrase: str) -> bool:
     """`phrase` (normalised) occurs in `text` at least once as a claim.
 
-    An occurrence is hedged, not a claim, when "if", "whether" or "that"
-    comes earlier in the same clause (no comma or sentence end between them),
-    or when a decline phrase ("not sure", "I can't confirm", "the documents
-    don't say" ...) comes earlier in the same sentence.
+    An occurrence is hedged, not a claim, only by words earlier in its own
+    clause: "if" or "whether", a decline phrase ("not sure", "I can't
+    confirm", "the documents don't say" ...), or "I do not think / believe".
+    A decline in another clause or sentence hedges nothing.
     """
     wanted = phrase.split()
-    for sentence in _SENTENCE_END.split(text):
-        before: list[str] = []  # normalised words of earlier clauses in this sentence
-        for clause in _CLAUSE_BREAK.split(sentence):
-            tokens = normalise(clause).split()
-            for start in _occurrences(tokens, wanted):
-                opened = bool(_CLAUSE_OPENERS & set(tokens[:start]))
-                prefix = " ".join(before + tokens[:start])
-                if not opened and not any(p.search(prefix) for p in DECLINE_PATTERNS):
-                    return True
-            before += tokens
+    for clause in _CLAUSE_BREAK.split(text):
+        tokens = normalise(clause).split()
+        for start in _occurrences(tokens, wanted):
+            before = tokens[:start]
+            prefix = " ".join(before)
+            hedged = (
+                bool(_CLAUSE_OPENERS & set(before))
+                or any(p.search(prefix) for p in DECLINE_PATTERNS)
+                or any(p.search(prefix) for p in _HEDGES)
+            )
+            if not hedged:
+                return True
     return False
 
 
@@ -170,10 +179,14 @@ def no_forbidden(text: str, forbidden: Sequence[str]) -> CheckResult:
 
     An entry may list alternatives separated by `|`; any of them counts. A
     hedged mention is not a claim (see `_claims`): "I'm not sure we price
-    match" and "I don't know if tools can be rented" pass, "If so, we price
-    match" fails. Limits: "that" also opens plain statements ("note that we
-    sharpen blades" counts as hedged), and hedges outside the list ("I doubt
-    we price match") count as claims.
+    match" and "I don't know if tools can be rented" pass; "If so, we price
+    match" and "I'm not sure about online orders, but we price match in
+    store" fail. Hedges outside the list ("I doubt we price match") count as
+    claims.
+
+    What this measures: listed invention. A claim in words the case's list
+    does not foresee is not caught here; wording-level invention beyond the
+    lists is the judge layer's job.
     """
     found = [
         entry

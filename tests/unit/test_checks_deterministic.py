@@ -179,6 +179,10 @@ def test_a_hedged_mention_is_not_a_claim(text):
         "I'm not sure about chisels. We price match.",
         "We price match, if I remember right.",
         "Whether or not you ask, we price match.",
+        "I'm not sure about online orders, but we price match in store.",
+        "I don't know, however we price match.",
+        "Note that we price match.",
+        "I can confirm that we price match.",
     ],
 )
 def test_an_unhedged_clause_is_a_claim(text):
