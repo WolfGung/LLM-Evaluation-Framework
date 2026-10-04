@@ -20,6 +20,9 @@ dependencies = [
     "typer>=0.27,<1",
 ]
 
+[project.scripts]
+llmeval = "llmeval.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=9.1,<10",
