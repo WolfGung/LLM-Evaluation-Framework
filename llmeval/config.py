@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import yaml
 from pydantic import (
@@ -97,13 +97,37 @@ class RoleConfig(_Strict):
     structured_output: bool
 
 
+# Which runs of a case the judge grades: repeat 0 only, or every repeat.
+JudgeRepeats = Literal["first", "all"]
+
+
 class ModelsConfig(_Strict):
-    """The content of config/models.yaml."""
+    """The content of config/models.yaml.
+
+    - `repeats`: runs per case for the stability layer.
+    - `stability_cases`: the case ids that run `repeats` times; every other
+      case runs once (repeat 0). None means every case runs `repeats` times.
+      `check_stability_cases` checks the ids against the datasets.
+    - `judge_repeats`: `first` grades repeat 0 only, `all` grades every
+      repeat. The stability layer uses the rule-based layers only, so judging
+      repeats 1..N buys nothing the reports use; `first` is the default, and
+      extra judge calls can be recorded later without touching the others.
+    - `rpm`: requests per minute the recording keeps to.
+    """
 
     system: RoleConfig
     judge: RoleConfig
     repeats: int = Field(ge=1)
     rpm: int = Field(ge=1)
+    judge_repeats: JudgeRepeats = "first"
+    stability_cases: Annotated[tuple[str, ...], Field(min_length=1)] | None = None
+
+    @field_validator("stability_cases")
+    @classmethod
+    def _each_case_once(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
+        if value is not None and len(set(value)) != len(value):
+            raise ValueError("stability_cases names a case twice")
+        return value
 
     @model_validator(mode="after")
     def _judge_is_another_model(self) -> ModelsConfig:
@@ -144,6 +168,17 @@ class Config(_Strict):
 
     models: ModelsConfig
     settings: Settings
+
+
+def check_stability_cases(models: ModelsConfig, known: Collection[str]) -> None:
+    """Raise `ConfigError` when `stability_cases` names a case the datasets do not have."""
+    if models.stability_cases is None:
+        return
+    unknown = [case for case in models.stability_cases if case not in known]
+    if unknown:
+        raise ConfigError(
+            f"stability_cases names cases that are not in the datasets: {', '.join(unknown)}"
+        )
 
 
 def load_models_config(path: Path | str = DEFAULT_MODELS_PATH) -> ModelsConfig:

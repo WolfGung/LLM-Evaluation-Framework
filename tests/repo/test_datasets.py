@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from app.retrieval import load_kb
+from llmeval.config import check_stability_cases, load_models_config
 from llmeval.datasets import PRIORITY_RULES, RAG_PATH, TRIAGE_PATH, load_rag, load_triage
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -150,3 +151,8 @@ def test_tri_010_and_tri_033_notes_follow_the_ticket(triage_cases):
     assert "sent" in notes["tri-010"] and "two weeks have passed" not in notes["tri-010"]
     # The ticket mentions the customer's account, so the note weighs `other`.
     assert "other" in notes["tri-033"] and "account" in notes["tri-033"]
+
+
+def test_the_configured_stability_subset_names_cases_of_the_datasets(rag_cases, triage_cases):
+    models = load_models_config(ROOT / "config" / "models.yaml")
+    check_stability_cases(models, {case.id for case in (*rag_cases, *triage_cases)})

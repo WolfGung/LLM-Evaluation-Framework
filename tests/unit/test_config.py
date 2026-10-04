@@ -15,6 +15,7 @@ from llmeval.config import (
     Mode,
     ReasoningConfig,
     Settings,
+    check_stability_cases,
     load_config,
     load_models_config,
     load_settings,
@@ -59,6 +60,56 @@ def test_valid_config_loads(tmp_path):
     assert config.judge.structured_output is True
     assert config.repeats == 3
     assert config.rpm == 18
+
+
+def test_the_judge_grades_the_first_repeat_and_every_case_repeats_by_default(tmp_path):
+    config = load_models_config(write(tmp_path, VALID_YAML))
+
+    assert config.judge_repeats == "first"
+    assert config.stability_cases is None
+
+
+def test_the_judge_can_grade_every_repeat(tmp_path):
+    config = load_models_config(write(tmp_path, VALID_YAML + "judge_repeats: all\n"))
+
+    assert config.judge_repeats == "all"
+
+
+def test_a_stability_subset_is_read_in_order(tmp_path):
+    text = VALID_YAML + "stability_cases: [rag-003, tri-001]\n"
+    config = load_models_config(write(tmp_path, text))
+
+    assert config.stability_cases == ("rag-003", "tri-001")
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        "judge_repeats: some\n",
+        "judge_repeats: 2\n",
+        "stability_cases: []\n",
+        "stability_cases: [rag-001, rag-001]\n",
+        "stability_cases: rag-001\n",
+    ],
+    ids=["unknown judge_repeats", "number", "empty subset", "repeated id", "not a list"],
+)
+def test_invalid_judge_repeats_and_subsets_are_rejected(tmp_path, extra):
+    with pytest.raises(ConfigError):
+        load_models_config(write(tmp_path, VALID_YAML + extra))
+
+
+def test_a_subset_must_name_cases_of_the_datasets(tmp_path):
+    text = VALID_YAML + "stability_cases: [rag-001, rag-999]\n"
+    config = load_models_config(write(tmp_path, text))
+
+    check_stability_cases(config, {"rag-001", "rag-999"})
+    with pytest.raises(ConfigError) as caught:
+        check_stability_cases(config, {"rag-001", "tri-001"})
+    assert str(caught.value) == "stability_cases names cases that are not in the datasets: rag-999"
+
+
+def test_no_subset_needs_no_check(tmp_path):
+    check_stability_cases(load_models_config(write(tmp_path, VALID_YAML)), set())
 
 
 def test_judge_must_differ_from_system(tmp_path):
@@ -119,6 +170,11 @@ def test_repository_config_is_valid_and_free():
     assert config.judge.temperature == 0
     assert config.repeats == 3
     assert config.rpm == 18
+    # Written out in the file, so the owner sees both levers at the record stop.
+    text = REPO_CONFIG.read_text(encoding="utf-8")
+    assert "\njudge_repeats: first" in text and "\nstability_cases: null" in text
+    assert config.judge_repeats == "first"
+    assert config.stability_cases is None
 
 
 def test_settings_defaults():

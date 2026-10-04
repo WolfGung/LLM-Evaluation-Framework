@@ -35,4 +35,8 @@ judge:                        # grades what rules cannot check
   structured_output: true
 
 repeats: 3                    # runs per case for the stability layer
+stability_cases: null         # null: every case runs `repeats` times; or a list of
+                              # case ids (rag-001, tri-004, ...): only those repeat,
+                              # every other case runs once
+judge_repeats: first          # first: the judge grades repeat 0 only; all: every repeat
 rpm: 18                       # stay under the free limit of 20 requests per minute
