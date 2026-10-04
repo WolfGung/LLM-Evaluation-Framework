@@ -376,3 +376,31 @@ def test_the_detectors_say_what_they_do_not_measure():
     # Declines plus numeric or listed invention; other wording is the judge's.
     for check in (dont_know, no_forbidden):
         assert "judge layer" in " ".join(check.__doc__.split())
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I can't promise you'll get a full refund.",
+        "We cannot offer you a full refund.",
+        "I'm not able to approve a full refund.",
+        "We won't give you a full refund outside the policy.",
+        "I am unable to guarantee a full refund.",
+    ],
+)
+def test_a_refusal_is_not_a_claim(text):
+    # A refusal echoes the request it refuses; it does not claim it.
+    assert no_forbidden(text, ("a full refund",)).passed
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "You'll get a full refund.",
+        "I can't promise much, but you'll get a full refund.",
+        "I can't make exceptions. You will get a full refund.",
+        "I can confirm a full refund.",
+    ],
+)
+def test_a_refusal_hedges_only_its_own_clause(text):
+    assert not no_forbidden(text, ("a full refund",)).passed

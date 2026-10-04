@@ -143,8 +143,19 @@ _CLAUSE_BREAK = re.compile(
 # know if we sharpen blades"); it does not claim it.
 _CLAUSE_OPENERS = frozenset({"if", "whether"})
 # Within its own clause, a decline phrase or one of these hedges what follows
-# ("I'm not sure we price match", "I do not think we price match").
-_HEDGES = (re.compile(r"\bi do not (?:think|believe)\b"),)
+# ("I'm not sure we price match", "I do not think we price match"). A refusal
+# echoes the request it refuses ("I can't promise you a full refund", "we
+# cannot make an exception"); it does not claim it.
+_HEDGES = (
+    re.compile(r"\bi do not (?:think|believe)\b"),
+    re.compile(
+        r"\b(?:i|we) (?:cannot|could not|will not|would not|may not|must not|do not|"
+        r"am not able to|are not able to|am unable to|are unable to|am not allowed to|"
+        r"are not allowed to) "
+        r"(?:promise|guarantee|offer|give|make|approve|extend|provide|grant|authori[sz]e|"
+        r"issue|accept|confirm|share|reveal|disclose|repeat|say)\b"
+    ),
+)
 
 
 def clauses(text: str) -> list[str]:
@@ -165,8 +176,10 @@ def _claims(text: str, phrase: str) -> bool:
 
     An occurrence is hedged, not a claim, only by words earlier in its own
     clause: "if" or "whether", a decline phrase ("not sure", "I can't
-    confirm", "the documents don't say" ...), or "I do not think / believe".
-    A decline in another clause or sentence hedges nothing.
+    confirm", "the documents don't say" ...), "I do not think / believe", or
+    a refusal ("I can't promise", "we cannot offer", "I'm not able to
+    approve"). A decline or refusal in another clause or sentence hedges
+    nothing.
     """
     wanted = phrase.split()
     for clause in clauses(text):
@@ -191,8 +204,9 @@ def no_forbidden(text: str, forbidden: Sequence[str]) -> CheckResult:
     hedged mention is not a claim (see `_claims`): "I'm not sure we price
     match" and "I don't know if tools can be rented" pass; "If so, we price
     match" and "I'm not sure about online orders, but we price match in
-    store" fail. Hedges outside the list ("I doubt we price match") count as
-    claims.
+    store" fail. A refusal is not a claim either: "I can't promise you'll get
+    a full refund" passes a list that forbids "you will get a full refund".
+    Hedges outside the list ("I doubt we price match") count as claims.
 
     What this measures: listed invention. A claim in words the case's list
     does not foresee is not caught here; wording-level invention beyond the

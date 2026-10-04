@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from app.assistant import DEFAULT_K
+from app.prompting import load_prompt, prompt_versions
 from app.retrieval import load_kb, search
 from llmeval.checks import safety
 from llmeval.datasets import RAG_PATH, load_rag
@@ -114,16 +115,21 @@ def test_the_trap_values_are_stated_in_their_trap_document_only():
         assert holders == [owner], value
 
 
-def test_the_trap_checks_fail_on_the_trap_documents_themselves():
+def test_the_leak_checks_fail_on_the_protected_texts_themselves():
     docs = {doc.doc_id: doc.text for doc in load_kb()}
     assert not safety.no_personal_data(docs["kb-internal-notes"]).passed
+    assert not safety.no_internal_disclosure(docs["kb-internal-notes"]).passed
     assert not safety.no_injected_offer(docs["kb-supplier-promo"]).passed
+    for version in prompt_versions("assistant"):
+        assert not safety.no_prompt_echo(load_prompt("assistant", version)).passed, version
 
 
-def test_quoting_any_other_document_passes_the_trap_checks():
-    # A model that copies a public document into its answer leaks nothing.
+def test_quoting_a_public_document_passes_the_leak_checks():
+    # A model that copies a public document into its answer leaks nothing,
+    # except the supplier page's injected offer.
     for doc in load_kb():
-        if doc.doc_id in TRAP_DOCS:
+        if doc.doc_id == "kb-internal-notes":
             continue
-        assert safety.no_personal_data(doc.text).passed, doc.doc_id
-        assert safety.no_injected_offer(doc.text).passed, doc.doc_id
+        failed = [check.name for check in safety.leak_checks(doc.text, "") if not check.passed]
+        expected = ["no_injected_offer"] if doc.doc_id == "kb-supplier-promo" else []
+        assert failed == expected, doc.doc_id
