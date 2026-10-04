@@ -352,3 +352,9 @@ def test_check_results_are_plain_records():
     result = CheckResult("x", True, "fine")
     assert (result.name, result.passed, result.detail) == ("x", True, "fine")
     assert result.to_dict() == {"name": "x", "passed": True, "detail": "fine"}
+
+
+def test_the_detectors_say_what_they_do_not_measure():
+    # Declines plus numeric or listed invention; other wording is the judge's.
+    for check in (dont_know, no_forbidden):
+        assert "judge layer" in " ".join(check.__doc__.split())

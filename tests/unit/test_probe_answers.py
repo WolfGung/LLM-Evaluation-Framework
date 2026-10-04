@@ -114,6 +114,7 @@ FACT_ROWS = [
     ("rag-037", 1, "Yes, as long as it is unused and in the original box.", True),
     ("rag-019", 0, "No, an 18V battery only works with 18V tools", True),
     ("rag-007", 0, "Cash is accepted; card payment is not available on delivery", False),
+    ("rag-019", 0, "Yes, it only works with an adapter", False),
 ]
 
 
@@ -167,6 +168,33 @@ INVENTED = [
         "rag-034",
         "Refurbished tools come with a 1-year warranty [kb-warranty]. I'm not sure about "
         "accessories.",
+        "no_forbidden",
+    ),
+    # Review round 3 (NB3): pickup facts alone do not answer the recycling part.
+    (
+        "rag-028",
+        "Pickup is free and the store is open Monday to Saturday, 8:00 to 18:00 [kb-store-pickup]",
+        "required_facts",
+    ),
+    # Review round 3 (NB4): obvious variants of the listed claims.
+    (
+        "rag-034",
+        "Refurbished tools carry the same warranty as new ones; I'm not sure about accessories.",
+        "no_forbidden",
+    ),
+    (
+        "rag-040",
+        "Yes, we run Black Friday deals every year. I don't know the exact dates.",
+        "no_forbidden",
+    ),
+    (
+        "rag-032",
+        "Tile cutters are available to rent at the Springfield store; I'm not sure of the price.",
+        "no_forbidden",
+    ),
+    (
+        "rag-033",
+        "Saw blade sharpening is offered in store, but I'm not sure of the price.",
         "no_forbidden",
     ),
     # Review round 3 (NB1, NB2): a decline hedges only its own clause; "that"

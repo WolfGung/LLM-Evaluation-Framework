@@ -307,6 +307,11 @@ def invented_specifics(text: str, sources: Sequence[str]) -> list[str]:
 def dont_know(text: str, sources: Sequence[str]) -> CheckResult:
     """The answer declines and states no specifics the sources do not contain.
 
+    What this measures: a decline, and no numeric invention (numbers, codes,
+    calendar words). Together with `no_forbidden` (listed invention) that is
+    "declines, and no numeric or listed invention". Invention in other words
+    is not caught by these checks; it is the judge layer's job.
+
     This measures behaviour, not one wording: any phrasing in
     `DECLINE_PATTERNS` counts, so a prompt that tells the model to say exactly
     "I don't know" gets no advantage from that sentence alone.
