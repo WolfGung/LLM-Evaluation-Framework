@@ -53,6 +53,15 @@ def test_scrub_replaces_every_occurrence():
     assert scrub("nothing here", None) == "nothing here"
 
 
+def test_scrub_removes_the_escaped_form_too():
+    key = "abc\ndef"
+    # The exact text of h11's LocalProtocolError for a header with a newline.
+    message = "Illegal header value b'Bearer abc\\ndef'"
+
+    assert scrub(message, key) == "Illegal header value b'Bearer [redacted]'"
+    assert scrub(f"raw {key}", key) == "raw [redacted]"
+
+
 def test_auth_headers_use_bearer():
     assert auth_headers(FAKE_KEY)["Authorization"] == f"Bearer {FAKE_KEY}"
 

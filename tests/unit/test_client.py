@@ -294,6 +294,45 @@ def test_call_is_kept_when_no_cost_can_be_found(tmp_path):
     assert entry["response"]["content"] == "Synthetic answer."
 
 
+def test_a_failed_price_lookup_is_not_repeated(tmp_path):
+    # Every /models request would go around the rate limiter, so one failure
+    # is remembered for the lifetime of the client.
+    recorder = Recorder(
+        httpx.Response(200, json=completion(cost=None)),
+        httpx.Response(503, json={}),
+        httpx.Response(200, json=completion(cost=None)),
+    )
+    with make_client(Mode.RECORD, CassetteStore(tmp_path), recorder.transport) as client:
+        first = ask(client, repeat=0)
+        second = ask(client, repeat=1)
+
+    assert [r.url.path for r in recorder.requests] == [
+        "/api/v1/chat/completions",
+        "/api/v1/models",
+        "/api/v1/chat/completions",
+    ]
+    assert first.cost_source == second.cost_source == "unknown"
+    assert len(CassetteStore(tmp_path)) == 2
+
+
+def test_provider_error_mid_answer_is_not_recorded(tmp_path):
+    # finish_reason "error" is a provider failure, not model behaviour: it is
+    # raised so the next record run retries the call instead of replaying it.
+    failed = completion(content="", finish_reason="error")
+    failed["choices"][0]["error"] = {"message": f"upstream broke near {FAKE_KEY}"}
+    recorder = Recorder(httpx.Response(200, json=failed), httpx.Response(200, json=completion()))
+
+    with make_client(Mode.RECORD, CassetteStore(tmp_path), recorder.transport) as client:
+        with pytest.raises(OpenRouterError, match="finish_reason: error") as caught:
+            ask(client)
+        assert list(tmp_path.iterdir()) == []
+        retried = ask(client)
+
+    assert FAKE_KEY not in str(caught.value)
+    assert retried.content == "Synthetic answer."
+    assert len(CassetteStore(tmp_path)) == 1
+
+
 def test_structured_role_sends_the_schema_to_supporting_endpoints_only(tmp_path):
     recorder = Recorder(httpx.Response(200, json=completion("{}")))
     with make_client(Mode.LIVE, CassetteStore(tmp_path), recorder.transport) as client:

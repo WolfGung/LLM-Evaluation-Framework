@@ -65,17 +65,11 @@ def request_key(body: Mapping[str, Any], repeat: int) -> str:
     unknown = sorted(set(body) - REQUEST_FIELDS)
     if unknown:
         raise ValueError(f"request field not covered by the cassette key: {', '.join(unknown)}")
-    material = {"body": _without_none(dict(body)), "repeat": repeat}
+    # An unset option (None at the top level) is not part of the request. None
+    # deeper down is a real value, such as "default": null in a JSON schema.
+    present = {name: value for name, value in body.items() if value is not None}
+    material = {"body": present, "repeat": repeat}
     return hashlib.sha256(canonical_json(material).encode("utf-8")).hexdigest()
-
-
-def _without_none(value: Any) -> Any:
-    """Drop None values from dicts at any depth: an unset option is not part of the request."""
-    if isinstance(value, dict):
-        return {k: _without_none(v) for k, v in value.items() if v is not None}
-    if isinstance(value, list):
-        return [_without_none(item) for item in value]
-    return value
 
 
 class _Record(BaseModel):

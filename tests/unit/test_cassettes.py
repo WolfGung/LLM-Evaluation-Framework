@@ -122,6 +122,14 @@ def test_key_ignores_none_values():
     )
 
 
+def test_key_keeps_none_inside_the_request():
+    # In a JSON schema, "default": null is a real value, unlike an unset option.
+    schema_with_null = copy.deepcopy(BODY)
+    schema_with_null["response_format"]["json_schema"]["schema"]["default"] = None
+
+    assert request_key(schema_with_null, repeat=0) != request_key(BODY, repeat=0)
+
+
 def test_tag_label_and_file_name():
     tag = CallTag(function="rag", case="rag-001", version="v2")
 

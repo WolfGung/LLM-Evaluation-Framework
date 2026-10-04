@@ -7,11 +7,13 @@ for the tests; only `test_repository_config_*` reads the real config file.
 from pathlib import Path
 
 import pytest
+from pydantic import SecretStr, ValidationError
 
 from llmeval.config import (
     ConfigError,
     Mode,
     ReasoningConfig,
+    Settings,
     load_config,
     load_models_config,
     load_settings,
@@ -161,6 +163,15 @@ def test_key_must_be_printable_ascii(bad_key):
         load_settings({"OPENROUTER_API_KEY": bad_key})
 
     assert bad_key not in str(caught.value)
+    assert "abc" not in str(caught.value)
+
+
+@pytest.mark.parametrize("bad_key", ["k-123\u0444abc", "k-123\nabc", "k-123 abc"])
+def test_settings_built_directly_refuse_a_bad_key(bad_key):
+    with pytest.raises(ValidationError) as caught:
+        Settings(api_key=SecretStr(bad_key))
+
+    assert "OPENROUTER_API_KEY" in str(caught.value)
     assert "abc" not in str(caught.value)
 
 

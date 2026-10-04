@@ -15,7 +15,15 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 DEFAULT_MODELS_PATH = Path("config/models.yaml")
 DEFAULT_MAX_RUN_COST_USD = 1.00
@@ -116,6 +124,16 @@ class Settings(_Strict):
     max_run_cost_usd: float = Field(default=DEFAULT_MAX_RUN_COST_USD, ge=0)
     api_key: SecretStr | None = None
 
+    @field_validator("api_key")
+    @classmethod
+    def _key_fits_in_a_header(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not _KEY_CHARS.match(value.get_secret_value()):
+            raise ValueError(
+                "OPENROUTER_API_KEY must be printable ASCII without spaces "
+                "(check the keyboard layout and copy the key again)"
+            )
+        return value
+
 
 class Config(_Strict):
     """Everything a run needs: the models file plus the environment."""
@@ -141,11 +159,6 @@ def load_models_config(path: Path | str = DEFAULT_MODELS_PATH) -> ModelsConfig:
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if env is None else env
     key = env.get("OPENROUTER_API_KEY", "").strip()
-    if key and not _KEY_CHARS.match(key):
-        raise ConfigError(
-            "invalid environment settings: OPENROUTER_API_KEY must be printable ASCII "
-            "without spaces (check the keyboard layout and copy the key again)"
-        )
     values: dict[str, object] = {"api_key": key or None}
     if mode := env.get("LLMEVAL_MODE", "").strip():
         values["mode"] = mode

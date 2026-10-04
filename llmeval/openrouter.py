@@ -49,8 +49,16 @@ def redact_headers(headers: Mapping[str, str]) -> dict[str, str]:
 
 
 def scrub(text: str, secret: str | None) -> str:
-    """Replace every occurrence of `secret` in `text`."""
-    return text.replace(secret, REDACTED) if secret else text
+    """Replace every occurrence of `secret` in `text`, raw or escaped.
+
+    The escaped form matters because some errors quote a header as bytes,
+    for example h11's "Illegal header value b'Bearer abc\\ndef'".
+    """
+    if not secret:
+        return text
+    for form in (secret, repr(secret)[1:-1]):
+        text = text.replace(form, REDACTED)
+    return text
 
 
 def require_key(api_key: SecretStr | None) -> str:

@@ -33,7 +33,14 @@ from llmeval.cassettes import (
     utc_now,
 )
 from llmeval.config import Config, Mode, RoleConfig
-from llmeval.openrouter import OpenRouterError, http_client, read_json, require_key, send
+from llmeval.openrouter import (
+    OpenRouterError,
+    http_client,
+    read_json,
+    require_key,
+    scrub,
+    send,
+)
 from llmeval.pricing import ModelPrice, PricingError, fetch_prices
 from llmeval.quota import RateLimiter, wait_or_stop
 
@@ -184,6 +191,9 @@ class ModelClient:
         self.store = store
         self.config = config
         self._prices = dict(prices or {})
+        # Set after a failed price lookup, so later unpriced calls do not hit
+        # /models again (those requests would bypass the rate limiter).
+        self._price_lookup_failed = False
         self._now = now
         self._timer = timer
         self._sleep = sleep
@@ -253,7 +263,7 @@ class ModelClient:
             self._sleep(wait_or_stop(response.headers, now=self._now(), attempt=attempt))
 
         data = read_json(response, api_key=self._api_key)
-        answer = _parse_answer(data, body["model"])
+        answer = _parse_answer(data, body["model"], self._api_key)
         usage = _parse_usage(data)
         cost_usd, cost_source, prices = self._cost(data, usage, body["model"])
         return CassetteEntry(
@@ -280,32 +290,50 @@ class ModelClient:
         # OpenRouter bills by the requested model id (a ":free" id costs 0),
         # so its published price is the fallback.
         if model_requested not in self._prices:
+            if self._price_lookup_failed:
+                return None, "unknown", None
             try:
                 self._prices.update(
                     fetch_prices([model_requested], transport=self._transport, now=self._now)
                 )
             except (PricingError, OpenRouterError):
                 # The call has already used quota; keep it and say the cost is unknown.
+                self._price_lookup_failed = True
                 return None, "unknown", None
         price = self._prices[model_requested]
         return price.cost(usage), "published_prices", price
 
 
-def _parse_answer(data: Mapping[str, Any], model_requested: str) -> StoredResponse:
+def _parse_answer(
+    data: Mapping[str, Any], model_requested: str, api_key: str | None
+) -> StoredResponse:
     choices = data.get("choices")
     if not choices:
-        error = data.get("error")
-        detail = error.get("message") if isinstance(error, dict) else error
-        raise OpenRouterError(f"response has no answer: {detail or 'no choices'}")
+        detail = scrub(_error_message(data.get("error")) or "no choices", api_key)
+        raise OpenRouterError(f"response has no answer: {detail}")
     choice = choices[0]
+    finish_reason = choice.get("finish_reason")
+    if finish_reason == "error":
+        # The provider failed mid-generation. That says nothing about the
+        # model, so it is raised rather than recorded, and the next record run
+        # retries the call.
+        detail = scrub(_error_message(choice.get("error")) or "no detail", api_key)
+        raise OpenRouterError(
+            f"provider failed while answering (finish_reason: error): {detail}; not recorded"
+        )
     return StoredResponse(
         id=data.get("id"),
         model=data.get("model") or model_requested,
         # A model can return no text (for example, it spent the budget on
         # reasoning); that is a result worth evaluating, not a transport error.
         content=(choice.get("message") or {}).get("content") or "",
-        finish_reason=choice.get("finish_reason"),
+        finish_reason=finish_reason,
     )
+
+
+def _error_message(error: object) -> str | None:
+    message = error.get("message") if isinstance(error, dict) else error
+    return str(message)[:300] if message else None
 
 
 def _parse_usage(data: Mapping[str, Any]) -> Usage:
