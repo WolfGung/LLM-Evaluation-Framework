@@ -8,6 +8,12 @@ The key is a sha256 of the canonical JSON of the whole request body plus the
 repeat index. Repeats are part of the key on purpose: three runs of one
 request are three separate recordings, which is what the stability layer
 measures.
+
+A recorded run is declared by `manifest.json` in the cassette directory, which
+`record` writes only when every planned call is recorded. The directory alone
+proves nothing: it always exists (it holds a `.gitkeep`), and an interrupted
+recording leaves cassette files without a manifest. Without the manifest the
+evaluation is "pending first recorded run" and writes no results.
 """
 
 from __future__ import annotations
@@ -19,9 +25,16 @@ import re
 from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 # Every top-level field a request body may carry. The key hashes the whole
 # body, and a field outside this list is refused, so a new request parameter
@@ -40,6 +53,9 @@ REQUEST_FIELDS = frozenset(
 )
 
 UNTAGGED_FILE_STEM = "untagged"
+
+MANIFEST_FILE = "manifest.json"
+PENDING_RECORDED_RUN = "pending first recorded run"
 
 # Where a call's cost came from: OpenRouter's usage.cost, the published
 # prices, or nowhere (the price lookup failed, but the call is still kept).
@@ -206,3 +222,64 @@ class CassetteStore:
                     yield CassetteEntry.model_validate_json(line)
                 except ValidationError as exc:
                     raise CassetteError(f"{path.name}:{number}: not a valid entry: {exc}") from None
+
+
+Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+RoleName = Literal["system", "judge"]
+VersionList = Annotated[tuple[str, ...], Field(min_length=1)]
+
+
+class RunManifest(_Record):
+    """What a complete recording covers. `record` writes it; nothing else does.
+
+    - `models`: the model id per role (`system` and `judge`).
+    - `prompt_versions`: the prompt versions per evaluated function
+      (`rag`, `triage`).
+    - `repeats`: runs per case.
+    - `datasets`: sha256 of each dataset file's bytes, by file name. This is
+      information, not a lock: editing expected facts keeps every recording
+      valid, while a changed question changes its key and fails replay loudly.
+    - `recorded_from` / `recorded_to`: the first and the last recorded call.
+    - `planned_calls` / `recorded_calls`: the call plan and the calls in the
+      cassettes for it. A manifest exists only for a complete recording, so
+      `recorded_calls` is never below `planned_calls`.
+    """
+
+    schema_version: Literal[1] = 1
+    models: dict[RoleName, str]
+    prompt_versions: Annotated[dict[str, VersionList], Field(min_length=1)]
+    repeats: int = Field(ge=1)
+    datasets: Annotated[dict[str, Sha256], Field(min_length=1)]
+    recorded_from: datetime
+    recorded_to: datetime
+    planned_calls: int = Field(ge=1)
+    recorded_calls: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _complete_and_ordered(self) -> RunManifest:
+        if set(self.models) != {"system", "judge"}:
+            raise ValueError("models must name the system and the judge model")
+        if self.recorded_to < self.recorded_from:
+            raise ValueError("recorded_to is before recorded_from")
+        if self.recorded_calls < self.planned_calls:
+            raise ValueError(
+                f"only {self.recorded_calls} of {self.planned_calls} planned calls are recorded; "
+                "a manifest is written only for a complete recording"
+            )
+        return self
+
+
+def load_manifest(root: Path | str) -> RunManifest | None:
+    """The manifest of the recorded run in `root`, or None when there is none.
+
+    Only `manifest.json` counts. A broken manifest raises `CassetteError`
+    instead of being treated as absent, so a damaged recording cannot turn
+    the evaluation into a silent skip.
+    """
+    path = Path(root) / MANIFEST_FILE
+    if not path.is_file():
+        return None
+    try:
+        return RunManifest.model_validate_json(path.read_bytes())
+    except ValidationError as exc:
+        raise CassetteError(f"{path.name}: not a valid run manifest: {exc}") from None
