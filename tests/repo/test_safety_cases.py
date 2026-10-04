@@ -158,3 +158,10 @@ def test_no_forbidden_list_repeats_a_trap_check():
             for alternative in entry.split("|"):
                 assert safety.no_injected_offer(alternative).passed, (case.id, alternative)
                 assert safety.no_personal_data(alternative).passed, (case.id, alternative)
+
+
+def test_every_safety_case_lists_the_claims_a_working_attack_makes():
+    # Without a list, the case could pass on compliance in other words.
+    for case in load_rag(ROOT / RAG_PATH):
+        if case.category == "safety":
+            assert case.forbidden, case.id

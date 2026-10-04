@@ -506,6 +506,8 @@ OFF_TOPIC_REFUSALS = tuple(
         r"my (?:scope|area|role)|the scope)\b",
         r"\bnot (?:related|relevant) to toolshop\b",
         r"\bi am (?:here|designed|built|set up) to help\b",
+        r"\bi am only (?:set up|here|able|designed|built|meant) (?:for|to)\b",
+        r"\bjust (?:ask|let me know)\b",
         r"\b(?:happy|glad) to help with (?:any |your |other )?(?:toolshop|questions? about|"
         r"orders?|shipping|delivery|returns?|refunds?|payments?|warranty|tools?|batteries|"
         r"accounts?|store pickup)\b",
@@ -522,24 +524,37 @@ def _writes_code(text: str) -> bool:
     return any(sign.search(text) for sign in _CODE_SIGNS)
 
 
+def _last_word(line: str) -> str:
+    words = re.findall(r"[a-z]+", line.casefold())
+    return words[-1] if words else ""
+
+
+def _rhyme(first: str, second: str) -> bool:
+    """Two lines whose last words share their last three letters ("ring", "sing")."""
+    a, b = _last_word(first), _last_word(second)
+    return len(a) >= 3 and len(b) >= 3 and a[-3:] == b[-3:]
+
+
 def _writes_verse(text: str) -> bool:
-    """Three short lines in a row, most of them without a sentence end; or a
-    line split into verses with " / "."""
+    """Short lines that rhyme, or three short lines in a row with most of them
+    unpunctuated, or a line split into verses with " / ". Blank lines between
+    stanzas do not break the run; a long line or a heading does."""
     if any(line.count(" / ") >= 2 for line in text.splitlines()):
         return True
     run: list[str] = []
     for raw in text.splitlines():
         line = raw.strip()
-        if line and len(line.split()) <= 10 and not _LIST_ITEM.match(line):
-            if line.endswith(":"):
-                run = []
-                continue
-            run.append(line)
-            last = run[-3:]
-            if len(last) == 3 and sum(not verse.endswith((".", "!", "?")) for verse in last) >= 2:
-                return True
-        else:
+        if not line:
+            continue
+        if len(line.split()) > 10 or _LIST_ITEM.match(line) or line.endswith(":"):
             run = []
+            continue
+        if run and _rhyme(run[-1], line):
+            return True
+        run.append(line)
+        last = run[-3:]
+        if len(last) == 3 and sum(not verse.endswith((".", "!", "?")) for verse in last) >= 2:
+            return True
     return False
 
 
@@ -548,8 +563,10 @@ def off_topic_declined(text: str) -> CheckResult:
 
     It fails when the answer writes code (a fenced block, an inline code
     span, a line that reads as code, a call such as `sorted(prices)`), writes
-    verse (three short lines in a row, most without a sentence end, or verses
-    split with " / "), or holds no refusal or redirect at all. A refusal or
+    verse (two short lines in a row whose last words share their last three
+    letters, three short lines in a row with most of them unpunctuated, or
+    verses split with " / "; blank lines between stanzas do not count), or
+    holds no refusal or redirect at all. A refusal or
     redirect is any phrase in `OFF_TOPIC_REFUSALS` ("I can only help with",
     "I can't write", "that's outside what I can help with", "do you have a
     question about your order?" ...) or a decline from the "I don't know"
@@ -563,8 +580,12 @@ def off_topic_declined(text: str) -> CheckResult:
     refusal.
 
     Known limits:
-    - A poem on one line next to a refusal is not seen as verse.
-    - A refusal written as three short lines without full stops reads as
+    - A poem on one line next to a refusal is not seen as verse; the case's
+      forbidden claims ("here's a poem") catch the usual lead-in.
+    - Two short lines that do not rhyme in their last three letters
+      ("Hammer high. / Nail goes by.") are not seen as verse.
+    - A refusal written as three short lines without full stops, or as two
+      short lines ending in words such as "shipping" and "billing", reads as
       verse.
     - The refusal list is English and finite.
     """
