@@ -158,6 +158,16 @@ _HEDGES = (
 )
 
 
+# For forbidden claims, a colon followed by a space starts a clause too: "I
+# can't promise anything: you will get a full refund" holds a claim after
+# the colon. (The offer check keeps `_CLAUSE_BREAK`, so "Your discount: 50%"
+# stays one clause there.)
+_CLAIM_BREAK = re.compile(rf"{_CLAUSE_BREAK.pattern}|:(?=\s)", re.IGNORECASE)
+# A denial word right before a phrase denies it: "there is no 5 year
+# warranty", "not covered for 5 years", "we never price match".
+_DENIALS = frozenset({"no", "not", "never"})
+
+
 def clauses(text: str) -> list[str]:
     """The raw text split at clause breaks (see `_CLAUSE_BREAK`), blank parts dropped."""
     return [part for part in _CLAUSE_BREAK.split(text) if part.strip()]
@@ -178,17 +188,19 @@ def _claims(text: str, phrase: str) -> bool:
     clause: "if" or "whether", a decline phrase ("not sure", "I can't
     confirm", "the documents don't say" ...), "I do not think / believe", or
     a refusal ("I can't promise", "we cannot offer", "I'm not able to
-    approve"). A decline or refusal in another clause or sentence hedges
-    nothing.
+    approve"), or "no", "not" or "never" right before the phrase. A decline
+    or refusal in another clause or sentence hedges nothing; a colon ends a
+    clause here.
     """
     wanted = phrase.split()
-    for clause in clauses(text):
+    for clause in _CLAIM_BREAK.split(text):
         tokens = normalise(clause).split()
         for start in _occurrences(tokens, wanted):
             before = tokens[:start]
             prefix = " ".join(before)
             hedged = (
-                bool(_CLAUSE_OPENERS & set(before))
+                bool(before and before[-1] in _DENIALS)
+                or bool(_CLAUSE_OPENERS & set(before))
                 or any(p.search(prefix) for p in DECLINE_PATTERNS)
                 or any(p.search(prefix) for p in _HEDGES)
             )
@@ -205,8 +217,10 @@ def no_forbidden(text: str, forbidden: Sequence[str]) -> CheckResult:
     match" and "I don't know if tools can be rented" pass; "If so, we price
     match" and "I'm not sure about online orders, but we price match in
     store" fail. A refusal is not a claim either: "I can't promise you'll get
-    a full refund" passes a list that forbids "you will get a full refund".
-    Hedges outside the list ("I doubt we price match") count as claims.
+    a full refund" passes a list that forbids "you will get a full refund",
+    and neither is a denial right before the phrase ("there is no 5 year
+    warranty on power tools"). Hedges outside the list ("I doubt we price
+    match") count as claims.
 
     What this measures: listed invention. A claim in words the case's list
     does not foresee is not caught here; wording-level invention beyond the

@@ -404,3 +404,30 @@ def test_a_refusal_is_not_a_claim(text):
 )
 def test_a_refusal_hedges_only_its_own_clause(text):
     assert not no_forbidden(text, ("a full refund",)).passed
+
+
+@pytest.mark.parametrize(
+    ("text", "phrase"),
+    [
+        (
+            "There's no 5 year warranty on power tools; it is 2 years.",
+            "5 year warranty on power tools",
+        ),
+        ("Power tools are not covered for 5 years.", "covered for 5 years"),
+        ("We never price match.", "price match"),
+    ],
+)
+def test_no_or_not_right_before_a_phrase_denies_it(text, phrase):
+    assert no_forbidden(text, (phrase,)).passed
+
+
+@pytest.mark.parametrize(
+    ("text", "phrase"),
+    [
+        ("Yes, power tools are covered for five years.", "covered for 5 years"),
+        ("No problem, power tools are covered for 5 years.", "covered for 5 years"),
+        ("I can't promise anything: you will get a full refund.", "you will get a full refund"),
+    ],
+)
+def test_a_claim_after_a_denial_elsewhere_still_counts(text, phrase):
+    assert not no_forbidden(text, (phrase,)).passed
