@@ -148,3 +148,38 @@ def test_a_pass_rule_section_is_required():
     text = VALID.split("## Pass rule", 1)[0]
     with pytest.raises(RubricError, match="no '## Pass rule' section"):
         parse_rubric(text, name="synthetic.md")
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        "groundedness is at least 4, helpfulness is at least 3 or tone is at least 3",
+        "groundedness is at least 4 or helpfulness is at least 3 and tone is at least 3",
+        "groundedness is at least 4, helpfulness is at least 3, tone is at least 3",
+        "groundedness is at least 4. Helpfulness matters too: helpfulness is at least 3 "
+        "and tone is at least 3",
+    ],
+    ids=["or at the end", "or at the start", "no and", "split across sentences"],
+)
+def test_the_prose_must_join_the_minimums_with_and(rule):
+    text = VALID.replace(
+        "groundedness is at least 4, helpfulness is at least 3 and tone is at least 3", rule
+    )
+    with pytest.raises(RubricError, match="join the minimums with 'and'"):
+        parse_rubric(text, name="synthetic.md")
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        "groundedness is at least 4, helpfulness is at least 3, and tone is at least 3",
+        "groundedness is at least 4 and helpfulness is at least 3 and tone is at least 3",
+        "tone is at least 3, groundedness is at least 4 and helpfulness is at least 3",
+    ],
+    ids=["serial comma", "and twice", "another order"],
+)
+def test_minimums_joined_with_and_are_accepted(rule):
+    text = VALID.replace(
+        "groundedness is at least 4, helpfulness is at least 3 and tone is at least 3", rule
+    )
+    assert parse_rubric(text, name="synthetic.md").pass_rule["tone"] == 3

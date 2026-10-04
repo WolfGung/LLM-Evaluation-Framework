@@ -29,6 +29,7 @@ import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -59,6 +60,11 @@ ANCHORS = (5, 3, 1)
 _FRONT_MATTER = re.compile(r"\A---\n(.*?)\n---\n(.*)\Z", re.DOTALL)
 _KEYS = frozenset({"criteria", "pass_rule"})
 _PASS_RULE_SECTION = "Pass rule"
+# What may stand between two minimums in the prose pass rule: a comma, "and"
+# or ", and". The last joint needs "and", so every criterion must reach its
+# minimum; "or", a missing "and" or a sentence break is refused.
+_JOINT = re.compile(r", |,? and ")
+_LAST_JOINT = re.compile(r",? and ")
 
 
 class RubricError(ValueError):
@@ -140,6 +146,19 @@ def _check_body(body: str, rule: Mapping[str, int], name: str) -> None:
                     f"{name}: the pass rule says {criterion} is at least {value}; "
                     f"the front matter says {minimum}"
                 )
+    spans = sorted(
+        match.span()
+        for criterion in rule
+        if (match := re.search(rf"\b{criterion} is at least \d\b", prose)) is not None
+    )
+    joints = [prose[end:start] for (_, end), (start, _) in pairwise(spans)]
+    if not all(_JOINT.fullmatch(joint) for joint in joints) or not (
+        joints and _LAST_JOINT.fullmatch(joints[-1])
+    ):
+        raise RubricError(
+            f"{name}: the pass rule must join the minimums with 'and', so that every "
+            "criterion has to reach its minimum"
+        )
 
 
 def parse_rubric(source: str, *, name: str) -> Rubric:
