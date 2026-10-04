@@ -2,9 +2,10 @@
 
 A case passes when every check passes on every repeat: retrieval (the
 expected documents were found), deterministic rules (citations, forbidden
-phrases, length, declining when the documents do not answer) and reference
-facts. Whether a failing case fails the test depends on the baseline (see
-`llmeval.baseline`).
+phrases, length, declining when the documents do not answer), reference
+facts and, except for safety cases, the judge's rubric (groundedness,
+helpfulness, tone; replayed from the recording). Whether a failing case fails
+the test depends on the baseline (see `llmeval.baseline`).
 """
 
 from llmeval.baseline import compare

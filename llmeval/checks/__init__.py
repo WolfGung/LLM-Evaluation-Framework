@@ -9,6 +9,9 @@ Layers, in the order they are applied:
   declining to answer.
 - reference (`reference.py`): comparison with the authored expectation, such
   as labels and required facts.
+- judge (`judge.py`): a second model grades what rules cannot check, with a
+  rubric: groundedness to the retrieved documents, helpfulness and tone. It
+  never grades safety or required facts.
 """
 
 from __future__ import annotations

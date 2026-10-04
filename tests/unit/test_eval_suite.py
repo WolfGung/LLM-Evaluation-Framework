@@ -24,9 +24,11 @@ from pydantic import SecretStr
 from app.triage import triage
 from llmeval.baseline import Baseline, CaseBaseline, FunctionBaseline, Metrics, Provenance
 from llmeval.cassettes import MANIFEST_FILE, CassetteStore
+from llmeval.checks.judge import RUBRIC_PATH, Judge, load_rubric
 from llmeval.client import ModelClient
 from llmeval.config import Config, Mode, Settings, load_models_config
-from llmeval.datasets import load_triage
+from llmeval.datasets import load_rag, load_triage
+from llmeval.runner import run_rag
 
 ROOT = Path(__file__).resolve().parents[2]
 MODELS = load_models_config(ROOT / "config" / "models.yaml")
@@ -44,8 +46,10 @@ KNOWN_PRIORITY_FAILURE = CaseBaseline(
 )
 
 
-def run_eval_suite(tmp_path: Path, *selection: str) -> tuple[int, str]:
-    """Run the triage eval suite in a subprocess; return the exit code and the output."""
+def run_eval_suite(
+    tmp_path: Path, *selection: str, suite: str = "tests/eval/test_triage_eval.py"
+) -> tuple[int, str]:
+    """Run an eval suite (triage by default) in a subprocess; return the exit code and output."""
     env = {
         **os.environ,
         "LLMEVAL_CASSETTES_DIR": str(tmp_path / "cassettes"),
@@ -64,7 +68,7 @@ def run_eval_suite(tmp_path: Path, *selection: str) -> tuple[int, str]:
             "no:cacheprovider",
             "-q",
             "-rsxX",
-            "tests/eval/test_triage_eval.py",
+            suite,
             *selection,
         ],
         cwd=ROOT,
@@ -274,3 +278,77 @@ def test_a_function_missing_from_the_recorded_run_skips_with_a_reason(ws):
     assert "40 skipped" in out
     assert "triage is not in the recorded run" in out
     assert "empty parameter set" not in out
+
+
+# --- the RAG suite replays the judge layer -------------------------------------
+
+RAG_CASE = load_rag(ROOT / "datasets" / "rag.jsonl")[0]
+
+
+def record_rag_with_judge(tmp_path: Path, verdict: dict) -> None:
+    """Record one synthetic answer to RAG_CASE and one synthetic verdict on it."""
+
+    def reply(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        is_judge = "response_format" in body
+        content = json.dumps(verdict) if is_judge else "Synthetic answer [kb-warranty]."
+        return httpx.Response(
+            200,
+            json={
+                "id": "gen-synthetic",
+                "model": body["model"],
+                "choices": [{"index": 0, "finish_reason": "stop", "message": {"content": content}}],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 20, "cost": 0.0},
+            },
+        )
+
+    config = Config(models=MODELS, settings=Settings(api_key=SecretStr("synthetic-key-123")))
+    with ModelClient(
+        Mode.RECORD,
+        CassetteStore(tmp_path / "cassettes"),
+        config,
+        httpx.MockTransport(reply),
+        limiter=NoWait(),
+    ) as client:
+        judge = Judge(client, MODELS.judge, load_rubric(ROOT / RUBRIC_PATH))
+        run_rag(client, MODELS.system, [RAG_CASE], "v1", repeats=1, judge=judge)
+
+
+def test_the_rag_suite_replays_the_judge_and_gates_on_it(ws):
+    manifest = {
+        "models": {"system": MODELS.system.model, "judge": MODELS.judge.model},
+        "prompt_versions": {"rag": ["v1"]},
+        "repeats": 1,
+        "datasets": {"rag.jsonl": "0" * 64},
+        "recorded_from": "2026-01-01T10:00:00Z",
+        "recorded_to": "2026-01-01T10:01:00Z",
+        "planned_calls": 2,
+        "recorded_calls": 2,
+    }
+    (ws / "cassettes" / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
+    record_rag_with_judge(
+        ws,
+        {"groundedness": 2, "helpfulness": 4, "tone": 5, "pass": False, "reasons": "Invented."},
+    )
+    baseline = Baseline(
+        provenance=Provenance(
+            recorded_from="2026-01-01T10:00:00Z",
+            recorded_to="2026-01-01T10:01:00Z",
+            models={"system": MODELS.system.model, "judge": MODELS.judge.model},
+            repeats=1,
+            prompt_versions={"rag": ("v1",)},
+        ),
+        functions={
+            "rag": {
+                "v1": FunctionBaseline(
+                    metrics=Metrics(all_checks=None, layers={}),
+                    cases={RAG_CASE.id: CaseBaseline(passed=True)},
+                )
+            }
+        },
+    )
+    (ws / "baseline.json").write_text(baseline.model_dump_json(indent=2), encoding="utf-8")
+    code, out = run_eval_suite(ws, "-k", RAG_CASE.id, suite="tests/eval/test_rag_eval.py")
+    assert code == 1, out
+    assert "1 failed" in out
+    assert "[judge] groundedness: 2/5 (pass needs 4 or more); judge: Invented." in out

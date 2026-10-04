@@ -97,7 +97,7 @@ class _Record(BaseModel):
 
 
 class CallTag(_Record):
-    """Which evaluation call this is: function (rag, triage, judge), case id, prompt version.
+    """Which evaluation call this is: function (rag, triage, judge, pairwise), case, version.
 
     The tag names the cassette file (`<function>-<version>.jsonl`) and makes a
     missing recording easy to find.

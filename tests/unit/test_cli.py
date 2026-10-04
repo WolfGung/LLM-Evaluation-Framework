@@ -9,6 +9,7 @@ nothing is written to the repository's `cassettes/` or `results/`.
 import json
 import subprocess
 import sys
+from pathlib import Path
 
 import httpx
 import pytest
@@ -16,6 +17,7 @@ from pydantic import SecretStr
 from typer.testing import CliRunner
 
 from llmeval.cassettes import MANIFEST_FILE, CassetteStore
+from llmeval.checks.judge import RUBRIC_PATH, load_rubric
 from llmeval.cli import app
 from llmeval.client import ModelClient
 from llmeval.config import Config, Mode, Settings, load_models_config
@@ -23,6 +25,8 @@ from llmeval.datasets import load_rag, load_triage
 from llmeval.runner import run
 
 runner = CliRunner()
+ROOT = Path(__file__).resolve().parents[2]
+RUBRIC = ROOT / RUBRIC_PATH
 
 CONFIG_YAML = """\
 system:
@@ -100,6 +104,8 @@ def eval_args(ws, *extra):
         str(ws / "cassettes"),
         "--results-dir",
         str(ws / "results"),
+        "--rubric",
+        str(RUBRIC),
         *extra,
     ]
 
@@ -161,15 +167,30 @@ def test_eval_refuses_an_unknown_function(workspace):
 
 
 class Recorder:
-    """Mock OpenRouter: answers each synthetic question with a fixed reply."""
+    """Mock OpenRouter: answers each synthetic question, and each judge question,
+    with a fixed reply."""
 
     def __init__(self):
         self.requests = 0
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests += 1
-        question = json.loads(request.content)["messages"][-1]["content"]
-        if question.startswith("Synthetic:"):
+        body = json.loads(request.content)
+        question = body["messages"][-1]["content"]
+        schema = body.get("response_format", {}).get("json_schema", {}).get("name")
+        if schema == "judge_verdict":
+            content = json.dumps(
+                {
+                    "groundedness": 5,
+                    "helpfulness": 4,
+                    "tone": 5,
+                    "pass": True,
+                    "reasons": "Synthetic reasons.",
+                }
+            )
+        elif schema == "pairwise_verdict":
+            content = json.dumps({"preferred": "tie", "reasons": "Synthetic reasons."})
+        elif question.startswith("Synthetic:"):
             content = json.dumps(
                 {
                     "category": "order_status",
@@ -178,6 +199,8 @@ class Recorder:
                     "summary": "Synthetic status question.",
                 }
             )
+        elif "Follow these rules" in body["messages"][0]["content"]:  # assistant v2
+            content = "Returns are accepted within 30 days [kb-returns]."
         else:
             content = "You have 30 days [kb-returns]."
         return httpx.Response(
@@ -201,7 +224,7 @@ def test_record_then_replay_end_to_end(workspace):
     models = load_models_config(ws / "config.yaml")
     config = Config(models=models, settings=Settings(api_key=SecretStr("synthetic-key-123")))
     recorder = Recorder()
-    versions = {"rag": ["v1"], "triage": ["v2"]}
+    versions = {"rag": ["v1", "v2"], "triage": ["v2"]}
     with ModelClient(
         Mode.RECORD,
         CassetteStore(ws / "cassettes"),
@@ -212,6 +235,8 @@ def test_record_then_replay_end_to_end(workspace):
         recorded = run(
             client,
             models.system,
+            judge=models.judge,
+            rubric=load_rubric(RUBRIC),
             mode=Mode.RECORD,
             cassettes_dir=ws / "cassettes",
             results_dir=ws / "recorded-results",
@@ -223,13 +248,21 @@ def test_record_then_replay_end_to_end(workspace):
             },
             versions=versions,
         )
-    assert recorder.requests == 2
+    # rag 2 answers + 2 gradings + 2 pairwise questions, triage 1.
+    assert recorder.requests == 7
     write_manifest(ws, versions)
 
     result = runner.invoke(app, eval_args(ws))
     assert result.exit_code == 0, result.output
-    assert sorted(p.name for p in (ws / "results").iterdir()) == ["rag-v1.json", "triage-v2.json"]
+    assert sorted(p.name for p in (ws / "results").iterdir()) == [
+        "rag-v1-vs-v2.json",
+        "rag-v1.json",
+        "rag-v2.json",
+        "triage-v2.json",
+    ]
     assert "rag v1" in result.output and "triage v2" in result.output
+    assert "judge 1/1 (100.0%)" in result.output
+    assert "rag v1 vs v2: v1 0, v2 0, tie 1, inconsistent 0, invalid 0" in result.output
     # The synthetic manifest holds placeholder hashes, so both datasets differ.
     assert "notice: datasets changed since the recording: rag.jsonl, triage.jsonl" in result.output
 
@@ -238,7 +271,19 @@ def test_record_then_replay_end_to_end(workspace):
     assert replayed["mode"] == "replay" and original["mode"] == "record"
     assert replayed["cases"] == original["cases"]
     assert replayed["summary"] == original["summary"]
-    assert recorder.requests == 2  # replay made no request
+    assert replayed["cases"][0]["runs"][0]["judge"]["scores"]["helpfulness"] == 4
+    assert recorder.requests == 7  # replay made no request
+
+
+def test_eval_refuses_a_broken_rubric(workspace):
+    write_manifest(workspace, {"rag": ["v1"], "triage": ["v1"]})
+    rubric = workspace / "judge.md"
+    rubric.write_text(RUBRIC.read_text(encoding="utf-8").replace("is at least 4", "is at least 2"))
+    args = eval_args(workspace)
+    args[args.index("--rubric") + 1] = str(rubric)
+    result = runner.invoke(app, args)
+    assert result.exit_code == 1
+    assert "the pass rule says groundedness is at least 2" in result.output
 
 
 def test_eval_can_select_a_function(workspace):

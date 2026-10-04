@@ -1,9 +1,10 @@
 """The command line: `llmeval` (or `python -m llmeval`).
 
-- `eval`: replay the recorded run and write `results/`. Without
-  `cassettes/manifest.json` it prints "pending first recorded run" and writes
-  nothing. It always replays, whatever LLMEVAL_MODE says: recording (with the
-  budget guard and the free-quota handling) is `make record`.
+- `eval`: replay the recorded run, judge calls included, and write
+  `results/`. Without `cassettes/manifest.json` it prints "pending first
+  recorded run" and writes nothing. It always replays, whatever LLMEVAL_MODE
+  says: recording (with the budget guard and the free-quota handling) is
+  `make record`.
 - `retrieval`: the retrieval layer over the RAG dataset, offline. BM25 is
   deterministic, so this needs no model and no recording.
 """
@@ -18,6 +19,7 @@ import typer
 from app.assistant import DEFAULT_K
 from app.retrieval import search
 from llmeval.cassettes import CassetteError, CassetteStore, load_manifest
+from llmeval.checks.judge import RUBRIC_PATH, RubricError, load_rubric
 from llmeval.checks.retrieval import retrieval_recall
 from llmeval.client import MissingRecording, ModelClient
 from llmeval.config import DEFAULT_MODELS_PATH, ConfigError, Mode, load_config
@@ -29,7 +31,7 @@ from llmeval.datasets import (
     load_rag,
     load_triage,
 )
-from llmeval.results import RESULTS_DIR, FunctionResults
+from llmeval.results import RESULTS_DIR, FunctionResults, PairwiseResults
 from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, run
 
 app = typer.Typer(
@@ -55,6 +57,12 @@ def _line(result: FunctionResults) -> str:
     return f"{result.function} {result.version}: " + ", ".join(parts)
 
 
+def _pairwise_line(result: PairwiseResults) -> str:
+    first, second = result.versions
+    counts = ", ".join(f"{outcome} {n}" for outcome, n in result.summary.outcomes.items())
+    return f"{result.function} {first} vs {second}: {counts}"
+
+
 @app.command("eval")
 def eval_command(
     function: Annotated[
@@ -65,6 +73,7 @@ def eval_command(
     datasets_dir: Annotated[Path, typer.Option(help="Directory with the datasets.")] = DATASETS_DIR,
     cassettes_dir: Annotated[Path, typer.Option(help="Recorded calls.")] = CASSETTES_DIR,
     results_dir: Annotated[Path, typer.Option(help="Where results go.")] = RESULTS_DIR,
+    rubric: Annotated[Path, typer.Option(help="The judge rubric.")] = RUBRIC_PATH,
 ) -> None:
     """Replay the recorded run, apply every check and write results/."""
     functions = function or list(EVAL_FUNCTIONS)
@@ -88,10 +97,13 @@ def eval_command(
             typer.echo(notice)
         rag_cases = load_rag(rag_path) if "rag" in functions else ()
         triage_cases = load_triage(triage_path) if "triage" in functions else ()
+        judge_rubric = load_rubric(rubric)
         client = ModelClient(Mode.REPLAY, CassetteStore(cassettes_dir), replay_config)
         outcome = run(
             client,
             replay_config.models.system,
+            judge=replay_config.models.judge,
+            rubric=judge_rubric,
             mode=Mode.REPLAY,
             cassettes_dir=cassettes_dir,
             results_dir=results_dir,
@@ -102,10 +114,19 @@ def eval_command(
             repeats=manifest.repeats,
             stability_cases=manifest.stability_cases,
         )
-    except (MissingRecording, CassetteError, ConfigError, DatasetError, OSError) as exc:
+    except (
+        MissingRecording,
+        CassetteError,
+        ConfigError,
+        DatasetError,
+        RubricError,
+        OSError,
+    ) as exc:
         raise _fail(str(exc)) from None
-    for result, path in zip(outcome.results, outcome.written, strict=True):
-        typer.echo(_line(result))
+    lines = [_line(result) for result in outcome.results]
+    lines += [_pairwise_line(result) for result in outcome.pairwise]
+    for line, path in zip(lines, outcome.written, strict=True):
+        typer.echo(line)
         typer.echo(f"  wrote {path}")
 
 

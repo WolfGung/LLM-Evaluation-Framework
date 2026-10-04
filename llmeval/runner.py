@@ -5,6 +5,11 @@ through the client (`ModelClient` or any `ChatModel`), so a replay run needs
 no key and no network. The results of one function and prompt version are a
 `FunctionResults` (see `llmeval.results`).
 
+With a judge role, the judge grades every run of every RAG case except the
+safety cases (rules own safety), and compares the first RAG prompt version
+with each later one, case by case, on repeat 0 (`PairwiseResults`). Judge
+calls go through the same client, so they are recorded and replayed too.
+
 Where results are written:
 
 - replay with `cassettes/manifest.json` (a complete recording): to
@@ -23,10 +28,10 @@ reproduces it byte for byte.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from app import assistant
 from app import triage as triage_app
@@ -35,6 +40,7 @@ from app.retrieval import BM25Index, default_index
 from llmeval.cassettes import (
     PENDING_RECORDED_RUN,
     CallTag,
+    CassetteStore,
     load_manifest,
     repeats_for,
     request_key,
@@ -42,6 +48,19 @@ from llmeval.cassettes import (
 from llmeval.checks import CheckResult
 from llmeval.checks import deterministic as det
 from llmeval.checks import reference as ref
+from llmeval.checks.judge import (
+    JUDGE_FUNCTION,
+    PAIRWISE_FUNCTION,
+    Judge,
+    Rubric,
+    compare_messages,
+    compare_tag,
+    grade_messages,
+    grade_tag,
+    load_rubric,
+    pairwise_format,
+    verdict_format,
+)
 from llmeval.checks.retrieval import retrieval_recall
 from llmeval.client import build_role_request
 from llmeval.config import Mode, RoleConfig
@@ -52,8 +71,12 @@ from llmeval.results import (
     CaseRecord,
     CheckRecord,
     FunctionResults,
+    JudgeRecord,
+    PairwiseCaseRecord,
+    PairwiseResults,
     RunRecord,
     summarise,
+    summarise_pairwise,
     write_live_results,
     write_results,
 )
@@ -62,10 +85,17 @@ EVAL_FUNCTIONS = ("rag", "triage")
 # The prompt files behind each evaluated function (app/prompts/<name>_<v>.md).
 PROMPT_NAMES = {"rag": "assistant", "triage": "triage"}
 CASSETTES_DIR = Path("cassettes")
+# RAG categories the judge grades. Safety is never left to the judge: rules
+# check it. Triage is not graded at all: its labels are checked by rules.
+JUDGED_CATEGORIES = frozenset({"answerable", "multi_doc", "unanswerable"})
 
 
 def versions_of(function: str) -> tuple[str, ...]:
     return prompt_versions(PROMPT_NAMES[function])
+
+
+def judged(case: RagCase) -> bool:
+    return case.category in JUDGED_CATEGORIES
 
 
 # --- plan -------------------------------------------------------------------
@@ -73,7 +103,19 @@ def versions_of(function: str) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class PlannedRequest:
-    """One model call the run will make, with its cassette key."""
+    """One model call the run will make, with its cassette key.
+
+    `function` is rag, triage, judge (grading one answer) or pairwise (one of
+    the two questions of a comparison). A judge or pairwise call grades
+    answers that do not exist before they are recorded: `grades` holds the
+    keys of the system calls it waits for, and `key` is None until every one
+    of them is recorded. Until then `messages` hold the prompt with empty
+    answers, enough to estimate its size.
+
+    Two planned calls can share a key when their messages are equal, for
+    example when two prompt versions wrote the same answer: the cassette
+    holds one recording for both. Count recordings as distinct keys.
+    """
 
     function: str
     case_id: str
@@ -81,11 +123,29 @@ class PlannedRequest:
     repeat: int
     messages: tuple[dict[str, str], ...]
     response_format: dict[str, Any] | None
-    key: str
+    key: str | None
+    tag: CallTag
+    grades: tuple[str, ...] = ()
 
     @property
-    def tag(self) -> CallTag:
-        return CallTag(function=self.function, case=self.case_id, version=self.version)
+    def role(self) -> Literal["system", "judge"]:
+        """The model role from config/models.yaml that answers this call."""
+        return "judge" if self.function in (JUDGE_FUNCTION, PAIRWISE_FUNCTION) else "system"
+
+
+# The recorded answer of a system call, by its key, or None when it is not
+# recorded yet (see `recorded_answers`).
+Answers = Callable[[str], str | None]
+
+
+def recorded_answers(store: CassetteStore) -> Answers:
+    """Look up recorded answers in `store`, for planning the judge calls."""
+
+    def answer(key: str) -> str | None:
+        entry = store.get(key)
+        return None if entry is None else entry.response.content
+
+    return answer
 
 
 def _versions(versions: Mapping[str, Sequence[str]] | None, function: str) -> tuple[str, ...]:
@@ -109,27 +169,41 @@ def plan_requests(
     repeats: int = 1,
     stability_cases: Collection[str] | None = None,
     index: BM25Index | None = None,
+    judge: RoleConfig | None = None,
+    rubric: Rubric | None = None,
+    answers: Answers | None = None,
 ) -> list[PlannedRequest]:
-    """Every call of a run, in run order: function, version, case, repeat.
+    """Every call of a run: the system calls in run order (function, version,
+    case, repeat), then the judge calls, then the pairwise calls.
 
     Builds the exact messages the run sends, without calling anything, so the
     keys can be counted against the cassettes and the cost estimated.
     `versions` maps a function to the prompt versions to run (default: all).
     `stability_cases` limits the repeats to those case ids (see `repeats_for`).
+    With `judge`, the judge and pairwise calls are planned too; `answers`
+    (see `recorded_answers`) supplies the recorded answers their keys need.
     """
     plan: list[PlannedRequest] = []
-    if rag_cases:
-        for version in _versions(versions, "rag"):
-            for case in rag_cases:
-                messages, _ = assistant.prepare(case.question, version, index=index)
-                n = repeats_for(case.id, repeats, stability_cases)
-                plan += _planned("rag", case.id, version, messages, None, role, n)
+    rag_versions = _versions(versions, "rag") if rag_cases else ()
+    for version in rag_versions:
+        for case in rag_cases:
+            messages, _ = assistant.prepare(case.question, version, index=index)
+            n = repeats_for(case.id, repeats, stability_cases)
+            plan += _planned("rag", case.id, version, messages, None, role, n)
     if triage_cases:
         for version in _versions(versions, "triage"):
             for case in triage_cases:
                 messages, response_format = triage_app.prepare(case.text, version, role)
                 n = repeats_for(case.id, repeats, stability_cases)
                 plan += _planned("triage", case.id, version, messages, response_format, role, n)
+    if judge is not None and rag_versions:
+        rubric = rubric or load_rubric()
+        graded = [case for case in rag_cases if judged(case)]
+        rag_plan = [p for p in plan if p.function == "rag"]
+        # System calls always have a key: their messages do not wait for anything.
+        system = {(p.case_id, p.version, p.repeat): p.key for p in rag_plan if p.key}
+        plan += _planned_gradings(rag_plan, graded, judge, rubric, answers, index)
+        plan += _planned_comparisons(graded, rag_versions, system, judge, rubric, answers, index)
     return plan
 
 
@@ -152,9 +226,97 @@ def _planned(
             messages=tuple(messages),
             response_format=response_format,
             key=request_key(body, repeat),
+            tag=CallTag(function=function, case=case_id, version=version),
         )
         for repeat in range(repeats)
     ]
+
+
+def _judge_key(
+    messages: list[dict[str, str]],
+    response_format: dict[str, Any],
+    role: RoleConfig,
+    repeat: int,
+    ready: bool,
+) -> str | None:
+    return (
+        request_key(build_role_request(messages, role, response_format), repeat) if ready else None
+    )
+
+
+def _planned_gradings(
+    rag_plan: Sequence[PlannedRequest],
+    cases: Sequence[RagCase],
+    role: RoleConfig,
+    rubric: Rubric,
+    answers: Answers | None,
+    index: BM25Index | None,
+) -> list[PlannedRequest]:
+    """One grading per planned answer of a judged case, with the same repeat."""
+    questions = {case.id: case.question for case in cases}
+    plan = []
+    for system in rag_plan:
+        if system.case_id not in questions:
+            continue
+        question = questions[system.case_id]
+        _, hits = assistant.prepare(question, system.version, index=index)
+        answer = answers(system.key) if answers and system.key else None
+        messages = grade_messages(rubric, question, hits, answer or "")
+        plan.append(
+            PlannedRequest(
+                function=JUDGE_FUNCTION,
+                case_id=system.case_id,
+                version=system.version,
+                repeat=system.repeat,
+                messages=tuple(messages),
+                response_format=verdict_format(),
+                key=_judge_key(messages, verdict_format(), role, system.repeat, answer is not None),
+                tag=grade_tag(system.case_id, system.version),
+                grades=(system.key,) if system.key else (),
+            )
+        )
+    return plan
+
+
+def _planned_comparisons(
+    cases: Sequence[RagCase],
+    versions: Sequence[str],
+    system: Mapping[tuple[str, str, int], str],
+    role: RoleConfig,
+    rubric: Rubric,
+    answers: Answers | None,
+    index: BM25Index | None,
+) -> list[PlannedRequest]:
+    """Two questions per judged case and version pair, on the answers of repeat 0."""
+    plan = []
+    for pair in pairs_of(versions):
+        for case in cases:
+            _, hits = assistant.prepare(case.question, pair[0], index=index)
+            keys = (system[(case.id, pair[0], 0)], system[(case.id, pair[1], 0)])
+            texts = [answers(key) if answers else None for key in keys]
+            ready = all(text is not None for text in texts)
+            first, second = (text or "" for text in texts)
+            for shown_as_a, a, b in ((pair[0], first, second), (pair[1], second, first)):
+                messages = compare_messages(rubric, case.question, hits, a, b)
+                plan.append(
+                    PlannedRequest(
+                        function=PAIRWISE_FUNCTION,
+                        case_id=case.id,
+                        version="-".join(pair),
+                        repeat=0,
+                        messages=tuple(messages),
+                        response_format=pairwise_format(),
+                        key=_judge_key(messages, pairwise_format(), role, 0, ready),
+                        tag=compare_tag(case.id, pair, shown_as_a),
+                        grades=keys,
+                    )
+                )
+    return plan
+
+
+def pairs_of(versions: Sequence[str]) -> list[tuple[str, str]]:
+    """The version pairs compared: the first version with each later one."""
+    return [(versions[0], later) for later in versions[1:]]
 
 
 # --- checks per run ----------------------------------------------------------
@@ -209,7 +371,10 @@ def run_rag(
     repeats: int,
     stability_cases: Collection[str] | None = None,
     index: BM25Index | None = None,
+    judge: Judge | None = None,
 ) -> list[CaseRecord]:
+    """Run the assistant over `cases`. With `judge`, every run of a judged
+    case is graded and gets the judge layer's checks."""
     records = []
     for case in cases:
         runs = []
@@ -217,6 +382,19 @@ def run_rag(
             answer = assistant.answer(
                 client, role, case.question, version, index=index, repeat=repeat, case=case.id
             )
+            checks = rag_checks(case, answer)
+            graded = None
+            if judge is not None and judged(case):
+                judgement = judge.grade(
+                    case.question,
+                    answer.hits,
+                    answer.text,
+                    case=case.id,
+                    version=version,
+                    repeat=repeat,
+                )
+                checks += _layer("judge", judge.checks(judgement))
+                graded = JudgeRecord.of(judgement)
             runs.append(
                 RunRecord(
                     repeat=repeat,
@@ -224,7 +402,8 @@ def run_rag(
                     retrieved=list(answer.retrieved_ids),
                     cited=list(answer.cited_ids),
                     call=CallRecord.from_call(answer.call),
-                    checks=rag_checks(case, answer),
+                    checks=checks,
+                    judge=graded,
                 )
             )
         expected = case.model_dump(
@@ -304,6 +483,7 @@ def evaluate(
     repeats: int,
     stability_cases: Collection[str] | None = None,
     index: BM25Index | None = None,
+    judge: Judge | None = None,
 ) -> FunctionResults:
     """Run one function with one prompt version over its dataset."""
     if function == "rag":
@@ -315,6 +495,7 @@ def evaluate(
             repeats=repeats,
             stability_cases=stability_cases,
             index=index,
+            judge=judge,
         )
     elif function == "triage":
         records = run_triage(
@@ -323,6 +504,7 @@ def evaluate(
     else:
         raise ValueError(f"unknown function {function!r}; known: {', '.join(EVAL_FUNCTIONS)}")
     prompt = load_prompt(PROMPT_NAMES[function], version)
+    graded = judge is not None and function == "rag"
     return FunctionResults(
         function=function,
         version=version,
@@ -332,7 +514,48 @@ def evaluate(
         dataset=Path(dataset_path).name,
         dataset_sha256=file_sha256(dataset_path),
         repeats=repeats,
+        judge_model=judge.role.model if graded else None,
+        rubric_sha256=judge.rubric.sha256 if graded else None,
         summary=summarise(function, records),
+        cases=records,
+    )
+
+
+def compare_versions(
+    judge: Judge,
+    cases: Sequence[RagCase],
+    first: FunctionResults,
+    second: FunctionResults,
+    *,
+    mode: Mode,
+    dataset_path: Path,
+    index: BM25Index | None = None,
+) -> PairwiseResults:
+    """Compare two prompt versions' answers (repeat 0) on every judged case."""
+    versions = (first.version, second.version)
+    answers = {
+        result.version: {record.id: record.runs[0].output for record in result.cases}
+        for result in (first, second)
+    }
+    records = []
+    for case in cases:
+        if not judged(case):
+            continue
+        _, hits = assistant.prepare(case.question, versions[0], index=index)
+        pair = (answers[versions[0]][case.id], answers[versions[1]][case.id])
+        result = judge.compare(case.question, hits, *pair, case=case.id, versions=versions)
+        records.append(
+            PairwiseCaseRecord.of(case.id, case.category, case.question, pair, result, versions)
+        )
+    return PairwiseResults(
+        function="rag",
+        versions=versions,
+        mode=str(mode),
+        judge_model=judge.role.model,
+        rubric_sha256=judge.rubric.sha256,
+        dataset=Path(dataset_path).name,
+        dataset_sha256=file_sha256(dataset_path),
+        summary=summarise_pairwise(records, versions),
         cases=records,
     )
 
@@ -343,6 +566,7 @@ class RunOutcome:
     reason: str | None
     results: tuple[FunctionResults, ...]
     written: tuple[Path, ...]
+    pairwise: tuple[PairwiseResults, ...] = ()
 
 
 def run(
@@ -360,17 +584,22 @@ def run(
     repeats: int = 1,
     stability_cases: Collection[str] | None = None,
     index: BM25Index | None = None,
+    judge: RoleConfig | None = None,
+    rubric: Rubric | None = None,
 ) -> RunOutcome:
     """Evaluate every function that has cases, for each chosen prompt version.
 
     Replay without a manifest returns a pending outcome and calls nothing.
     Results are written only after every function and version has run, so a
     failure (such as a missing recording) leaves `results/` untouched.
+    With `judge` (the judge role), RAG runs are graded with `rubric` (default:
+    `rubrics/judge.md`) and the RAG prompt versions are compared pairwise.
     """
     mode = Mode(mode)
     if mode is Mode.REPLAY and load_manifest(cassettes_dir) is None:
         return RunOutcome(pending=True, reason=PENDING_RECORDED_RUN, results=(), written=())
     index = index or default_index()
+    grader = Judge(client, judge, rubric or load_rubric()) if judge is not None else None
     work: list[tuple[str, Sequence[RagCase] | Sequence[TriageCase]]] = []
     if rag_cases:
         work.append(("rag", rag_cases))
@@ -388,14 +617,33 @@ def run(
             repeats=repeats,
             stability_cases=stability_cases,
             index=index,
+            judge=grader,
         )
         for function, cases in work
         for version in _versions(versions, function)
     )
+    pairwise: tuple[PairwiseResults, ...] = ()
+    if grader is not None and rag_cases:
+        rag = {result.version: result for result in results if result.function == "rag"}
+        pairwise = tuple(
+            compare_versions(
+                grader,
+                rag_cases,
+                rag[first],
+                rag[second],
+                mode=mode,
+                dataset_path=dataset_paths["rag"],
+                index=index,
+            )
+            for first, second in pairs_of(_versions(versions, "rag"))
+        )
+    everything = (*results, *pairwise)
     if mode is Mode.REPLAY:
-        written = tuple(write_results(result, results_dir) for result in results)
+        written = tuple(write_results(result, results_dir) for result in everything)
     elif mode is Mode.LIVE:
-        written = tuple(write_live_results(result, live_results_dir) for result in results)
+        written = tuple(write_live_results(result, live_results_dir) for result in everything)
     else:
         written = ()
-    return RunOutcome(pending=False, reason=None, results=results, written=written)
+    return RunOutcome(
+        pending=False, reason=None, results=results, written=written, pairwise=pairwise
+    )

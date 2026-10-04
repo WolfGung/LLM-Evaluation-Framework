@@ -1,10 +1,13 @@
 """Result records, summaries and the results files.
 
 `results/<function>-<version>.json` holds one `FunctionResults`: a record per
-case and repeat with every check, and pass rates per layer. Only replay
-results of a recorded run go to `results/`; live results go to the
-git-ignored `results-live/`, so every number in `results/` can be reproduced
-from the cassettes.
+case and repeat with every check, and pass rates per layer. With the judge,
+each graded run also keeps the judge's verdict, and the summary reports the
+judge's reliability. `results/<function>-<v1>-vs-<v2>.json` holds one
+`PairwiseResults`: the judge's choice between two prompt versions, case by
+case. Only replay results of a recorded run go to `results/`; live results go
+to the git-ignored `results-live/`, so every number in `results/` can be
+reproduced from the cassettes.
 """
 
 from __future__ import annotations
@@ -19,10 +22,18 @@ from pydantic import BaseModel, ConfigDict
 
 from app.triage import Category, Priority
 from llmeval.checks import reference as ref
+from llmeval.checks.judge import (
+    CRITERIA,
+    OUTCOMES,
+    SCORES,
+    Judgement,
+    OrderJudgement,
+    PairwiseResult,
+)
 from llmeval.checks.retrieval import retrieval_recall_value
 from llmeval.client import CallResult
 
-LAYERS = ("retrieval", "deterministic", "reference")
+LAYERS = ("retrieval", "deterministic", "reference", "judge")
 RESULTS_DIR = Path("results")
 LIVE_RESULTS_DIR = Path("results-live")
 SCHEMA_VERSION = 1
@@ -72,8 +83,41 @@ class CallRecord(_Record):
         )
 
 
+class JudgeRecord(_Record):
+    """The judge's grade of one answer.
+
+    A valid verdict keeps the scores, the judge's own `pass`, the rubric's
+    rule applied to the scores (`rule_pass`) and the reasons. An invalid one
+    keeps the error, what was wrong and the reply exactly as written.
+    """
+
+    scores: dict[str, int] | None
+    judge_pass: bool | None
+    rule_pass: bool | None
+    reasons: str | None
+    error: str | None
+    detail: str | None
+    raw: str | None
+    call: CallRecord
+
+    @classmethod
+    def of(cls, judgement: Judgement) -> JudgeRecord:
+        verdict = judgement.verdict
+        return cls(
+            scores=verdict.scores if verdict else None,
+            judge_pass=verdict.passed if verdict else None,
+            rule_pass=judgement.rule_pass,
+            reasons=verdict.reasons if verdict else None,
+            error=judgement.error,
+            detail=None if verdict else judgement.detail,
+            raw=None if verdict else judgement.raw,
+            call=CallRecord.from_call(judgement.call),
+        )
+
+
 class RunRecord(_Record):
-    """One repeat of one case: the output, the call and every check."""
+    """One repeat of one case: the output, the call, every check, and the
+    judge's grade when the case is graded."""
 
     repeat: int
     output: str
@@ -82,6 +126,7 @@ class RunRecord(_Record):
     cited: list[str] | None = None
     call: CallRecord
     checks: list[CheckRecord]
+    judge: JudgeRecord | None = None
 
     @property
     def passed(self) -> bool:
@@ -112,6 +157,46 @@ class Rate(_Record):
         )
 
 
+class Share(_Record):
+    """How many of `total` have a property (not a pass rate)."""
+
+    count: int
+    total: int
+    rate: float | None
+
+    @classmethod
+    def of(cls, flags: Iterable[bool]) -> Share:
+        flags = list(flags)
+        count = sum(flags)
+        return cls(
+            count=count, total=len(flags), rate=round(count / len(flags), 4) if flags else None
+        )
+
+
+class JudgeSummary(_Record):
+    """The judge layer of one function and version.
+
+    - `judged`: runs the judge graded;
+    - `valid`: valid verdicts among them, the judge's reliability; the rest
+      are counted in `invalid_by_kind` (empty, invalid_json, invalid_schema);
+    - `rule_pass`: the rubric's pass rule, over valid verdicts only;
+    - `pass_disagreements`: valid verdicts whose own `pass` differs from the
+      rule on their scores;
+    - `mean_scores` and `score_counts`: per criterion, over valid verdicts.
+
+    `layers["judge"]` in the summary counts an invalid verdict as a failed
+    run, because the answer could not be graded.
+    """
+
+    judged: int
+    valid: Share
+    invalid_by_kind: dict[str, int]
+    rule_pass: Rate
+    pass_disagreements: int
+    mean_scores: dict[str, float | None]
+    score_counts: dict[str, dict[str, int]]
+
+
 class Summary(_Record):
     """Pass rates over all runs (every repeat of every case counts once).
 
@@ -123,6 +208,7 @@ class Summary(_Record):
       documents, over cases (the search does not depend on the model).
     - Triage: `accuracy` per label and `confusion` matrices (expected label by
       predicted label, with `invalid` for no usable value).
+    - `judge`: the judge layer's reliability and scores, when runs were graded.
     """
 
     cases: int
@@ -134,6 +220,7 @@ class Summary(_Record):
     retrieval_recall: float | None = None
     accuracy: dict[str, float | None] | None = None
     confusion: dict[str, dict[str, dict[str, int]]] | None = None
+    judge: JudgeSummary | None = None
 
 
 class FunctionResults(_Record):
@@ -148,8 +235,105 @@ class FunctionResults(_Record):
     dataset: str
     dataset_sha256: str
     repeats: int
+    judge_model: str | None = None
+    rubric_sha256: str | None = None
     summary: Summary
     cases: list[CaseRecord]
+
+
+class PairwiseOrderRecord(_Record):
+    """One of the two pairwise questions: which version was shown as answer A,
+    which letter the judge preferred, and which version that is."""
+
+    shown_as_a: str
+    preferred: str | None
+    winner: str | None
+    reasons: str | None
+    error: str | None
+    detail: str | None
+    raw: str | None
+    call: CallRecord
+
+    @classmethod
+    def of(cls, order: OrderJudgement, versions: tuple[str, str]) -> PairwiseOrderRecord:
+        names = {"v1": versions[0], "v2": versions[1], "tie": "tie"}
+        verdict = order.verdict
+        return cls(
+            shown_as_a=names[order.first],
+            preferred=order.preferred,
+            winner=names[order.winner] if order.winner else None,
+            reasons=verdict.reasons if verdict else None,
+            error=order.error,
+            detail=None if verdict else order.detail,
+            raw=None if verdict else order.raw,
+            call=CallRecord.from_call(order.call),
+        )
+
+
+class PairwiseCaseRecord(_Record):
+    """One case compared: both answers (repeat 0), the outcome and both orders.
+
+    `outcome` is a version id when both orders preferred it, `tie`,
+    `inconsistent` when the orders disagree, or `invalid` when a verdict was
+    invalid. An inconsistent pair is never resolved by picking one order.
+    """
+
+    id: str
+    category: str
+    input: str
+    answers: dict[str, str]
+    outcome: str
+    orders: list[PairwiseOrderRecord]
+
+    @classmethod
+    def of(
+        cls,
+        case_id: str,
+        category: str,
+        question: str,
+        answers: tuple[str, str],
+        result: PairwiseResult,
+        versions: tuple[str, str],
+    ) -> PairwiseCaseRecord:
+        names = {"v1": versions[0], "v2": versions[1]}
+        return cls(
+            id=case_id,
+            category=category,
+            input=question,
+            answers=dict(zip(versions, answers, strict=True)),
+            outcome=names.get(result.outcome, result.outcome),
+            orders=[PairwiseOrderRecord.of(order, versions) for order in result.orders],
+        )
+
+
+class PairwiseSummary(_Record):
+    """The comparison of two versions over every compared case.
+
+    - `outcomes`: pairs per outcome (first version, second version, tie,
+      inconsistent, invalid);
+    - `valid`: pairs whose two verdicts are both valid (the judge's reliability);
+    - `inconsistent`: inconsistent pairs among the valid ones.
+    """
+
+    pairs: int
+    outcomes: dict[str, int]
+    valid: Share
+    inconsistent: Share
+
+
+class PairwiseResults(_Record):
+    """The content of `results/<function>-<v1>-vs-<v2>.json`."""
+
+    schema_version: int = SCHEMA_VERSION
+    function: str
+    versions: tuple[str, str]
+    mode: str
+    judge_model: str
+    rubric_sha256: str
+    dataset: str
+    dataset_sha256: str
+    summary: PairwiseSummary
+    cases: list[PairwiseCaseRecord]
 
 
 def summarise(function: str, cases: Sequence[CaseRecord]) -> Summary:
@@ -206,21 +390,77 @@ def summarise(function: str, cases: Sequence[CaseRecord]) -> Summary:
             )
             for label, labels in (("category", CATEGORY_LABELS), ("priority", PRIORITY_LABELS))
         }
+    graded = [run.judge for _, run in runs if run.judge is not None]
+    if graded:
+        summary["judge"] = summarise_judge(graded)
     return Summary(**summary)
+
+
+def summarise_judge(graded: Sequence[JudgeRecord]) -> JudgeSummary:
+    valid = [record for record in graded if record.scores is not None]
+    invalid: dict[str, int] = {}
+    for record in graded:
+        if record.error is not None:
+            invalid[record.error] = invalid.get(record.error, 0) + 1
+    mean_scores = {
+        criterion: round(sum(r.scores[criterion] for r in valid) / len(valid), 4) if valid else None
+        for criterion in CRITERIA
+    }
+    score_counts = {
+        criterion: {
+            str(score): sum(r.scores[criterion] == score for r in valid) for score in SCORES
+        }
+        for criterion in CRITERIA
+    }
+    return JudgeSummary(
+        judged=len(graded),
+        valid=Share.of(record.scores is not None for record in graded),
+        invalid_by_kind=dict(sorted(invalid.items())),
+        rule_pass=Rate.of(bool(r.rule_pass) for r in valid),
+        pass_disagreements=sum(r.judge_pass != r.rule_pass for r in valid),
+        mean_scores=mean_scores,
+        score_counts=score_counts,
+    )
+
+
+def summarise_pairwise(
+    cases: Sequence[PairwiseCaseRecord], versions: tuple[str, str]
+) -> PairwiseSummary:
+    names = {"v1": versions[0], "v2": versions[1]}
+    outcomes = {names.get(outcome, outcome): 0 for outcome in OUTCOMES}
+    for case in cases:
+        outcomes[case.outcome] += 1
+    valid = [case for case in cases if case.outcome != "invalid"]
+    return PairwiseSummary(
+        pairs=len(cases),
+        outcomes=outcomes,
+        valid=Share.of(case.outcome != "invalid" for case in cases),
+        inconsistent=Share.of(case.outcome == "inconsistent" for case in valid),
+    )
 
 
 def results_path(results_dir: Path | str, function: str, version: str) -> Path:
     return Path(results_dir) / f"{function}-{version}.json"
 
 
-def _write(results: FunctionResults, directory: Path | str) -> Path:
-    path = results_path(directory, results.function, results.version)
+def pairwise_path(results_dir: Path | str, function: str, versions: tuple[str, str]) -> Path:
+    return Path(results_dir) / f"{function}-{versions[0]}-vs-{versions[1]}.json"
+
+
+AnyResults = FunctionResults | PairwiseResults
+
+
+def _write(results: AnyResults, directory: Path | str) -> Path:
+    if isinstance(results, PairwiseResults):
+        path = pairwise_path(directory, results.function, results.versions)
+    else:
+        path = results_path(directory, results.function, results.version)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(results.model_dump_json(indent=2) + "\n", encoding="utf-8")
     return path
 
 
-def write_results(results: FunctionResults, results_dir: Path | str) -> Path:
+def write_results(results: AnyResults, results_dir: Path | str) -> Path:
     """Write replay results of a recorded run (the only kind `results/` takes)."""
     if results.mode != "replay":
         raise ValueError(
@@ -230,7 +470,7 @@ def write_results(results: FunctionResults, results_dir: Path | str) -> Path:
     return _write(results, results_dir)
 
 
-def write_live_results(results: FunctionResults, live_dir: Path | str) -> Path:
+def write_live_results(results: AnyResults, live_dir: Path | str) -> Path:
     """Write results of a live run to the git-ignored live directory."""
     if results.mode != "live":
         raise ValueError(f"only live results go to {live_dir}; got {results.mode} results")

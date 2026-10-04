@@ -15,6 +15,7 @@ import pytest
 
 from llmeval.baseline import BASELINE_PATH, Verdict
 from llmeval.cassettes import CassetteStore, RunManifest
+from llmeval.checks.judge import RUBRIC_PATH, Judge, load_rubric
 from llmeval.client import ModelClient
 from llmeval.config import Mode, load_config
 from llmeval.results import CaseRecord
@@ -39,17 +40,18 @@ class Replay:
         )
         self.manifest = manifest
         self.client = ModelClient(Mode.REPLAY, CassetteStore(CASSETTES), self.config)
+        self.judge = Judge(self.client, self.config.models.judge, load_rubric(ROOT / RUBRIC_PATH))
 
     def case(self, function: str, case, version: str) -> CaseRecord:
-        run = {"rag": run_rag, "triage": run_triage}[function]
-        return run(
-            self.client,
-            self.config.models.system,
-            [case],
-            version,
-            repeats=self.manifest.repeats,
-            stability_cases=self.manifest.stability_cases,
-        )[0]
+        """Replay one case; RAG answers are graded by the recorded judge too."""
+        options = {
+            "repeats": self.manifest.repeats,
+            "stability_cases": self.manifest.stability_cases,
+        }
+        if function == "rag":
+            options["judge"] = self.judge
+            return run_rag(self.client, self.config.models.system, [case], version, **options)[0]
+        return run_triage(self.client, self.config.models.system, [case], version, **options)[0]
 
 
 def apply_verdict(request: pytest.FixtureRequest, record: CaseRecord, verdict: Verdict) -> None:
