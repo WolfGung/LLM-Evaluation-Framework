@@ -13,7 +13,9 @@ answer however the model formats it:
 - ranges ("3-5", "3 – 5", "between 3 and 5" -> "3 to 5"; "9 AM – 2 PM" ->
   "9 am to 2 pm"; "Monday–Saturday" -> "monday to saturday";
   "40%-60%", "between 40% and 60%" -> "40 to 60 percent");
-- phone numbers ("+1-555-0199", "1 (555) 0199" -> "15550199");
+- phone numbers ("+1-555-0199", "1 (555) 0199" -> "15550199"; a plain
+  pair such as "100 2000" stays as it is) and ISO dates ("2026-10-04" ->
+  "2026 10 04", never a range);
 - times ("2 p.m.", "2PM" -> "2 pm"; "8:00" keeps its colon);
 - units and ordinals written against the number ("18V" -> "18 v",
   "2.0Ah" -> "2.0 ah", "3rd" -> "3");
@@ -73,12 +75,17 @@ _CURRENCY_AFTER = re.compile(r"(\d+(?:\.\d+)?)\s*(?:usd|us dollars|dollars|dolla
 _DOLLAR_SPACE = re.compile(r"\$\s+(?=\d)")
 _ZERO_CENTS = re.compile(r"(\$\d+)\.00\b")
 _PER_UNIT = re.compile(r"(\d)\s*(?:/|\ba\b|\ban\b|\bper\b)\s*(day|week|month|hour|year)\b")
-# A phone number: optional country code, a 3-digit area or exchange group,
-# then 3-4 digits and an optional 4-digit group. Shaped, so it never runs on
-# into a neighbouring number ("TS-104233 (2 items)").
+# A phone number: optional "+" and country code, a 3-digit group (optionally in
+# brackets), 3-4 digits, and an optional 4-digit group. Shaped, so it never
+# runs on into a neighbouring number ("TS-104233 (2 items)"). It is collapsed
+# only with a sign of a phone (see `_collapse_phone`), so a plain pair such as
+# "100 2000" stays two numbers.
 _PHONE = re.compile(
-    r"(?<![\w.$:])\+?(?:\d{1,3}[ .-]?)?\(?\d{3}\)?[ .-]?\d{3,4}(?:[ .-]\d{4})?(?!\w|\.\d|:)"
+    r"(?<![\w.$:])(?P<plus>\+)?(?:(?P<cc>\d{1,3})[ .-]?)?(?P<open>\()?\d{3}\)?"
+    r"(?P<sep>[ .-]?)\d{3,4}(?:[ .-](?P<ext>\d{4}))?(?!\w|\.\d|:)"
 )
+# An ISO date keeps its parts apart instead of turning into a range.
+_ISO_DATE = re.compile(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b")
 _QUALIFIED = r"\$?\d+(?:[.:]\d+)?(?: (?:am|pm|percent))?"
 _BETWEEN = re.compile(rf"\bbetween ({_QUALIFIED}) and (?=\$?\d)")
 _RANGE = re.compile(rf"({_QUALIFIED}) ?- ?(?=\$?\d)")
@@ -126,7 +133,14 @@ def _words_to_digits(text: str, skip: frozenset[str]) -> str:
 
 def _collapse_phone(match: re.Match[str]) -> str:
     digits = re.sub(r"\D", "", match.group(0))
-    return digits if len(digits) >= 7 else match.group(0)
+    phone_like = (
+        match.group("plus")
+        or match.group("open")
+        or match.group("cc")
+        or match.group("ext")
+        or match.group("sep") in ("-", ".")
+    )
+    return digits if phone_like and len(digits) >= 7 else match.group(0)
 
 
 def normalise(text: str, *, keep_words: frozenset[str] = frozenset()) -> str:
@@ -149,6 +163,7 @@ def normalise(text: str, *, keep_words: frozenset[str] = frozenset()) -> str:
     text = _ZERO_CENTS.sub(r"\1", text)
     text = _PER_UNIT.sub(r"\1 per \2", text)
     text = _SPACES.sub(" ", text.replace("%", " percent "))
+    text = _ISO_DATE.sub(r"\1 \2 \3", text)
     text = _PHONE.sub(_collapse_phone, text)
     text = _BETWEEN.sub(r"\1 to ", text)
     text = _RANGE.sub(r"\1 to ", text)

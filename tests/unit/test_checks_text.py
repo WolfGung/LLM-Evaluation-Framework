@@ -123,3 +123,23 @@ def test_codes_with_digits_are_one_specific():
 def test_units_and_ordinals_are_not_codes():
     assert specifics("an 18V drill with 2.0Ah packs, on the 3rd") == {"18", "2", "3"}
     assert specifics("18 V drill with 2.0 Ah packs, 3 days") == {"18", "2", "3"}
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("100 2000", "100 2000"),
+        ("ships 100 2000 units", "ships 100 2000 units"),
+        ("2026-10-04", "2026 10 04"),
+        ("on 2026-10-04 at 9", "on 2026 10 04 at 9"),
+    ],
+)
+def test_plain_number_pairs_and_dates_stay_apart(text, expected):
+    assert normalise(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text", ["+1 555 0199", "+1-555-0199", "1 (555) 0199", "1 555 0199", "555-0199", "555.0199"]
+)
+def test_phone_shaped_numbers_still_collapse(text):
+    assert normalise(text).endswith("5550199")
