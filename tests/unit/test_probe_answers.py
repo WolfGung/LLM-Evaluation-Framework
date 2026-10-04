@@ -63,6 +63,12 @@ CORRECT = [
         "You can change it until the order is Packed; after that it can't be changed "
         "[kb-shipping]. Check the status under Orders in your account [kb-order-status].",
     ),
+    # Review round 2 (N3).
+    (
+        "rag-025",
+        "You can change your delivery address until the order status is Packed [kb-shipping]. "
+        "To check, open Orders in your account and look at the status.",
+    ),
     ("rag-006", "Standard shipping takes between 3 and 5 business days [kb-delivery-times]."),
     ("rag-006", "It takes 3-5 working days from dispatch [kb-delivery-times]."),
     (
@@ -97,6 +103,28 @@ CORRECT = [
 def test_correct_answers_state_the_required_facts(case_id, text):
     result = required_facts(text, CASES[case_id].required_facts)
     assert result.passed, result.detail
+
+
+# One required fact at a time: (case, index of the fact, answer, must it match?).
+# Partial answers test a single fact; review round 2 (N3 and minors).
+FACT_ROWS = [
+    ("rag-028", 0, "You can recycle old tool batteries for free at the store", True),
+    ("rag-028", 0, "Battery recycling is free", True),
+    ("rag-039", 2, "We can't ship freight to a PO box", True),
+    ("rag-037", 1, "Yes, as long as it is unused and in the original box.", True),
+    ("rag-019", 0, "No, an 18V battery only works with 18V tools", True),
+    ("rag-007", 0, "Cash is accepted; card payment is not available on delivery", False),
+]
+
+
+@pytest.mark.parametrize(
+    ("case_id", "index", "text", "matches"),
+    FACT_ROWS,
+    ids=[f"{c}-fact{i}-{n}" for n, (c, i, _, _) in enumerate(FACT_ROWS)],
+)
+def test_single_facts_match_only_what_they_should(case_id, index, text, matches):
+    fact = CASES[case_id].required_facts[index]
+    assert required_facts(text, [fact]).passed is matches
 
 
 def failed_checks(case_id: str, text: str) -> list[str]:
@@ -135,6 +163,12 @@ INVENTED = [
     # invented price is caught as a specific the documents do not contain.
     ("rag-032", "Tile cutters are $20/day at the store.", "dont_know"),
     ("rag-002", "Power tools have a lifetime warranty [kb-warranty].", "no_forbidden"),
+    (
+        "rag-034",
+        "Refurbished tools come with a 1-year warranty [kb-warranty]. I'm not sure about "
+        "accessories.",
+        "no_forbidden",
+    ),
     # Review round 2 (N2): "if" that opens another clause does not hedge.
     ("rag-029", "If so, we price match.", "no_forbidden"),
     ("rag-033", "If needed, we sharpen saw blades for free.", "no_forbidden"),
