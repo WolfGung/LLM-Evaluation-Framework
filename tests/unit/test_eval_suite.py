@@ -253,3 +253,24 @@ def test_a_manifest_recorded_with_other_models_is_an_error(ws):
     assert code == 1, out
     assert "recorded with synthetic/old-model:free" in out
     assert "re-record or restore the config" in out
+
+
+def test_a_broken_manifest_fails_with_one_clear_line(ws):
+    (ws / "cassettes" / MANIFEST_FILE).write_text("{not json", encoding="utf-8")
+    code, out = run_eval_suite(ws)
+    assert code != 0, out
+    assert "INTERNALERROR" not in out
+    assert "manifest error: manifest.json: not a valid run manifest" in out
+
+
+def test_a_function_missing_from_the_recorded_run_skips_with_a_reason(ws):
+    write_manifest(ws)
+    manifest_path = ws / "cassettes" / MANIFEST_FILE
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["prompt_versions"] = {"rag": ["v1"]}
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    code, out = run_eval_suite(ws)
+    assert code == 0, out
+    assert "40 skipped" in out
+    assert "triage is not in the recorded run" in out
+    assert "empty parameter set" not in out

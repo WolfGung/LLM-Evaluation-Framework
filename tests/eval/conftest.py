@@ -3,7 +3,10 @@
 - No `cassettes/manifest.json`: every test skips with "pending first recorded run".
 - A manifest: each case is replayed; a call missing from the cassettes fails
   its test with the replay-miss message. The prompt versions come from the
-  manifest, not from the prompt files.
+  manifest, not from the prompt files; a function the manifest does not list
+  skips with "<function> is not in the recorded run".
+- A broken manifest fails collection, and the summary ends with one
+  "manifest error: ..." line.
 - No baseline (`results/baseline.json`), or no entry for the case: skipped
   with "pending baseline" after the replay.
 - A baseline entry: compared with `llmeval.baseline.compare` (pass, xfail,
@@ -17,7 +20,7 @@ from __future__ import annotations
 import pytest
 
 from llmeval.baseline import load_baseline
-from llmeval.cassettes import PENDING_RECORDED_RUN, load_manifest
+from llmeval.cassettes import PENDING_RECORDED_RUN, CassetteError, load_manifest
 from llmeval.datasets import file_sha256
 from tests.eval.support import BASELINE, CASSETTES, DATASETS, UNRECORDED, Replay
 
@@ -27,9 +30,16 @@ def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
         return
     cases = metafunc.module.CASES
     metafunc.parametrize("case", cases, ids=[case.id for case in cases])
+    function = metafunc.module.FUNCTION
     manifest = load_manifest(CASSETTES)
-    versions = manifest.prompt_versions.get(metafunc.module.FUNCTION, ()) if manifest else ()
-    metafunc.parametrize("version", versions if manifest else (UNRECORDED,))
+    if manifest is None:
+        versions = [UNRECORDED]
+    else:
+        versions = list(manifest.prompt_versions.get(function, ()))
+        if not versions:
+            skip = pytest.mark.skip(reason=f"{function} is not in the recorded run")
+            versions = [pytest.param(UNRECORDED, marks=skip)]
+    metafunc.parametrize("version", versions)
 
 
 @pytest.fixture(scope="session")
@@ -46,7 +56,11 @@ def baseline():
 
 
 def pytest_terminal_summary(terminalreporter) -> None:
-    manifest = load_manifest(CASSETTES)
+    try:
+        manifest = load_manifest(CASSETTES)
+    except CassetteError as exc:
+        terminalreporter.write_line(f"manifest error: {str(exc).splitlines()[0]}")
+        return
     if manifest is None:
         return
     current = {path.name: file_sha256(path) for path in DATASETS.glob("*.jsonl")}
