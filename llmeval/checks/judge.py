@@ -232,6 +232,28 @@ def verdict_format() -> dict[str, Any]:
     return _response_format(VERDICT_SCHEMA_NAME, JudgeVerdict)
 
 
+Preference = Literal["A", "B", "tie"]
+
+
+class PairwiseVerdict(_Verdict):
+    """The judge's choice between two answers shown as A and B."""
+
+    preferred: Preference
+    reasons: str
+
+
+PAIRWISE_SCHEMA_NAME = "pairwise_verdict"
+
+
+def pairwise_schema() -> dict[str, Any]:
+    return PairwiseVerdict.model_json_schema()
+
+
+def pairwise_format() -> dict[str, Any]:
+    """`response_format` for a pairwise choice: the strict JSON schema of `PairwiseVerdict`."""
+    return _response_format(PAIRWISE_SCHEMA_NAME, PairwiseVerdict)
+
+
 VerdictErrorKind = Literal["empty", "invalid_json", "invalid_schema"]
 
 
@@ -297,6 +319,27 @@ def grade_tag(case: str, version: str) -> CallTag:
     return CallTag(function=JUDGE_FUNCTION, case=f"{case}:judge", version=version)
 
 
+PAIRWISE_FUNCTION = "pairwise"
+
+
+def compare_messages(
+    rubric: Rubric, question: str, docs: Docs, answer_a: str, answer_b: str
+) -> list[dict[str, str]]:
+    """The judge's messages for one pairwise question: answer A, then answer B."""
+    user = (
+        'Compare answer A and answer B with the rubric (see "Comparing two answers").\n\n'
+        f"{_material(question, docs)}\n\n"
+        f'<answer id="A">\n{answer_a}\n</answer>\n\n<answer id="B">\n{answer_b}\n</answer>'
+    )
+    return [{"role": "system", "content": rubric.text}, {"role": "user", "content": user}]
+
+
+def compare_tag(case: str, versions: tuple[str, str], first: str) -> CallTag:
+    """The cassette tag of one pairwise question: file `pairwise-<v1>-<v2>.jsonl`,
+    and a case label naming the version shown as A (`rag-001:A=v2`)."""
+    return CallTag(function=PAIRWISE_FUNCTION, case=f"{case}:A={first}", version="-".join(versions))
+
+
 # --- the judge ----------------------------------------------------------------
 
 
@@ -332,12 +375,68 @@ class Judgement:
         return None if self.verdict is None else self.verdict.passed == self.rule_pass
 
 
-def _reply(call: CallResult) -> tuple[str, InvalidVerdict | None]:
+Side = Literal["v1", "v2"]
+Winner = Literal["v1", "v2", "tie"]
+Outcome = Literal["v1", "v2", "tie", "inconsistent", "invalid"]
+OUTCOMES: tuple[Outcome, ...] = ("v1", "v2", "tie", "inconsistent", "invalid")
+
+
+@dataclass(frozen=True)
+class OrderJudgement:
+    """One of the two pairwise questions. `first` is the answer shown as A."""
+
+    first: Side
+    verdict: PairwiseVerdict | None
+    error: VerdictErrorKind | None
+    detail: str
+    raw: str
+    call: CallResult
+
+    @property
+    def valid(self) -> bool:
+        return self.verdict is not None
+
+    @property
+    def preferred(self) -> Preference | None:
+        return None if self.verdict is None else self.verdict.preferred
+
+    @property
+    def winner(self) -> Winner | None:
+        """The preferred answer by name, whatever position it was shown in."""
+        if self.verdict is None:
+            return None
+        if self.verdict.preferred == "tie":
+            return "tie"
+        second: Side = "v2" if self.first == "v1" else "v1"
+        return self.first if self.verdict.preferred == "A" else second
+
+
+def combine(first: Winner | None, second: Winner | None) -> Outcome:
+    """The outcome of a pair from the winners of its two orders.
+
+    Both orders agree: that winner (or tie). They disagree: `inconsistent`,
+    never resolved by picking one. Either verdict invalid: `invalid`.
+    """
+    if first is None or second is None:
+        return "invalid"
+    return first if first == second else "inconsistent"
+
+
+@dataclass(frozen=True)
+class PairwiseResult:
+    """Both orders of one comparison: (A=v1, B=v2), then (A=v2, B=v1)."""
+
+    outcome: Outcome
+    orders: tuple[OrderJudgement, OrderJudgement]
+
+
+def _parse[V: _Verdict](call: CallResult, model: type[V]) -> V | InvalidVerdict:
     if call.empty_reason is not None:
-        return call.content, InvalidVerdict(
-            "empty", f"the judge returned no text ({call.empty_reason})"
-        )
-    return call.content, None
+        return InvalidVerdict("empty", f"the judge returned no text ({call.empty_reason})")
+    try:
+        return parse_verdict(call.content, model)
+    except InvalidVerdict as exc:
+        return exc
 
 
 def _short(text: str, limit: int = 300) -> str:
@@ -368,8 +467,12 @@ class Judge:
         version: str = ADHOC,
         repeat: int = 0,
     ) -> Judgement:
-        """Grade one answer. `version` is the prompt version that wrote it and
-        `repeat` the system run it came from; both only name the recording."""
+        """Grade one answer.
+
+        `case` and `version` (the prompt version that wrote the answer) name
+        the recording. `repeat` is the system run the answer came from; it is
+        part of the request key, so every run's answer has its own verdict.
+        """
         messages = grade_messages(self.rubric, question, docs, answer)
         call = self.client.complete(
             messages,
@@ -378,16 +481,51 @@ class Judge:
             repeat=repeat,
             tag=grade_tag(case, version),
         )
-        raw, problem = _reply(call)
-        if problem is None:
-            try:
-                verdict = parse_verdict(raw)
-            except InvalidVerdict as exc:
-                problem = exc
+        parsed = _parse(call, JudgeVerdict)
+        if isinstance(parsed, InvalidVerdict):
+            return Judgement(None, parsed.kind, parsed.detail, call.content, call)
+        short_of = self.rubric.short_of(parsed.scores)
+        return Judgement(parsed, None, "", call.content, call, short_of)
+
+    def compare(
+        self,
+        question: str,
+        docs: Docs,
+        answer_v1: str,
+        answer_v2: str,
+        *,
+        case: str = ADHOC,
+        versions: tuple[str, str] = ("v1", "v2"),
+    ) -> PairwiseResult:
+        """Which answer is better, asked twice with the order swapped.
+
+        The first question shows A=v1, B=v2; the second A=v2, B=v1. The outcome
+        is `v1`, `v2` or `tie` when both orders agree, `inconsistent` when they
+        do not, and `invalid` when either verdict is invalid. `versions` names
+        the prompt versions behind `answer_v1` and `answer_v2`, for the
+        recording only.
+        """
+        answers: dict[Side, str] = {"v1": answer_v1, "v2": answer_v2}
+        orders: list[OrderJudgement] = []
+        for first, second in (("v1", "v2"), ("v2", "v1")):
+            messages = compare_messages(
+                self.rubric, question, docs, answers[first], answers[second]
+            )
+            label = versions[0] if first == "v1" else versions[1]
+            call = self.client.complete(
+                messages,
+                role=self.role,
+                response_format=pairwise_format(),
+                tag=compare_tag(case, versions, label),
+            )
+            parsed = _parse(call, PairwiseVerdict)
+            if isinstance(parsed, InvalidVerdict):
+                orders.append(
+                    OrderJudgement(first, None, parsed.kind, parsed.detail, call.content, call)
+                )
             else:
-                short_of = self.rubric.short_of(verdict.scores)
-                return Judgement(verdict, None, "", raw, call, short_of)
-        return Judgement(None, problem.kind, problem.detail, raw, call)
+                orders.append(OrderJudgement(first, parsed, None, "", call.content, call))
+        return PairwiseResult(combine(orders[0].winner, orders[1].winner), (orders[0], orders[1]))
 
     def checks(self, judgement: Judgement) -> list[CheckResult]:
         """The judge layer's checks for one answer.
