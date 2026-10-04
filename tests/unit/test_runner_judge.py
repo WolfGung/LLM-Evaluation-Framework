@@ -135,6 +135,7 @@ def write_manifest(cassettes, repeats=1):
         "recorded_to": "2026-01-01T11:00:00Z",
         "planned_calls": 1,
         "recorded_calls": 1,
+        "judge_repeats": "first",
     }
     (cassettes / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
 
@@ -149,6 +150,7 @@ def run_all(
     repeats=1,
     stability_cases=None,
     rag_versions=("v1", "v2"),
+    judge_repeats="first",
 ):
     datasets = tmp_path / "datasets"
     datasets.mkdir(exist_ok=True)
@@ -169,11 +171,19 @@ def run_all(
         versions={"rag": rag_versions, "triage": ("v1",)},
         repeats=repeats,
         stability_cases=stability_cases,
+        judge_repeats=judge_repeats,
         index=INDEX,
     )
 
 
-def plan(answers=None, repeats=1, stability_cases=None, system=UNSTRUCTURED, judge=STRUCTURED):
+def plan(
+    answers=None,
+    repeats=1,
+    stability_cases=None,
+    system=UNSTRUCTURED,
+    judge=STRUCTURED,
+    judge_repeats="first",
+):
     return plan_requests(
         system,
         judge=judge,
@@ -184,6 +194,7 @@ def plan(answers=None, repeats=1, stability_cases=None, system=UNSTRUCTURED, jud
         versions={"rag": ("v1", "v2"), "triage": ("v1",)},
         repeats=repeats,
         stability_cases=stability_cases,
+        judge_repeats=judge_repeats,
         index=INDEX,
     )
 
@@ -201,13 +212,25 @@ def by_function(planned):
 def test_the_plan_counts_judge_and_pairwise_calls():
     planned = plan(repeats=2)
     # rag: 3 cases x 2 versions x 2 repeats; triage: 1 x 1 x 2.
-    # judge: the 2 non-safety cases x 2 versions x 2 repeats.
+    # judge (judge_repeats: first): the 2 non-safety cases x 2 versions, repeat 0.
     # pairwise: the 2 non-safety cases x 2 orders, on repeat 0 only.
-    assert by_function(planned) == {"rag": 12, "triage": 2, "judge": 8, "pairwise": 4}
+    assert by_function(planned) == {"rag": 12, "triage": 2, "judge": 4, "pairwise": 4}
+    assert {p.repeat for p in planned if p.function == "judge"} == {0}
     judge_calls = [p for p in planned if p.function in ("judge", "pairwise")]
     assert {p.role for p in judge_calls} == {"judge"}
     assert {p.role for p in planned if p.function in ("rag", "triage")} == {"system"}
     assert "rag-003" not in {p.case_id for p in judge_calls}
+
+
+def test_the_judge_grades_every_repeat_with_judge_repeats_all():
+    planned = plan(repeats=2, judge_repeats="all")
+    # judge: the 2 non-safety cases x 2 versions x 2 repeats.
+    assert by_function(planned) == {"rag": 12, "triage": 2, "judge": 8, "pairwise": 4}
+
+
+def test_the_plan_refuses_an_unknown_judge_repeats():
+    with pytest.raises(ValueError, match="judge_repeats"):
+        plan(judge_repeats="some")
 
 
 def test_judge_calls_wait_for_the_answers_they_grade():
@@ -229,12 +252,13 @@ def test_judge_calls_wait_for_the_answers_they_grade():
     assert all(p.key for p in planned if p.function in ("rag", "triage"))
 
 
-def test_planned_keys_are_the_keys_the_run_uses(tmp_path):
+@pytest.mark.parametrize("judge_repeats", ["first", "all"])
+def test_planned_keys_are_the_keys_the_run_uses(tmp_path, judge_repeats):
     write_manifest(tmp_path / "cassettes", repeats=2)
     fake = FakeModel(reply=reply)
-    run_all(fake, tmp_path, repeats=2)
+    run_all(fake, tmp_path, repeats=2, judge_repeats=judge_repeats)
     answers = {request_key(c["body"], c["repeat"]): reply(c["messages"]) for c in fake.calls}
-    planned = plan(answers=answers.get, repeats=2)
+    planned = plan(answers=answers.get, repeats=2, judge_repeats=judge_repeats)
     used = [request_key(call["body"], call["repeat"]) for call in fake.calls]
     assert sorted(used) == sorted(p.key for p in planned)
     tags = {p.key: p.tag for p in planned}
@@ -244,7 +268,7 @@ def test_planned_keys_are_the_keys_the_run_uses(tmp_path):
 
 
 def test_the_judge_follows_the_stability_subset():
-    planned = plan(repeats=3, stability_cases={"rag-001"})
+    planned = plan(repeats=3, stability_cases={"rag-001"}, judge_repeats="all")
     judge_repeats = sorted(
         (p.case_id, p.version, p.repeat) for p in planned if p.function == "judge"
     )
@@ -258,6 +282,28 @@ def test_the_judge_follows_the_stability_subset():
         ("rag-002", "v1", 0),
         ("rag-002", "v2", 0),
     ]
+
+
+def test_with_judge_repeats_first_later_repeats_are_not_graded(tmp_path):
+    write_manifest(tmp_path / "cassettes", repeats=2)
+    outcome = run_all(FakeModel(reply=reply), tmp_path, repeats=2)
+    v1 = rag_result(outcome)
+    assert v1.judge_repeats == "first"
+    runs = v1.cases[0].runs
+    assert runs[0].judge is not None and runs[1].judge is None
+    assert any(c.layer == "judge" for c in runs[0].checks)
+    assert all(c.layer != "judge" for c in runs[1].checks)
+    assert v1.summary.judge.judged == 2  # rag-001 and rag-002, repeat 0 only
+    assert v1.summary.layers["judge"].total == 2
+
+
+def test_with_judge_repeats_all_every_repeat_is_graded(tmp_path):
+    write_manifest(tmp_path / "cassettes", repeats=2)
+    outcome = run_all(FakeModel(reply=reply), tmp_path, repeats=2, judge_repeats="all")
+    v1 = rag_result(outcome)
+    assert v1.judge_repeats == "all"
+    assert all(run.judge is not None for run in v1.cases[0].runs)
+    assert v1.summary.judge.judged == 4
 
 
 def test_without_a_judge_the_plan_is_the_system_plan():
@@ -439,7 +485,7 @@ def test_without_a_judge_there_is_no_judge_layer(tmp_path):
     assert outcome.pairwise == ()
     v1 = rag_result(outcome)
     assert "judge" not in v1.summary.layers and v1.summary.judge is None
-    assert v1.judge_model is None and v1.rubric_sha256 is None
+    assert v1.judge_model is None and v1.rubric_sha256 is None and v1.judge_repeats is None
 
 
 # --- pairwise -------------------------------------------------------------------

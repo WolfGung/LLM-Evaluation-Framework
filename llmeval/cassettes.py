@@ -36,6 +36,8 @@ from pydantic import (
     model_validator,
 )
 
+from llmeval.config import JudgeRepeats
+
 # Every top-level field a request body may carry. The key hashes the whole
 # body, and a field outside this list is refused, so a new request parameter
 # has to be added here on purpose instead of being sent but not keyed.
@@ -250,6 +252,8 @@ class RunManifest(_Record):
     - `stability_cases`: the case ids that run `repeats` times for the
       stability layer; every other case runs once. None means every case runs
       `repeats` times. A subset lets a first recording fit a small daily quota.
+    - `judge_repeats`: which runs the judge graded, `first` (repeat 0 only)
+      or `all` (every repeat). Replay grades the same runs.
     - `rubric_sha256`: the judge rubric the judge layer was recorded with
       (`Rubric.sha256`: the sha256 of the body of `rubrics/judge.md`, the part
       the judge reads), next to the judge model in `models`. None for a
@@ -269,6 +273,7 @@ class RunManifest(_Record):
     planned_calls: int = Field(ge=1)
     recorded_calls: int = Field(ge=0)
     stability_cases: Annotated[tuple[str, ...], Field(min_length=1)] | None = None
+    judge_repeats: JudgeRepeats
     rubric_sha256: Sha256 | None = None
 
     @model_validator(mode="after")

@@ -102,6 +102,7 @@ def write_manifest(cassettes, repeats=1):
         "recorded_to": "2026-01-01T11:00:00Z",
         "planned_calls": 20,
         "recorded_calls": 20,
+        "judge_repeats": "first",
     }
     (cassettes / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
 

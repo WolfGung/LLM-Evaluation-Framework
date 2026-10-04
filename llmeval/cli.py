@@ -115,6 +115,7 @@ def eval_command(
             versions={f: v for f, v in manifest.prompt_versions.items() if f in EVAL_FUNCTIONS},
             repeats=manifest.repeats,
             stability_cases=manifest.stability_cases,
+            judge_repeats=manifest.judge_repeats,
         )
     except (
         MissingRecording,

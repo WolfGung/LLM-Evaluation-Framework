@@ -28,6 +28,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from llmeval.cassettes import RunManifest
+from llmeval.config import JudgeRepeats
 from llmeval.results import RESULTS_DIR, CaseRecord, FunctionResults
 
 BASELINE_PATH = RESULTS_DIR / "baseline.json"
@@ -80,6 +81,7 @@ class Provenance(_Record):
     recorded_to: datetime
     models: dict[str, str]
     repeats: int
+    judge_repeats: JudgeRepeats
     prompt_versions: dict[str, tuple[str, ...]]
     stability_cases: tuple[str, ...] | None = None
 
@@ -136,6 +138,7 @@ def build_baseline(results: Iterable[FunctionResults], manifest: RunManifest) ->
         recorded_to=manifest.recorded_to,
         models=dict(manifest.models),
         repeats=manifest.repeats,
+        judge_repeats=manifest.judge_repeats,
         prompt_versions=dict(manifest.prompt_versions),
         stability_cases=manifest.stability_cases,
     )

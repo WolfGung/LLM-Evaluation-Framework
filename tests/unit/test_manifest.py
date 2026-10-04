@@ -33,6 +33,7 @@ def manifest_data(**changes):
         "recorded_to": "2026-01-02T18:30:00Z",
         "planned_calls": 480,
         "recorded_calls": 480,
+        "judge_repeats": "first",
     }
     data.update(changes)
     return data
@@ -97,6 +98,8 @@ def test_a_manifest_with_a_wrong_field_fails_loudly(tmp_path):
         {"recorded_from": "2026-01-03T00:00:00Z"},
         {"recorded_calls": 479},
         {"planned_calls": 0, "recorded_calls": 0},
+        {"judge_repeats": "some"},
+        {"judge_repeats": None},
     ],
     ids=[
         "extra field",
@@ -109,11 +112,21 @@ def test_a_manifest_with_a_wrong_field_fails_loudly(tmp_path):
         "dates reversed",
         "incomplete recording",
         "nothing planned",
+        "unknown judge_repeats",
+        "no judge_repeats",
     ],
 )
 def test_invalid_manifests_are_refused(changes):
     with pytest.raises(ValidationError):
         RunManifest.model_validate(manifest_data(**changes))
+
+
+def test_the_manifest_names_the_repeats_the_judge_graded():
+    assert RunManifest.model_validate(manifest_data()).judge_repeats == "first"
+    data = manifest_data()
+    del data["judge_repeats"]
+    with pytest.raises(ValidationError, match="judge_repeats"):
+        RunManifest.model_validate(data)
 
 
 def test_the_manifest_round_trips_through_json():

@@ -246,7 +246,11 @@ class Summary(_Record):
 
 
 class FunctionResults(_Record):
-    """The content of `results/<function>-<version>.json`."""
+    """The content of `results/<function>-<version>.json`.
+
+    `judge_model`, `judge_repeats` (`first`: repeat 0 graded, `all`: every
+    repeat) and `rubric_sha256` are set when the runs were graded.
+    """
 
     schema_version: int = SCHEMA_VERSION
     function: str
@@ -258,6 +262,7 @@ class FunctionResults(_Record):
     dataset_sha256: str
     repeats: int
     judge_model: str | None = None
+    judge_repeats: str | None = None
     rubric_sha256: str | None = None
     summary: Summary
     cases: list[CaseRecord]

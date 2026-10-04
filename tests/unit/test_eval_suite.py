@@ -90,6 +90,7 @@ def write_manifest(tmp_path: Path, system_model: str = MODELS.system.model) -> N
         "recorded_to": "2026-01-01T10:01:00Z",
         "planned_calls": 1,
         "recorded_calls": 1,
+        "judge_repeats": "first",
     }
     (tmp_path / "cassettes" / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
 
@@ -140,6 +141,7 @@ def write_baseline(tmp_path: Path, case: CaseBaseline) -> None:
             recorded_to="2026-01-01T10:01:00Z",
             models={"system": MODELS.system.model, "judge": MODELS.judge.model},
             repeats=1,
+            judge_repeats="first",
             prompt_versions={"triage": ("v1",)},
         ),
         functions={
@@ -285,8 +287,8 @@ def test_a_function_missing_from_the_recorded_run_skips_with_a_reason(ws):
 RAG_CASE = load_rag(ROOT / "datasets" / "rag.jsonl")[0]
 
 
-def record_rag_with_judge(tmp_path: Path, verdict: dict) -> None:
-    """Record one synthetic answer to RAG_CASE and one synthetic verdict on it."""
+def record_rag_with_judge(tmp_path: Path, verdict: dict, repeats: int = 1) -> None:
+    """Record synthetic answers to RAG_CASE and a synthetic verdict on repeat 0."""
 
     def reply(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
@@ -311,7 +313,7 @@ def record_rag_with_judge(tmp_path: Path, verdict: dict) -> None:
         limiter=NoWait(),
     ) as client:
         judge = Judge(client, MODELS.judge, load_rubric(ROOT / RUBRIC_PATH))
-        run_rag(client, MODELS.system, [RAG_CASE], "v1", repeats=1, judge=judge)
+        run_rag(client, MODELS.system, [RAG_CASE], "v1", repeats=repeats, judge=judge)
 
 
 def test_the_rag_suite_replays_the_judge_and_gates_on_it(ws):
@@ -324,6 +326,7 @@ def test_the_rag_suite_replays_the_judge_and_gates_on_it(ws):
         "recorded_to": "2026-01-01T10:01:00Z",
         "planned_calls": 2,
         "recorded_calls": 2,
+        "judge_repeats": "first",
     }
     (ws / "cassettes" / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
     record_rag_with_judge(
@@ -336,6 +339,7 @@ def test_the_rag_suite_replays_the_judge_and_gates_on_it(ws):
             recorded_to="2026-01-01T10:01:00Z",
             models={"system": MODELS.system.model, "judge": MODELS.judge.model},
             repeats=1,
+            judge_repeats="first",
             prompt_versions={"rag": ("v1",)},
         ),
         functions={
@@ -364,6 +368,7 @@ def test_a_changed_rubric_is_noticed_once(ws):
         "recorded_to": "2026-01-01T10:01:00Z",
         "planned_calls": 2,
         "recorded_calls": 2,
+        "judge_repeats": "first",
         "rubric_sha256": "0" * 64,
     }
     (ws / "cassettes" / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
@@ -371,3 +376,28 @@ def test_a_changed_rubric_is_noticed_once(ws):
     assert code == 1, out  # nothing is recorded: the replay miss still fails loudly
     notice = "notice: rubric changed since the recording: re-record the judge layer"
     assert out.count(notice) == 1
+
+
+def test_the_rag_suite_grades_the_repeats_the_manifest_names(ws):
+    # Repeat 0 was graded, repeat 1 was not; a manifest that says every repeat
+    # was graded makes the suite ask for the missing repeat-1 verdict.
+    manifest = {
+        "models": {"system": MODELS.system.model, "judge": MODELS.judge.model},
+        "prompt_versions": {"rag": ["v1"]},
+        "repeats": 2,
+        "datasets": {"rag.jsonl": "0" * 64},
+        "recorded_from": "2026-01-01T10:00:00Z",
+        "recorded_to": "2026-01-01T10:01:00Z",
+        "planned_calls": 3,
+        "recorded_calls": 3,
+        "judge_repeats": "all",
+    }
+    (ws / "cassettes" / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
+    record_rag_with_judge(
+        ws,
+        {"groundedness": 5, "helpfulness": 5, "tone": 5, "pass": True, "reasons": "Fine."},
+        repeats=2,
+    )
+    code, out = run_eval_suite(ws, "-k", RAG_CASE.id, suite="tests/eval/test_rag_eval.py")
+    assert code == 1, out
+    assert f"no recording for {RAG_CASE.id}:judge/v1/1: run make record" in out

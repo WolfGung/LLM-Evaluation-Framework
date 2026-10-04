@@ -144,6 +144,7 @@ MANIFEST = RunManifest(
     recorded_to=TIME,
     planned_calls=2,
     recorded_calls=2,
+    judge_repeats="all",
 )
 
 
@@ -176,6 +177,7 @@ def test_build_baseline_from_replay_results():
     assert metrics.stable_share is None
     assert baseline.provenance.models == MANIFEST.models
     assert baseline.provenance.recorded_to == TIME
+    assert baseline.provenance.judge_repeats == "all"
 
 
 def test_build_baseline_refuses_live_results():

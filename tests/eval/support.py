@@ -50,6 +50,7 @@ class Replay:
         }
         if function == "rag":
             options["judge"] = self.judge
+            options["judge_repeats"] = self.manifest.judge_repeats
             return run_rag(self.client, self.config.models.system, [case], version, **options)[0]
         return run_triage(self.client, self.config.models.system, [case], version, **options)[0]
 

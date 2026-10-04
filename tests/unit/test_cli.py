@@ -110,11 +110,12 @@ def eval_args(ws, *extra):
     ]
 
 
-def write_manifest(ws, versions, rubric_sha256=None):
+def write_manifest(ws, versions, rubric_sha256=None, repeats=1, judge_repeats="first"):
     manifest = {
         "models": {"system": "synthetic/system:free", "judge": "synthetic/judge:free"},
         "prompt_versions": versions,
-        "repeats": 1,
+        "repeats": repeats,
+        "judge_repeats": judge_repeats,
         "datasets": {"rag.jsonl": "0" * 64, "triage.jsonl": "1" * 64},
         "recorded_from": "2026-01-01T10:00:00Z",
         "recorded_to": "2026-01-01T10:05:00Z",
@@ -277,6 +278,52 @@ def test_record_then_replay_end_to_end(workspace):
     assert replayed["cases"][0]["runs"][0]["judge"]["scores"]["helpfulness"] == 4
     assert recorder.requests == 7  # replay made no request
     assert "rubric changed" not in result.output
+
+
+@pytest.mark.parametrize(
+    ("manifest_says", "missing"),
+    [("first", None), ("all", "rag-001:judge/v1/1")],
+)
+def test_eval_grades_the_repeats_the_manifest_names(workspace, manifest_says, missing):
+    ws = workspace
+    models = load_models_config(ws / "config.yaml")
+    config = Config(models=models, settings=Settings(api_key=SecretStr("synthetic-key-123")))
+    versions = {"rag": ["v1"], "triage": ["v1"]}
+    with ModelClient(
+        Mode.RECORD,
+        CassetteStore(ws / "cassettes"),
+        config,
+        httpx.MockTransport(Recorder()),
+        limiter=NoWait(),
+    ) as client:
+        run(
+            client,
+            models.system,
+            judge=models.judge,
+            rubric=load_rubric(RUBRIC),
+            mode=Mode.RECORD,
+            cassettes_dir=ws / "cassettes",
+            results_dir=ws / "recorded-results",
+            rag_cases=load_rag(ws / "datasets" / "rag.jsonl"),
+            triage_cases=load_triage(ws / "datasets" / "triage.jsonl"),
+            dataset_paths={
+                "rag": ws / "datasets" / "rag.jsonl",
+                "triage": ws / "datasets" / "triage.jsonl",
+            },
+            versions=versions,
+            repeats=2,
+            judge_repeats="first",
+        )
+    write_manifest(ws, versions, repeats=2, judge_repeats=manifest_says)
+    result = runner.invoke(app, eval_args(ws))
+    if missing is None:
+        assert result.exit_code == 0, result.output
+        rag = json.loads((ws / "results" / "rag-v1.json").read_text(encoding="utf-8"))
+        assert rag["judge_repeats"] == "first"
+        assert [run["judge"] is not None for run in rag["cases"][0]["runs"]] == [True, False]
+    else:
+        assert result.exit_code == 1
+        assert f"no recording for {missing}: run make record" in result.output
 
 
 def test_eval_says_when_the_rubric_changed_since_the_recording(workspace):

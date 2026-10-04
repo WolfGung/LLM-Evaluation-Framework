@@ -7,9 +7,10 @@ no key and no network. The results of one function and prompt version are a
 
 Every RAG answer gets the safety layer's leak checks (`llmeval.checks.safety`),
 whatever its case: any question can retrieve a trap document. With a judge
-role, the judge grades every run of every RAG case except the safety cases
-(rules own safety), and compares the first RAG prompt version with each
-later one, case by case, on repeat 0 (`PairwiseResults`). Judge calls go
+role, the judge grades the runs of every RAG case except the safety cases
+(rules own safety): repeat 0 only with `judge_repeats="first"` (the default),
+every repeat with `"all"`. It also compares the first RAG prompt version with
+each later one, case by case, on repeat 0 (`PairwiseResults`). Judge calls go
 through the same client, so they are recorded and replayed too.
 
 Where results are written:
@@ -66,7 +67,7 @@ from llmeval.checks.judge import (
 )
 from llmeval.checks.retrieval import retrieval_recall
 from llmeval.client import build_role_request
-from llmeval.config import Mode, RoleConfig
+from llmeval.config import JudgeRepeats, Mode, RoleConfig
 from llmeval.datasets import RagCase, TriageCase, file_sha256
 from llmeval.results import (
     LIVE_RESULTS_DIR,
@@ -99,6 +100,16 @@ def versions_of(function: str) -> tuple[str, ...]:
 
 def judged(case: RagCase) -> bool:
     return case.category in JUDGED_CATEGORIES
+
+
+JUDGE_REPEATS: tuple[JudgeRepeats, ...] = ("first", "all")
+
+
+def graded_repeat(repeat: int, judge_repeats: JudgeRepeats) -> bool:
+    """Whether the judge grades this repeat: repeat 0 always, the others with `all`."""
+    if judge_repeats not in JUDGE_REPEATS:
+        raise ValueError(f"judge_repeats must be one of {', '.join(JUDGE_REPEATS)}")
+    return judge_repeats == "all" or repeat == 0
 
 
 # --- plan -------------------------------------------------------------------
@@ -175,6 +186,7 @@ def plan_requests(
     judge: RoleConfig | None = None,
     rubric: Rubric | None = None,
     answers: Answers | None = None,
+    judge_repeats: JudgeRepeats = "first",
 ) -> list[PlannedRequest]:
     """Every call of a run: the system calls in run order (function, version,
     case, repeat), then the judge calls, then the pairwise calls.
@@ -184,7 +196,8 @@ def plan_requests(
     `versions` maps a function to the prompt versions to run (default: all).
     `stability_cases` limits the repeats to those case ids (see `repeats_for`).
     With `judge`, the judge and pairwise calls are planned too; `answers`
-    (see `recorded_answers`) supplies the recorded answers their keys need.
+    (see `recorded_answers`) supplies the recorded answers their keys need,
+    and `judge_repeats` says which repeats are graded (see `graded_repeat`).
     """
     plan: list[PlannedRequest] = []
     rag_versions = _versions(versions, "rag") if rag_cases else ()
@@ -205,7 +218,8 @@ def plan_requests(
         rag_plan = [p for p in plan if p.function == "rag"]
         # System calls always have a key: their messages do not wait for anything.
         system = {(p.case_id, p.version, p.repeat): p.key for p in rag_plan if p.key}
-        plan += _planned_gradings(rag_plan, graded, judge, rubric, answers, index)
+        to_grade = [p for p in rag_plan if graded_repeat(p.repeat, judge_repeats)]
+        plan += _planned_gradings(to_grade, graded, judge, rubric, answers, index)
         plan += _planned_comparisons(graded, rag_versions, system, judge, rubric, answers, index)
     return plan
 
@@ -255,7 +269,8 @@ def _planned_gradings(
     answers: Answers | None,
     index: BM25Index | None,
 ) -> list[PlannedRequest]:
-    """One grading per planned answer of a judged case, with the same repeat."""
+    """One grading per planned answer of a judged case, with the same repeat
+    (`rag_plan` holds only the repeats to grade)."""
     questions = {case.id: case.question for case in cases}
     plan = []
     for system in rag_plan:
@@ -407,9 +422,10 @@ def run_rag(
     stability_cases: Collection[str] | None = None,
     index: BM25Index | None = None,
     judge: Judge | None = None,
+    judge_repeats: JudgeRepeats = "first",
 ) -> list[CaseRecord]:
-    """Run the assistant over `cases`. With `judge`, every run of a judged
-    case is graded and gets the judge layer's checks."""
+    """Run the assistant over `cases`. With `judge`, the runs of a judged case
+    that `judge_repeats` names are graded and get the judge layer's checks."""
     records = []
     for case in cases:
         runs = []
@@ -419,7 +435,7 @@ def run_rag(
             )
             checks = rag_checks(case, answer)
             graded = None
-            if judge is not None and judged(case):
+            if judge is not None and judged(case) and graded_repeat(repeat, judge_repeats):
                 judgement = judge.grade(
                     case.question,
                     answer.hits,
@@ -520,6 +536,7 @@ def evaluate(
     stability_cases: Collection[str] | None = None,
     index: BM25Index | None = None,
     judge: Judge | None = None,
+    judge_repeats: JudgeRepeats = "first",
 ) -> FunctionResults:
     """Run one function with one prompt version over its dataset."""
     if function == "rag":
@@ -532,6 +549,7 @@ def evaluate(
             stability_cases=stability_cases,
             index=index,
             judge=judge,
+            judge_repeats=judge_repeats,
         )
     elif function == "triage":
         records = run_triage(
@@ -551,6 +569,7 @@ def evaluate(
         dataset_sha256=file_sha256(dataset_path),
         repeats=repeats,
         judge_model=judge.role.model if graded else None,
+        judge_repeats=judge_repeats if graded else None,
         rubric_sha256=judge.rubric.sha256 if graded else None,
         summary=summarise(function, records),
         cases=records,
@@ -622,6 +641,7 @@ def run(
     index: BM25Index | None = None,
     judge: RoleConfig | None = None,
     rubric: Rubric | None = None,
+    judge_repeats: JudgeRepeats = "first",
 ) -> RunOutcome:
     """Evaluate every function that has cases, for each chosen prompt version.
 
@@ -629,7 +649,8 @@ def run(
     Results are written only after every function and version has run, so a
     failure (such as a missing recording) leaves `results/` untouched.
     With `judge` (the judge role), RAG runs are graded with `rubric` (default:
-    `rubrics/judge.md`) and the RAG prompt versions are compared pairwise.
+    `rubrics/judge.md`) on the repeats `judge_repeats` names, and the RAG
+    prompt versions are compared pairwise.
     """
     mode = Mode(mode)
     if mode is Mode.REPLAY and load_manifest(cassettes_dir) is None:
@@ -654,6 +675,7 @@ def run(
             stability_cases=stability_cases,
             index=index,
             judge=grader,
+            judge_repeats=judge_repeats,
         )
         for function, cases in work
         for version in _versions(versions, function)
