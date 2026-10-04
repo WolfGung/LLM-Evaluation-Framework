@@ -8,6 +8,7 @@ it never shows up in a repr, a log line or a traceback.
 from __future__ import annotations
 
 import os
+import re
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
@@ -17,6 +18,10 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, m
 
 DEFAULT_MODELS_PATH = Path("config/models.yaml")
 DEFAULT_MAX_RUN_COST_USD = 1.00
+
+# Printable ASCII without whitespace. Anything else cannot go into an HTTP
+# header, and httpx would fail with an error whose repr holds the whole key.
+_KEY_CHARS = re.compile(r"^[\x21-\x7e]+$")
 
 
 class ConfigError(ValueError):
@@ -101,6 +106,11 @@ def load_models_config(path: Path | str = DEFAULT_MODELS_PATH) -> ModelsConfig:
 def load_settings(env: Mapping[str, str] | None = None) -> Settings:
     env = os.environ if env is None else env
     key = env.get("OPENROUTER_API_KEY", "").strip()
+    if key and not _KEY_CHARS.match(key):
+        raise ConfigError(
+            "invalid environment settings: OPENROUTER_API_KEY must be printable ASCII "
+            "without spaces (check the keyboard layout and copy the key again)"
+        )
     values: dict[str, object] = {"api_key": key or None}
     if mode := env.get("LLMEVAL_MODE", "").strip():
         values["mode"] = mode

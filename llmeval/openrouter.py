@@ -88,6 +88,10 @@ def send(
         return client.request(method, path, headers=headers, json=json_body)
     except httpx.HTTPError as exc:
         failure = f"{method} {path} failed: {type(exc).__name__}: {scrub(str(exc), api_key)}"
+    except (UnicodeError, ValueError) as exc:
+        # Raised while encoding the request (for example a non-ASCII header).
+        # The message can quote the header value, so it is left out entirely.
+        failure = f"{method} {path} failed: {type(exc).__name__} while encoding the request"
     # Raised outside the except block so the httpx exception is not chained.
     raise OpenRouterError(failure)
 

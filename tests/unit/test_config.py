@@ -111,6 +111,22 @@ def test_empty_key_counts_as_missing():
 
 
 @pytest.mark.parametrize(
+    "bad_key",
+    [
+        "k-123\u0444abc",  # a Cyrillic letter typed on the wrong keyboard layout
+        "k-123\x01abc",  # an embedded control character
+        "k-123 abc",  # an embedded space
+    ],
+)
+def test_key_must_be_printable_ascii(bad_key):
+    with pytest.raises(ConfigError, match="OPENROUTER_API_KEY") as caught:
+        load_settings({"OPENROUTER_API_KEY": bad_key})
+
+    assert bad_key not in str(caught.value)
+    assert "abc" not in str(caught.value)
+
+
+@pytest.mark.parametrize(
     "env",
     [{"LLMEVAL_MODE": "fake"}, {"MAX_RUN_COST_USD": "-1"}, {"MAX_RUN_COST_USD": "lots"}],
 )

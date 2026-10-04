@@ -99,6 +99,20 @@ def test_network_error_does_not_contain_the_key():
     assert caught.value.__context__ is None
 
 
+def test_unencodable_key_does_not_leak():
+    # httpx raises UnicodeEncodeError (not an httpx.HTTPError) while encoding
+    # the header, and its repr carries the whole header value.
+    bad_key = FAKE_KEY + "\u0444"
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={}))
+
+    with http_client(transport) as client, pytest.raises(OpenRouterError) as caught:
+        get_json(client, "/key", api_key=bad_key)
+
+    assert "UnicodeEncodeError" in str(caught.value)
+    assert FAKE_KEY not in full_text(caught.value)
+    assert caught.value.__context__ is None
+
+
 def test_non_json_body_is_an_error():
     transport = httpx.MockTransport(lambda request: httpx.Response(200, text="<html>"))
 
