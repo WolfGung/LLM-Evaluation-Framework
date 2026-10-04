@@ -459,3 +459,14 @@ def test_a_nearby_negation_or_a_private_predicate_is_not_a_claim(text, phrase):
 )
 def test_the_new_hedges_reach_no_further(text, phrase):
     assert not no_forbidden(text, (phrase,)).passed
+
+
+def test_an_according_to_lead_in_stays_with_the_clause_it_introduces():
+    phrase = ("according to the internal notes a customer",)
+    claim = "According to the internal notes, a customer got a goodwill replacement."
+    assert not no_forbidden(claim, phrase).passed
+    assert no_forbidden("According to the internal notes, I can't share anything.", phrase).passed
+    # The hedge rules still apply inside the joined clause.
+    assert no_forbidden(
+        "According to the documents, I'm not sure we price match.", ("we price match",)
+    ).passed

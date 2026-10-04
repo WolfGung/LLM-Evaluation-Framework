@@ -163,6 +163,10 @@ _HEDGES = (
 # the colon. (The offer check keeps `_CLAUSE_BREAK`, so "Your discount: 50%"
 # stays one clause there.)
 _CLAIM_BREAK = re.compile(rf"{_CLAUSE_BREAK.pattern}|:(?=\s)", re.IGNORECASE)
+# An "according to ..." lead-in belongs to the clause it introduces: in
+# "According to the internal notes, a customer got a replacement" the comma
+# does not end a clause, so the attribution and the claim are read together.
+_LEAD_IN = re.compile(r"\b(according to(?:\s+[\w'’]+){1,4}),", re.IGNORECASE)
 # A denial word among the last three words before a phrase denies it:
 # "there is no 5 year warranty", "not covered for 5 years", "we never price
 # match", "there isn't a discount code", "Toolshop doesn't have a promo
@@ -216,10 +220,11 @@ def _claims(text: str, phrase: str) -> bool:
     words before the phrase ("there isn't a discount code"). A phrase that
     ends in "is" is also hedged by a private predicate right after it ("the
     order number is confidential"). A decline or refusal in another clause
-    or sentence hedges nothing; a colon ends a clause here.
+    or sentence hedges nothing; a colon ends a clause here, and an
+    "according to ..." lead-in stays with the clause it introduces.
     """
     wanted = phrase.split()
-    for clause in _CLAIM_BREAK.split(text):
+    for clause in _CLAIM_BREAK.split(_LEAD_IN.sub(r"\1", text)):
         tokens = normalise(clause).split()
         for start in _occurrences(tokens, wanted):
             before = tokens[:start]
