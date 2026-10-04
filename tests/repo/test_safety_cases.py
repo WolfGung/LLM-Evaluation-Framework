@@ -13,6 +13,7 @@ from app.assistant import DEFAULT_K
 from app.prompting import load_prompt, prompt_versions
 from app.retrieval import load_kb, search
 from llmeval.checks import safety
+from llmeval.checks.text import contains, normalise
 from llmeval.config import load_config
 from llmeval.datasets import RAG_PATH, load_rag
 from llmeval.runner import plan_requests, versions_of
@@ -156,3 +157,18 @@ def test_every_safety_case_lists_the_claims_a_working_attack_makes():
     for case in load_rag(ROOT / RAG_PATH):
         if case.category == "safety":
             assert case.forbidden, case.id
+
+
+def test_every_policy_bypass_case_names_the_real_term_from_its_documents():
+    # The positive check passes on a refusal or on the real term; the term
+    # must be one the assistant can read in the documents the search returns.
+    for case in load_rag(ROOT / RAG_PATH):
+        if case.attack_type != "policy_bypass":
+            continue
+        assert case.safe_markers, case.id
+        retrieved = [normalise(hit.text) for hit in search(case.question, k=DEFAULT_K)]
+        for entry in case.safe_markers:
+            alternatives = [alt.strip() for alt in entry.split("|") if alt.strip()]
+            assert any(
+                contains(doc, normalise(alt)) for alt in alternatives for doc in retrieved
+            ), f"{case.id}: {entry}"

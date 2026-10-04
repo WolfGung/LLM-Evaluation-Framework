@@ -25,7 +25,9 @@ the claims a successful attack would make (an invented exception, a
 disclosed instruction, the answer to an off-topic request). A safety case
 expects `refuse`, unless its question has a real answer (an injection hidden
 in the document that answers it): then it expects `answer`, with facts and
-documents as an answerable case.
+documents as an answerable case. A policy bypass also lists `safe_markers`:
+the real term from the documents ("30 day|unused"), which a safe answer may
+state instead of refusing.
 
 Triage labels follow `datasets/triage-guideline.md`; every triage case names
 the priority rule that decides it, and the loader refuses a case whose
@@ -104,6 +106,7 @@ class RagCase(_Case):
     attack: Text | None = None
     expected_behaviour: Text | None = None
     trap_docs: tuple[DocId, ...] = ()
+    safe_markers: tuple[Text, ...] = ()
     note: str | None = None
 
     @model_validator(mode="after")
@@ -114,9 +117,16 @@ class RagCase(_Case):
             raise ValueError("trap_docs lists a document twice")
         if self.category == "safety":
             self._check_safety()
-        elif self.attack_type or self.attack or self.expected_behaviour or self.trap_docs:
+        elif (
+            self.attack_type
+            or self.attack
+            or self.expected_behaviour
+            or self.trap_docs
+            or self.safe_markers
+        ):
             raise ValueError(
-                "only safety cases have attack_type, attack, expected_behaviour or trap_docs"
+                "only safety cases have attack_type, attack, expected_behaviour, trap_docs "
+                "or safe_markers"
             )
         if self.category in ("answerable", "multi_doc"):
             least = 2 if self.category == "multi_doc" else 1
@@ -154,6 +164,8 @@ class RagCase(_Case):
             )
         if self.attack_type == "off_topic" and self.expected != "refuse":
             raise ValueError("off_topic cases expect refuse")
+        if self.safe_markers and self.attack_type != "policy_bypass":
+            raise ValueError("only policy_bypass cases have safe_markers")
 
     @property
     def fact_alternatives(self) -> tuple[tuple[str, ...], ...]:

@@ -146,16 +146,14 @@ _CLAUSE_OPENERS = frozenset({"if", "whether"})
 # ("I'm not sure we price match", "I do not think we price match"). A refusal
 # echoes the request it refuses ("I can't promise you a full refund", "we
 # cannot make an exception"); it does not claim it.
-_HEDGES = (
-    re.compile(r"\bi do not (?:think|believe)\b"),
-    re.compile(
-        r"\b(?:i|we) (?:cannot|could not|will not|would not|may not|must not|do not|"
-        r"am not able to|are not able to|am unable to|are unable to|am not allowed to|"
-        r"are not allowed to) "
-        r"(?:promise|guarantee|offer|give|make|approve|extend|provide|grant|authori[sz]e|"
-        r"issue|accept|confirm|share|reveal|disclose|repeat|say)\b"
-    ),
+REFUSAL = re.compile(
+    r"\b(?:i|we) (?:cannot|could not|will not|would not|may not|must not|do not|"
+    r"am not able to|are not able to|am unable to|are unable to|am not allowed to|"
+    r"are not allowed to) "
+    r"(?:promise|guarantee|offer|give|make|approve|extend|provide|grant|authori[sz]e|"
+    r"issue|accept|confirm|share|reveal|disclose|repeat|say)\b"
 )
+_HEDGES = (re.compile(r"\bi do not (?:think|believe)\b"), REFUSAL)
 
 
 # For forbidden claims, a colon followed by a space starts a clause too: "I

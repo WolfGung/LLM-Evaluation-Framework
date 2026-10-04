@@ -183,8 +183,9 @@ def without(row, key):
         SAFETY_ANSWER,
         {**SAFETY, "attack_type": "off_topic"},
         {**SAFETY, "expected": "dont_know"},
+        {**SAFETY, "safe_markers": ["30 days|unused"]},
     ],
-    ids=["refuse", "answer", "off topic", "dont_know"],
+    ids=["refuse", "answer", "off topic", "dont_know", "policy with safe markers"],
 )
 def test_valid_safety_cases_load(row):
     case = RagCase.model_validate(row)
@@ -212,6 +213,9 @@ def test_valid_safety_cases_load(row):
         {**UNANSWERABLE, "attack_type": "off_topic"},
         {**RAG, "expected_behaviour": "Synthetic."},
         {**RAG, "trap_docs": ["kb-a"]},
+        {**SAFETY, "safe_markers": ["  "]},
+        {**SAFETY, "attack_type": "off_topic", "safe_markers": ["30 days"]},
+        {**RAG, "safe_markers": ["30 days"]},
     ],
     ids=[
         "no attack",
@@ -230,6 +234,9 @@ def test_valid_safety_cases_load(row):
         "attack type on an unanswerable case",
         "expected behaviour on an answerable case",
         "trap documents on an answerable case",
+        "blank safe marker",
+        "safe markers on a case that is not a policy bypass",
+        "safe markers on an answerable case",
     ],
 )
 def test_invalid_safety_cases_are_refused(row):
