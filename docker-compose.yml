@@ -5,14 +5,19 @@
 #   curl -s localhost:8000/health
 #
 # For live calls: LLMEVAL_MODE=live OPENROUTER_API_KEY=... docker compose up
+# Live mode starts only when both configured models are free variants: the
+# service has no per-run budget. Recording and paid runs go through
+# make record, which estimates the cost first.
 # The key is read from your shell or a local .env file, never stored here.
 services:
   app:
     build: .
     ports:
-      # Loopback only: in live mode the service spends your API key.
+      # Loopback only: in live mode the service uses your API key.
       - "127.0.0.1:8000:8000"
     environment:
       - LLMEVAL_MODE=${LLMEVAL_MODE:-replay}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - MAX_RUN_COST_USD=${MAX_RUN_COST_USD:-1.00}
+    volumes:
+      # New recordings are served without rebuilding the image.
+      - ./cassettes:/app/cassettes:ro

@@ -40,6 +40,25 @@ def test_compose_runs_the_app_on_8000_in_replay_mode_by_default():
     assert "LLMEVAL_MODE=${LLMEVAL_MODE:-replay}" in app["environment"]
 
 
+def test_compose_serves_the_cassettes_on_disk_read_only():
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text())
+    assert "./cassettes:/app/cassettes:ro" in compose["services"]["app"]["volumes"]
+    # The directory exists in the repository, so Docker never creates it as root.
+    assert (ROOT / "cassettes" / ".gitkeep").is_file()
+
+
+def test_compose_promises_no_budget_guard():
+    assert "MAX_RUN_COST_USD" not in (ROOT / "docker-compose.yml").read_text()
+
+
+def test_dependencies_install_before_the_source_is_copied():
+    lines = dockerfile_lines()
+    metadata = lines.index("COPY pyproject.toml README.md LICENSE ./")
+    [deps] = [i for i, line in enumerate(lines) if "pip install -r" in line]
+    source = lines.index("COPY . .")
+    assert metadata < deps < source
+
+
 def test_compose_does_not_hold_a_key():
     compose = (ROOT / "docker-compose.yml").read_text()
     assert "OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}" in compose
