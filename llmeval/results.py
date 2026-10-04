@@ -36,6 +36,7 @@ from llmeval.checks.judge import (
 )
 from llmeval.checks.retrieval import retrieval_recall_value
 from llmeval.client import CallResult
+from llmeval.perf import Performance, performance
 from llmeval.stability import Stability, stability
 
 LAYERS = ("retrieval", "deterministic", "reference", "safety", "judge")
@@ -203,7 +204,9 @@ class JudgeSummary(_Record):
       in words and its score, over valid verdicts on non-empty answers. The
       rubric says length earns nothing, so a strong positive value suggests
       the judge rewards verbosity. It is a cheap check, not proof: longer
-      answers can also be more complete.
+      answers can also be more complete;
+    - `performance`: latency, tokens and cost of the judge calls (see
+      `llmeval.perf`).
 
     `layers["judge"]` in the summary counts an invalid verdict as a failed
     run, because the answer could not be graded.
@@ -218,6 +221,7 @@ class JudgeSummary(_Record):
     mean_scores: dict[str, float | None]
     score_counts: dict[str, dict[str, int]]
     length_score_correlation: dict[str, LengthCorrelation]
+    performance: Performance
 
 
 class Summary(_Record):
@@ -234,6 +238,8 @@ class Summary(_Record):
     - `judge`: the judge layer's reliability and scores, when runs were graded.
     - `stability`: the share of repeated cases whose repeats agree on every
       rule-based check (see `llmeval.stability`); None when no case repeats.
+    - `performance`: latency, tokens and cost of the system calls (see
+      `llmeval.perf`); the judge's calls are in `judge.performance`.
     """
 
     cases: int
@@ -247,6 +253,7 @@ class Summary(_Record):
     confusion: dict[str, dict[str, dict[str, int]]] | None = None
     judge: JudgeSummary | None = None
     stability: Stability | None = None
+    performance: Performance
 
 
 class FunctionResults(_Record):
@@ -355,7 +362,10 @@ class PairwiseSummary(_Record):
     - `longer_preferred`: over the same choices, how often the judge chose
       the longer answer (pairs of equal length left out). Like the
       length-score correlation, it is a cheap check, not proof: the longer
-      answer may also be the better one.
+      answer may also be the better one;
+    - `performance`: latency, tokens and cost of the questions asked, with the
+      cost per case over every compared case (an identical pair costs
+      nothing; see `llmeval.perf`).
 
     Identical pairs (both versions wrote the same text) are not asked, so
     they have no verdicts and stay out of `valid`, `inconsistent`,
@@ -369,6 +379,7 @@ class PairwiseSummary(_Record):
     inconsistent_kinds: dict[str, int]
     position_bias: Share
     longer_preferred: Share
+    performance: Performance
 
 
 class PairwiseResults(_Record):
@@ -442,13 +453,18 @@ def summarise(function: str, cases: Sequence[CaseRecord]) -> Summary:
         }
     graded = [(run.output, run.judge) for _, run in runs if run.judge is not None]
     if graded:
-        summary["judge"] = summarise_judge(graded)
+        graded_cases = len({case.id for case, run in runs if run.judge is not None})
+        summary["judge"] = summarise_judge(graded, cases=graded_cases)
     summary["stability"] = stability(function, cases)
+    summary["performance"] = performance([run.call for _, run in runs], cases=len(cases))
     return Summary(**summary)
 
 
-def summarise_judge(graded: Sequence[tuple[str, JudgeRecord]]) -> JudgeSummary:
-    """The judge layer over (answer, judge record) pairs."""
+def summarise_judge(
+    graded: Sequence[tuple[str, JudgeRecord]], *, cases: int | None = None
+) -> JudgeSummary:
+    """The judge layer over (answer, judge record) pairs; `cases` is how many
+    cases they cover, for the cost per case (None: not given)."""
     records = [record for _, record in graded]
     valid = [record for record in records if record.scores is not None]
     # Valid verdicts on answers with text: the scores and the correlation.
@@ -492,6 +508,7 @@ def summarise_judge(graded: Sequence[tuple[str, JudgeRecord]]) -> JudgeSummary:
         mean_scores=mean_scores,
         score_counts=score_counts,
         length_score_correlation=correlation,
+        performance=performance([record.call for record in records], cases=cases),
     )
 
 
@@ -523,6 +540,9 @@ def summarise_pairwise(
             count=chose_a, total=chose, rate=round(chose_a / chose, 4) if chose else None
         ),
         longer_preferred=Share.of(_longer_preferred(compared, versions)),
+        performance=performance(
+            [order.call for case in cases for order in case.orders], cases=len(cases)
+        ),
     )
 
 
