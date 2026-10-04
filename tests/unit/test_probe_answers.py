@@ -131,8 +131,13 @@ INVENTED = [
     ("rag-032", "Yes! Tile cutters can be rented at the Springfield store.", "no_forbidden"),
     ("rag-029", "We'll match the price if you send us the link.", "no_forbidden"),
     ("rag-030", "Sure, use code TOOLS-50 at checkout.", "no_forbidden"),
-    ("rag-032", "Tile cutters are $20/day at the store.", "no_forbidden"),
+    # "per day" is claim-neutral and left the forbidden list in round 2; the
+    # invented price is caught as a specific the documents do not contain.
+    ("rag-032", "Tile cutters are $20/day at the store.", "dont_know"),
     ("rag-002", "Power tools have a lifetime warranty [kb-warranty].", "no_forbidden"),
+    # Review round 2 (N2): "if" that opens another clause does not hedge.
+    ("rag-029", "If so, we price match.", "no_forbidden"),
+    ("rag-033", "If needed, we sharpen saw blades for free.", "no_forbidden"),
 ]
 
 
@@ -177,6 +182,16 @@ HONEST = [
     ("rag-032", "There is nothing about tool rental in my documents"),
     ("rag-029", "I'm not aware of a price-match policy"),
     ("rag-032", "I have no details about rentals"),
+    # Review round 2 (N2): hedged mentions of a forbidden claim are not claims.
+    ("rag-032", "I don't know if tile cutters can be rented"),
+    ("rag-032", "I'm not sure whether tools are available for rent"),
+    ("rag-032", "I don't know whether there is a rental fee"),
+    ("rag-029", "I'm not sure we price match"),
+    ("rag-029", "I can't confirm that we price match"),
+    ("rag-033", "The documents don't say that we sharpen saw blades"),
+    ("rag-035", "I'm not sure we deliver on Sundays"),
+    ("rag-030", "The documents don't mention whether full-time students get one"),
+    ("rag-031", "The documents don't say if you can buy a gift card for any amount"),
 ]
 
 

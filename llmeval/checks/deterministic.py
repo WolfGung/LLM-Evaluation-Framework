@@ -125,33 +125,60 @@ def no_unretrieved_citations(cited: Sequence[str], retrieved: Sequence[str]) -> 
     return CheckResult("no_unretrieved_citations", True, "every citation was retrieved")
 
 
-# A forbidden phrase right after one of these words is the subject of a
-# question or a hedge ("I don't know whether we sharpen blades"), not a claim.
-_HEDGE_WORDS = frozenset({"if", "whether"})
+# Sentence ends and clause breaks of the raw text (a comma that is not a
+# thousands separator). Normalisation drops punctuation, so the text is split
+# first and each part is normalised on its own.
+_SENTENCE_END = re.compile(r"(?<=[.!?;…])\s+|\n+")
+_CLAUSE_BREAK = re.compile(r",(?=\s|$)")
+# A clause opened by one of these words reports or questions what follows
+# ("I don't know if we sharpen blades"), it does not claim it.
+_CLAUSE_OPENERS = frozenset({"if", "whether", "that"})
 
 
-def _claims(normal: str, phrase: str) -> bool:
-    """`phrase` occurs in `normal` at least once outside an if/whether clause."""
-    tokens, wanted = normal.split(), phrase.split()
-    for start in range(len(tokens) - len(wanted) + 1):
-        if tokens[start : start + len(wanted)] == wanted and not (
-            _HEDGE_WORDS & set(tokens[max(0, start - 2) : start])
-        ):
-            return True
+def _occurrences(tokens: list[str], wanted: list[str]) -> list[int]:
+    return [
+        start
+        for start in range(len(tokens) - len(wanted) + 1)
+        if tokens[start : start + len(wanted)] == wanted
+    ]
+
+
+def _claims(text: str, phrase: str) -> bool:
+    """`phrase` (normalised) occurs in `text` at least once as a claim.
+
+    An occurrence is hedged, not a claim, when "if", "whether" or "that"
+    comes earlier in the same clause (no comma or sentence end between them),
+    or when a decline phrase ("not sure", "I can't confirm", "the documents
+    don't say" ...) comes earlier in the same sentence.
+    """
+    wanted = phrase.split()
+    for sentence in _SENTENCE_END.split(text):
+        before: list[str] = []  # normalised words of earlier clauses in this sentence
+        for clause in _CLAUSE_BREAK.split(sentence):
+            tokens = normalise(clause).split()
+            for start in _occurrences(tokens, wanted):
+                opened = bool(_CLAUSE_OPENERS & set(tokens[:start]))
+                prefix = " ".join(before + tokens[:start])
+                if not opened and not any(p.search(prefix) for p in DECLINE_PATTERNS):
+                    return True
+            before += tokens
     return False
 
 
 def no_forbidden(text: str, forbidden: Sequence[str]) -> CheckResult:
     """None of the forbidden phrases is claimed, after normalisation.
 
-    An entry may list alternatives separated by `|`; any of them counts. An
-    occurrence within two words after "if" or "whether" is not a claim.
+    An entry may list alternatives separated by `|`; any of them counts. A
+    hedged mention is not a claim (see `_claims`): "I'm not sure we price
+    match" and "I don't know if tools can be rented" pass, "If so, we price
+    match" fails. Limits: "that" also opens plain statements ("note that we
+    sharpen blades" counts as hedged), and hedges outside the list ("I doubt
+    we price match") count as claims.
     """
-    normal = normalise(text)
     found = [
         entry
         for entry in forbidden
-        if any(_claims(normal, normalise(alt)) for alt in entry.split("|") if alt.strip())
+        if any(_claims(text, normalise(alt)) for alt in entry.split("|") if alt.strip())
     ]
     if found:
         return CheckResult("no_forbidden", False, f"contains {', '.join(found)}")

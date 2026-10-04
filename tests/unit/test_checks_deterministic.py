@@ -158,6 +158,33 @@ def test_a_forbidden_phrase_inside_a_whether_or_if_clause_is_not_a_claim(text):
     assert no_forbidden(text, ("we sharpen", "we price match")).passed
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I don't know if we price match.",
+        "I can't confirm that we price match.",
+        "I'm not sure we price match.",
+        "Sorry, I'm not sure, but I do not think we price match.",
+    ],
+)
+def test_a_hedged_mention_is_not_a_claim(text):
+    assert no_forbidden(text, ("we price match",)).passed
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "If so, we price match.",
+        "If you like, we price match.",
+        "I'm not sure about chisels. We price match.",
+        "We price match, if I remember right.",
+        "Whether or not you ask, we price match.",
+    ],
+)
+def test_an_unhedged_clause_is_a_claim(text):
+    assert not no_forbidden(text, ("we price match",)).passed
+
+
 def test_a_forbidden_claim_after_a_hedge_elsewhere_still_counts():
     text = "We sharpen saw blades for free. Not sure if chisels too."
     assert not no_forbidden(text, ("we sharpen",)).passed
