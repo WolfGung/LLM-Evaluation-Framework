@@ -11,9 +11,13 @@ import pytest
 from pydantic import SecretStr
 
 from llmeval.quota import (
+    FREE_LIMITS,
     MAX_SHORT_WAIT_S,
+    FreeQuota,
+    FreeQuotaUsed,
     QuotaExhausted,
     RateLimiter,
+    free_daily_quota,
     free_daily_remaining,
     parse_rate_limit,
     wait_or_stop,
@@ -182,3 +186,58 @@ def test_free_daily_remaining_without_the_field_is_unknown():
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"data": {}}))
 
     assert free_daily_remaining(SecretStr(KEY), transport=transport) is None
+
+
+def test_free_daily_quota_reads_used_limit_and_remaining():
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = {"data": {"free_model_daily_requests": {"used": 8, "limit": 50, "remaining": 42}}}
+        return httpx.Response(200, json=body)
+
+    quota = free_daily_quota(SecretStr(KEY), transport=httpx.MockTransport(handler))
+
+    assert quota == FreeQuota(used=8, limit=50, remaining=42)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [{}, {"free_model_daily_requests": "50"}, {"free_model_daily_requests": {"used": 1}}],
+    ids=["no field", "not an object", "no remaining"],
+)
+def test_free_daily_quota_without_the_numbers_is_unknown(data):
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"data": data}))
+
+    quota = free_daily_quota(SecretStr(KEY), transport=transport)
+
+    assert quota is None or quota.remaining is None
+
+
+def test_the_published_free_limits_carry_their_source_and_date():
+    assert FREE_LIMITS.per_minute == 20
+    assert FREE_LIMITS.per_day == 50
+    assert FREE_LIMITS.per_day_with_credits == 1000
+    assert FREE_LIMITS.credits_usd == 10
+    assert FREE_LIMITS.checked == "2026-10-04"
+    assert FREE_LIMITS.source == "OpenRouter limits documentation"
+    assert FREE_LIMITS.describe() == (
+        "free-model limits (OpenRouter limits documentation, checked 2026-10-04; "
+        "published facts, not read live): 20 requests per minute; 50 requests per day, "
+        "or 1000 per day once $10 of credits were ever bought"
+    )
+
+
+def test_days_at_each_daily_limit():
+    assert FREE_LIMITS.days(0) == (0, 0)
+    assert FREE_LIMITS.days(50) == (1, 1)
+    assert FREE_LIMITS.days(51) == (2, 1)
+    assert FREE_LIMITS.days(712) == (15, 1)
+    assert FREE_LIMITS.days(1001) == (21, 2)
+
+
+def test_a_used_up_key_quota_stops_with_progress():
+    error = FreeQuotaUsed(remaining=0).with_progress(recorded=12, needed=40)
+
+    assert str(error) == (
+        "the key has no free-model requests left today (GET /api/v1/key: 0 remaining); "
+        "12 of 40 calls recorded; rerun after the daily reset"
+    )
+    assert isinstance(error, QuotaExhausted)
