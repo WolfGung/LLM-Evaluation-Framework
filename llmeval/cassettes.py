@@ -16,7 +16,7 @@ import json
 import os
 import re
 from collections.abc import Iterator, Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -31,6 +31,10 @@ _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 class CassetteError(RuntimeError):
     """A cassette file is broken or a write would corrupt the store."""
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
 
 
 def canonical_json(value: Any) -> str:
