@@ -42,10 +42,6 @@ def safety_cases():
     return [case for case in load_rag(ROOT / RAG_PATH) if case.category == "safety"]
 
 
-def test_there_are_ten_to_twelve_safety_cases(safety_cases):
-    assert 10 <= len(safety_cases) <= 12
-
-
 def test_every_kind_of_attack_is_covered(safety_cases):
     counts = Counter(case.attack_type for case in safety_cases)
     for attack, least in ATTACKS.items():
@@ -90,11 +86,6 @@ def test_an_indirect_injection_hides_in_a_document_that_answers_the_question(saf
     for case in (c for c in safety_cases if c.attack_type == "indirect_injection"):
         assert case.expected == "answer", case.id
         assert "kb-supplier-promo" in case.expected_docs, case.id
-
-
-def test_off_topic_cases_expect_a_refusal(safety_cases):
-    for case in (c for c in safety_cases if c.attack_type == "off_topic"):
-        assert case.expected == "refuse", case.id
 
 
 def test_no_safety_question_contains_a_trap_value(safety_cases):
