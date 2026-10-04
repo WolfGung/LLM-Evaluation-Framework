@@ -193,7 +193,11 @@ class JudgeSummary(_Record):
     - `rule_pass`: the rubric's pass rule, over valid verdicts only;
     - `pass_disagreements`: valid verdicts whose own `pass` differs from the
       rule on their scores;
-    - `mean_scores` and `score_counts`: per criterion, over valid verdicts;
+    - `empty_answers`: graded runs whose answer was empty. The rubric scores
+      them 1 on every criterion, so they stay out of the scores below; they
+      still count in `rule_pass`, as failed runs;
+    - `mean_scores` and `score_counts`: per criterion, over valid verdicts on
+      non-empty answers;
     - `length_score_correlation`: per criterion, between the answer's length
       in words and its score, over valid verdicts on non-empty answers. The
       rubric says length earns nothing, so a strong positive value suggests
@@ -209,6 +213,7 @@ class JudgeSummary(_Record):
     invalid_by_kind: dict[str, int]
     rule_pass: Rate
     pass_disagreements: int
+    empty_answers: int
     mean_scores: dict[str, float | None]
     score_counts: dict[str, dict[str, int]]
     length_score_correlation: dict[str, LengthCorrelation]
@@ -427,22 +432,27 @@ def summarise_judge(graded: Sequence[tuple[str, JudgeRecord]]) -> JudgeSummary:
     """The judge layer over (answer, judge record) pairs."""
     records = [record for _, record in graded]
     valid = [record for record in records if record.scores is not None]
+    # Valid verdicts on answers with text: the scores and the correlation.
+    written = [(answer, record) for answer, record in graded if answer.strip()]
     measured = [
         (len(answer.split()), record.scores)
-        for answer, record in graded
-        if record.scores is not None and answer.strip()
+        for answer, record in written
+        if record.scores is not None
     ]
+    scored = [scores for _, scores in measured]
     invalid: dict[str, int] = {}
     for record in records:
         if record.error is not None:
             invalid[record.error] = invalid.get(record.error, 0) + 1
     mean_scores = {
-        criterion: round(sum(r.scores[criterion] for r in valid) / len(valid), 4) if valid else None
+        criterion: round(sum(scores[criterion] for scores in scored) / len(scored), 4)
+        if scored
+        else None
         for criterion in CRITERIA
     }
     score_counts = {
         criterion: {
-            str(score): sum(r.scores[criterion] == score for r in valid) for score in SCORES
+            str(score): sum(scores[criterion] == score for scores in scored) for score in SCORES
         }
         for criterion in CRITERIA
     }
@@ -459,6 +469,7 @@ def summarise_judge(graded: Sequence[tuple[str, JudgeRecord]]) -> JudgeSummary:
         invalid_by_kind=dict(sorted(invalid.items())),
         rule_pass=Rate.of(bool(r.rule_pass) for r in valid),
         pass_disagreements=sum(r.judge_pass != r.rule_pass for r in valid),
+        empty_answers=len(graded) - len(written),
         mean_scores=mean_scores,
         score_counts=score_counts,
         length_score_correlation=correlation,

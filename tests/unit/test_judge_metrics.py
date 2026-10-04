@@ -131,3 +131,20 @@ def test_empty_answers_and_invalid_verdicts_stay_out_of_the_correlation():
         "spearman": 1.0,
     }
     assert summary.judged == 5
+
+
+def test_empty_answers_are_counted_apart_from_the_scores():
+    # The rubric scores an empty answer 1 on every criterion; that says nothing
+    # about the answers the system did write, so the scores leave it out.
+    pairs = [
+        ("", graded(1, helpfulness=1, tone=1)),
+        ("one two", graded(5, helpfulness=3, tone=4)),
+        ("   ", INVALID),
+    ]
+    summary = summarise_judge(pairs)
+    assert summary.judged == 3
+    assert summary.empty_answers == 2
+    assert summary.mean_scores == {"groundedness": 5.0, "helpfulness": 3.0, "tone": 4.0}
+    assert summary.score_counts["groundedness"] == {"1": 0, "2": 0, "3": 0, "4": 0, "5": 1}
+    # The pass rule still counts the empty answer's verdict: that run failed.
+    assert summary.rule_pass.total == 2
