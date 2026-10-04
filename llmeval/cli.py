@@ -22,7 +22,8 @@ from llmeval.checks.retrieval import retrieval_recall
 from llmeval.client import MissingRecording, ModelClient
 from llmeval.config import DEFAULT_MODELS_PATH, ConfigError, Mode, load_config
 from llmeval.datasets import DATASETS_DIR, RAG_PATH, DatasetError, load_rag, load_triage
-from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, RESULTS_DIR, FunctionResults, run
+from llmeval.results import RESULTS_DIR, FunctionResults
+from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, run
 
 app = typer.Typer(
     no_args_is_help=True,

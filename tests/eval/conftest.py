@@ -22,7 +22,8 @@ import pytest
 from llmeval.cassettes import PENDING_RECORDED_RUN, CassetteStore, load_manifest
 from llmeval.client import ModelClient
 from llmeval.config import Mode, load_config
-from llmeval.runner import CaseRecord, run_rag, run_triage
+from llmeval.results import CaseRecord
+from llmeval.runner import run_rag, run_triage
 
 ROOT = Path(__file__).resolve().parents[2]
 CASSETTES = Path(os.environ.get("LLMEVAL_CASSETTES_DIR") or ROOT / "cassettes")

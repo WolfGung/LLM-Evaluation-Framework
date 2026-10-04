@@ -16,12 +16,8 @@ from llmeval.checks.reference import INVALID
 from llmeval.client import MissingRecording, ModelClient
 from llmeval.config import Config, Mode, ModelsConfig, Settings
 from llmeval.datasets import RagCase, TriageCase
-from llmeval.runner import (
-    FunctionResults,
-    plan_requests,
-    results_path,
-    run,
-)
+from llmeval.results import FunctionResults, results_path
+from llmeval.runner import plan_requests, run
 from tests.app.fakes import STRUCTURED, UNSTRUCTURED, FakeModel
 
 INDEX = BM25Index(
