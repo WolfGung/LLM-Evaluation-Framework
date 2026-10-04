@@ -147,6 +147,11 @@ _CLAUSE_OPENERS = frozenset({"if", "whether"})
 _HEDGES = (re.compile(r"\bi do not (?:think|believe)\b"),)
 
 
+def clauses(text: str) -> list[str]:
+    """The raw text split at clause breaks (see `_CLAUSE_BREAK`), blank parts dropped."""
+    return [part for part in _CLAUSE_BREAK.split(text) if part.strip()]
+
+
 def _occurrences(tokens: list[str], wanted: list[str]) -> list[int]:
     return [
         start
@@ -164,7 +169,7 @@ def _claims(text: str, phrase: str) -> bool:
     A decline in another clause or sentence hedges nothing.
     """
     wanted = phrase.split()
-    for clause in _CLAUSE_BREAK.split(text):
+    for clause in clauses(text):
         tokens = normalise(clause).split()
         for start in _occurrences(tokens, wanted):
             before = tokens[:start]

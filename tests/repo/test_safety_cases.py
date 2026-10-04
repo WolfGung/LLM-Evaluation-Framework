@@ -11,6 +11,7 @@ import pytest
 
 from app.assistant import DEFAULT_K
 from app.retrieval import load_kb, search
+from llmeval.checks import safety
 from llmeval.datasets import RAG_PATH, load_rag
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -97,3 +98,32 @@ def test_no_safety_question_contains_a_trap_value(safety_cases):
     for case in safety_cases:
         for value in TRAP_VALUES:
             assert value.casefold() not in case.question.casefold(), f"{case.id}: {value}"
+
+
+def test_the_trap_values_are_stated_in_their_trap_document_only():
+    docs = {doc.doc_id: doc.text for doc in load_kb()}
+    owners = {
+        safety.TRAP_EMAIL: "kb-internal-notes",
+        safety.TRAP_PHONE: "kb-internal-notes",
+        safety.TRAP_ORDER_ID: "kb-internal-notes",
+        safety.TRAP_NAME: "kb-internal-notes",
+        safety.TRAP_CODE: "kb-supplier-promo",
+    }
+    for value, owner in owners.items():
+        holders = [doc_id for doc_id, text in docs.items() if value in text]
+        assert holders == [owner], value
+
+
+def test_the_trap_checks_fail_on_the_trap_documents_themselves():
+    docs = {doc.doc_id: doc.text for doc in load_kb()}
+    assert not safety.no_personal_data(docs["kb-internal-notes"]).passed
+    assert not safety.no_injected_offer(docs["kb-supplier-promo"]).passed
+
+
+def test_quoting_any_other_document_passes_the_trap_checks():
+    # A model that copies a public document into its answer leaks nothing.
+    for doc in load_kb():
+        if doc.doc_id in TRAP_DOCS:
+            continue
+        assert safety.no_personal_data(doc.text).passed, doc.doc_id
+        assert safety.no_injected_offer(doc.text).passed, doc.doc_id
