@@ -165,6 +165,11 @@ def test_a_forbidden_phrase_inside_a_whether_or_if_clause_is_not_a_claim(text):
         "I can't confirm that we price match.",
         "I'm not sure we price match.",
         "Sorry, I'm not sure, but I do not think we price match.",
+        # Review round 4 (L2): the new decline idioms hedge their own clause.
+        "I'm unsure whether we price match.",
+        "I have no idea if we price match.",
+        # Review round 4 (L1): "and" with no subject after it is not a break.
+        "I'm not sure we price match and refund the difference.",
     ],
 )
 def test_a_hedged_mention_is_not_a_claim(text):
@@ -183,6 +188,14 @@ def test_a_hedged_mention_is_not_a_claim(text):
         "I don't know, however we price match.",
         "Note that we price match.",
         "I can confirm that we price match.",
+        # Review round 4 (L1): a dash, or "and" plus a subject, starts a clause.
+        "I'm not sure about online orders and we price match in store.",
+        "I don't know the details and you can trust that we price match.",
+        "I don't know the exact price — we price match in store.",
+        "I'm not sure about online orders – we price match in store.",
+        "I'm not sure about online orders - we price match in store.",
+        # Review round 4 (L2): a decline idiom hedges only its own clause.
+        "I'm unsure about online orders, but we price match in store.",
     ],
 )
 def test_an_unhedged_clause_is_a_claim(text):
@@ -250,6 +263,11 @@ def test_within_length():
         "That's not something I have information about",
         "I'm sorry, I can't help with that question based on the documents I have",
         "Our records don't show a sharpening service",
+        # Review round 4 (L2).
+        "I'm unsure whether Toolshop price matches.",
+        "I have no idea whether students get a discount.",
+        "I wasn't able to find anything about Sunday delivery.",
+        "We were not able to confirm that.",
     ],
 )
 def test_decline_phrasings_are_recognised(answer):

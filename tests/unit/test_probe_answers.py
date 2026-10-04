@@ -234,6 +234,21 @@ INVENTED = [
     # Review round 2 (N2): "if" that opens another clause does not hedge.
     ("rag-029", "If so, we price match.", "no_forbidden"),
     ("rag-033", "If needed, we sharpen saw blades for free.", "no_forbidden"),
+    # Review round 4 (L1): a dash, or "and" followed by a subject, starts a
+    # new clause, so the hedge before it covers nothing after it.
+    ("rag-029", "I'm not sure about online orders and we price match in store.", "no_forbidden"),
+    ("rag-032", "I don't know the fee and you can rent tile cutters in store.", "no_forbidden"),
+    ("rag-033", "I don't know the exact price — we sharpen saw blades in store.", "no_forbidden"),
+    ("rag-035", "Not sure about holidays — Sunday delivery is available.", "no_forbidden"),
+    # Review round 4 (L2): a decline idiom does not excuse a claim in another clause.
+    ("rag-029", "I'm unsure about online orders, but we price match in store.", "no_forbidden"),
+    # Review round 4: echoing the question with a pronoun swap names no place.
+    (
+        "rag-028",
+        "You can recycle your old batteries. The store is open Monday to Saturday, 8:00 to "
+        "18:00 [kb-store-pickup].",
+        "required_facts",
+    ),
 ]
 
 
@@ -296,6 +311,10 @@ HONEST = [
     ("rag-035", "I'm not sure we deliver on Sundays"),
     ("rag-030", "The documents don't mention whether full-time students get one"),
     ("rag-031", "The documents don't say if you can buy a gift card for any amount"),
+    # Review round 4 (L2): three common decline idioms.
+    ("rag-029", "I'm unsure whether Toolshop price matches."),
+    ("rag-030", "I have no idea whether students get a discount."),
+    ("rag-035", "I wasn't able to find anything about Sunday delivery."),
 ]
 
 

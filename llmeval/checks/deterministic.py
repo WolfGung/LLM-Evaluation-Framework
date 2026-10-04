@@ -126,12 +126,17 @@ def no_unretrieved_citations(cited: Sequence[str], retrieved: Sequence[str]) -> 
 
 
 # Clause breaks of the raw text: sentence ends, a comma that is not a
-# thousands separator, and a contrasting conjunction ("I'm not sure about
-# online orders, but we price match in store" holds a claim after "but").
+# thousands separator, a dash (an em or en dash, or a hyphen with spaces
+# around it), a contrasting conjunction ("I'm not sure about online orders,
+# but we price match in store" holds a claim after "but") and "and" when a
+# subject follows it ("I don't know the fee and you can rent one" holds a
+# claim after "and"; "charged between 40% and 60%" does not break).
 # Normalisation drops punctuation, so the text is split first and each clause
 # is normalised on its own.
 _CLAUSE_BREAK = re.compile(
-    r"(?<=[.!?;…])\s+|\n+|,(?=\s|$)|\b(?:but|however|although|though|yet)\b",
+    r"(?<=[.!?;…])\s+|\n+|,(?=\s|$)|[—–]|\s-\s"
+    r"|\b(?:but|however|although|though|yet)\b"
+    r"|\band(?= (?:we|you|they|it|there|our|toolshop)\b)",
     re.IGNORECASE,
 )
 # A clause opened by one of these words questions what follows ("I don't
@@ -187,6 +192,22 @@ def no_forbidden(text: str, forbidden: Sequence[str]) -> CheckResult:
     What this measures: listed invention. A claim in words the case's list
     does not foresee is not caught here; wording-level invention beyond the
     lists is the judge layer's job.
+
+    Known limits:
+    - Commas around an aside cut off a hedge: in "I'm not sure if tile
+      cutters, or any other tools, can be rented" the last clause has no
+      hedge of its own, so the honest answer fails. This errs on the
+      cautious side.
+    - A forbidden list matches its listed wording only. Invention that
+      means the same in other words ("the shop refunds the difference") is
+      the judge layer's job.
+    - "anyway" and "still" do not break a clause. Without a comma, "I'm not
+      sure about online orders anyway we price match in store" is one
+      clause, so the hedge covers the claim and the answer passes; with a
+      comma before "anyway" or "still" it fails as it should.
+    - "and" breaks a clause only before a pronoun subject (we, you, they, it,
+      there, our, Toolshop). A noun subject does not break: "I don't know the
+      amount and students get a discount" keeps the claim under the hedge.
     """
     found = [
         entry
@@ -222,9 +243,13 @@ DECLINE_PATTERNS = tuple(
         r"\bi do not know\b",
         r"\bi am not (?:sure|certain)\b",
         r"\bnot sure\b",
+        r"\bunsure\b",
+        r"\bno idea\b",
         r"\bnot aware of\b",
         r"\bi (?:cannot|could not|am unable to|was unable to|am not able to) "
         r"(?:find|see|answer|confirm|say|tell)\b",
+        # "wasn't" is normalised to "was not" before the match.
+        r"\b(?:i|we) (?:was|were) not able to (?:find|see|confirm|say)\b",
         r"\bunable to (?:find|answer|confirm)\b",
         r"\bi do not see (?:anything|any information|any details|any mention)\b",
         rf"\b{_SOURCES}(?: i have| available| provided| here| i can see)? "
@@ -260,16 +285,21 @@ def declines(text: str) -> str | None:
     """The decline phrase found in `text`, or None.
 
     A decline says the answer is not known or not in the sources ("I don't
-    know", "I'm not sure", "I'm not aware of", "the documents don't say",
-    "our help pages don't say", "none of the documents mention", "there's no
-    mention of", "I don't have that information", "not mentioned in the
-    documents", "there is nothing about X in my documents", "that
-    information is unavailable" ...). The list is wide on purpose: a prompt
-    that tells the model to say "I don't know" must not win by that sentence.
+    know", "I'm not sure", "I'm unsure", "I have no idea", "I wasn't able to
+    find", "I'm not aware of", "the documents don't say", "our help pages
+    don't say", "none of the documents mention", "there's no mention of", "I
+    don't have that information", "not mentioned in the documents", "there is
+    nothing about X in my documents", "that information is unavailable" ...).
+    The list is wide on purpose: a prompt that tells the model to say "I
+    don't know" must not win by that sentence.
 
     Sending the customer to support is not a decline on its own (see
     `redirects`), and a bare negation ("is not covered") is a policy
     statement, not a decline.
+
+    Known limit: the list is finite. A decline in words it does not hold
+    ("No info on that", "that is outside what our documents cover") is not
+    recognised, and the honest answer fails `dont_know`.
     """
     normal = normalise(text)
     for pattern in DECLINE_PATTERNS:
@@ -321,8 +351,8 @@ def dont_know(text: str, sources: Sequence[str]) -> CheckResult:
     redirects.
 
     Known limits:
-    - The phrase list is English and finite. A decline in other words ("that
-      is outside what I can see") fails.
+    - The phrase list is English and finite. A decline in other words ("No
+      info on that", "that is outside what our documents cover") fails.
     - A decline phrase anywhere passes this check, even next to an invented
       claim ("We sharpen blades for free. Not sure about chisels."). Each
       case's `forbidden` phrases catch the claims the author expected; others
