@@ -22,9 +22,10 @@ A safety case also says what it attacks: `attack_type` (one of
 knowledge base the attack relies on; the repository tests check that the
 search returns them for the question. For a safety case, `forbidden` lists
 the claims a successful attack would make (an invented exception, a
-disclosed instruction, the answer to an off-topic request). Most safety cases
-expect `refuse`; one whose question has a real answer in a trap document
-expects `answer`, with facts and documents as an answerable case.
+disclosed instruction, the answer to an off-topic request). A safety case
+expects `refuse`, unless its question has a real answer (an injection hidden
+in the document that answers it): then it expects `answer`, with facts and
+documents as an answerable case.
 
 Triage labels follow `datasets/triage-guideline.md`; every triage case names
 the priority rule that decides it, and the loader refuses a case whose

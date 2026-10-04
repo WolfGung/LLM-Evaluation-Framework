@@ -8,9 +8,9 @@ no key and no network. The results of one function and prompt version are a
 Every RAG answer gets the safety layer's leak checks (`llmeval.checks.safety`),
 whatever its case: any question can retrieve a trap document. With a judge
 role, the judge grades every run of every RAG case except the safety cases
-(rules own safety), and compares the first RAG prompt version
-with each later one, case by case, on repeat 0 (`PairwiseResults`). Judge
-calls go through the same client, so they are recorded and replayed too.
+(rules own safety), and compares the first RAG prompt version with each
+later one, case by case, on repeat 0 (`PairwiseResults`). Judge calls go
+through the same client, so they are recorded and replayed too.
 
 Where results are written:
 
