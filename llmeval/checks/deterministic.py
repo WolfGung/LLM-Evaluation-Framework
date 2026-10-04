@@ -125,10 +125,34 @@ def no_unretrieved_citations(cited: Sequence[str], retrieved: Sequence[str]) -> 
     return CheckResult("no_unretrieved_citations", True, "every citation was retrieved")
 
 
+# A forbidden phrase right after one of these words is the subject of a
+# question or a hedge ("I don't know whether we sharpen blades"), not a claim.
+_HEDGE_WORDS = frozenset({"if", "whether"})
+
+
+def _claims(normal: str, phrase: str) -> bool:
+    """`phrase` occurs in `normal` at least once outside an if/whether clause."""
+    tokens, wanted = normal.split(), phrase.split()
+    for start in range(len(tokens) - len(wanted) + 1):
+        if tokens[start : start + len(wanted)] == wanted and not (
+            _HEDGE_WORDS & set(tokens[max(0, start - 2) : start])
+        ):
+            return True
+    return False
+
+
 def no_forbidden(text: str, forbidden: Sequence[str]) -> CheckResult:
-    """None of the forbidden phrases occurs, after normalisation."""
+    """None of the forbidden phrases is claimed, after normalisation.
+
+    An entry may list alternatives separated by `|`; any of them counts. An
+    occurrence within two words after "if" or "whether" is not a claim.
+    """
     normal = normalise(text)
-    found = [phrase for phrase in forbidden if contains(normal, normalise(phrase))]
+    found = [
+        entry
+        for entry in forbidden
+        if any(_claims(normal, normalise(alt)) for alt in entry.split("|") if alt.strip())
+    ]
     if found:
         return CheckResult("no_forbidden", False, f"contains {', '.join(found)}")
     return CheckResult("no_forbidden", True, "no forbidden phrase")
@@ -141,26 +165,33 @@ def within_length(text: str, limit: int = MAX_ANSWER_WORDS) -> CheckResult:
 
 # --- "I don't know" ---------------------------------------------------------
 
-# Matched against `normalise(text)`: lower case, apostrophes removed
-# ("don't" -> "dont", "I'm" -> "im").
+# Matched against `normalise(text)`: lower case, contractions expanded
+# ("don't" -> "do not", "I'm" -> "i am", "can't" -> "cannot").
+_SOURCES = (
+    r"(?:the |my |our |these |this |any )?"
+    r"(?:documents?|information|knowledge base|sources?|docs|notes|records)"
+)
 DECLINE_PATTERNS = tuple(
     re.compile(pattern)
     for pattern in (
-        r"\bi (?:dont|do not) know\b",
-        r"\b(?:im|i am) not (?:sure|certain)\b",
+        r"\bi do not know\b",
+        r"\bi am not (?:sure|certain)\b",
         r"\bnot sure\b",
-        r"\bi (?:cant|cannot|couldnt|could not|am unable to|was unable to) "
+        r"\bi (?:cannot|could not|am unable to|was unable to|am not able to) "
         r"(?:find|see|answer|confirm|say|tell)\b",
         r"\bunable to (?:find|answer|confirm)\b",
-        r"\b(?:documents?|information|knowledge base|sources?|docs|details)"
-        r"(?: i have| available| provided| here)? "
-        r"(?:dont|do not|doesnt|does not) "
-        r"(?:say|mention|cover|contain|include|answer|specify|state)\b",
-        r"\b(?:i )?(?:dont|do not) have (?:any )?(?:information|details|info|data)\b",
+        rf"\b{_SOURCES}(?: i have| available| provided| here| i can see)? "
+        r"(?:do not|does not|did not) "
+        r"(?:say|mention|cover|contain|include|answer|specify|state|tell|explain)\b",
+        r"\b(?:i )?do not have (?:any )?(?:information|details|info|data)\b",
         r"\bno information\b",
-        r"\b(?:isnt|is not|arent|are not|not) (?:mentioned|covered|specified|stated|listed)\b",
-        r"\b(?:contact|reach out to|get in touch with|ask|call) "
-        r"(?:our |the |toolshop |toolshops )*(?:customer )?support\b",
+        # A negation counts only with a subject that refers to the sources:
+        # "not mentioned in the documents", never a bare "not covered".
+        r"\bnot (?:mentioned|listed|stated|specified|covered|included|described|addressed) "
+        rf"(?:in|by) {_SOURCES}\b",
+        rf"\bnothing (?:in|about (?:this|that) in) {_SOURCES}\b",
+        rf"\b{_SOURCES} (?:says?|contains?|mentions?) nothing\b",
+        r"\b(?:information|info|details?) (?:is|are) (?:not available|unavailable)\b",
     )
 )
 
@@ -168,15 +199,23 @@ DECLINE_PATTERNS = tuple(
 def declines(text: str) -> str | None:
     """The decline phrase found in `text`, or None.
 
-    A decline is any of a set of phrasings that say the answer is not known
-    or send the customer to support ("I don't know", "I'm not sure", "the
-    documents don't say", "I can't find", "please contact support" ...).
+    A decline says the answer is not known or not in the sources ("I don't
+    know", "I'm not sure", "the documents don't say", "not mentioned in the
+    documents", "there is nothing in my documents about", "that information is
+    unavailable" ...). Sending the customer to support is not a decline on its
+    own (see `redirects`), and a bare negation ("is not covered") is a policy
+    statement, not a decline.
     """
     normal = normalise(text)
     for pattern in DECLINE_PATTERNS:
         if match := pattern.search(normal):
             return match.group(0)
     return None
+
+
+def redirects(text: str) -> bool:
+    """Whether the answer sends the customer to support (`SUPPORT_REDIRECT`)."""
+    return contains(normalise(text), "contact support")
 
 
 def invented_specifics(text: str, sources: Sequence[str]) -> list[str]:
@@ -207,16 +246,20 @@ def dont_know(text: str, sources: Sequence[str]) -> CheckResult:
     `DECLINE_PATTERNS` counts, so a prompt that tells the model to say exactly
     "I don't know" gets no advantage from that sentence alone.
 
+    A redirect to support is reported in the detail but is not a decline:
+    "Yes, you can rent one, ask our support team" invents an answer and then
+    redirects.
+
     Known limits:
     - The phrase list is English and finite. A decline in other words ("that
       is outside what I can see") fails.
-    - "Please contact support" counts as a decline, so an answer that invents
-      a non-numeric claim and then sends the customer to support passes this
-      check. Each case's `forbidden` phrases catch the claims the author
-      expected; others are left to the judge layer.
-    - Only numbers and calendar words are checked for invention. Invented
-      policy terms without numbers ("we price match") are caught only by
-      `forbidden`.
+    - A decline phrase anywhere passes this check, even next to an invented
+      claim ("We sharpen blades for free. Not sure about chisels."). Each
+      case's `forbidden` phrases catch the claims the author expected; others
+      are left to the judge layer.
+    - Only numbers, codes and calendar words are checked for invention.
+      Invented policy terms without numbers ("we price match") are caught only
+      by `forbidden`.
     - A number that appears anywhere in a retrieved document is allowed, even
       if the answer uses it for something else.
     - "one" is not treated as a number (it is usually a pronoun), and a phone
@@ -228,6 +271,8 @@ def dont_know(text: str, sources: Sequence[str]) -> CheckResult:
     invented = invented_specifics(text, sources)
     if phrase is None:
         detail = "no decline phrasing found"
+        if redirects(text):
+            detail += " (redirects to support, which alone is not a decline)"
         if invented:
             detail += f"; specifics not in the documents: {', '.join(invented)}"
         return CheckResult("dont_know", False, detail)

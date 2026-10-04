@@ -18,6 +18,7 @@ from llmeval.checks.deterministic import (
     invented_specifics,
     no_forbidden,
     no_unretrieved_citations,
+    redirects,
     triage_checks,
     triage_enums_valid,
     triage_json_valid,
@@ -140,6 +141,28 @@ def test_no_unretrieved_citations():
     assert "kb-made-up" in result.detail
 
 
+def test_forbidden_phrases_take_alternatives():
+    result = no_forbidden("We'll match the price.", ("we price match|we will match the price",))
+    assert not result.passed
+    assert "we price match|we will match the price" in result.detail
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I don't know whether we sharpen blades.",
+        "I'm not sure if we price match.",
+    ],
+)
+def test_a_forbidden_phrase_inside_a_whether_or_if_clause_is_not_a_claim(text):
+    assert no_forbidden(text, ("we sharpen", "we price match")).passed
+
+
+def test_a_forbidden_claim_after_a_hedge_elsewhere_still_counts():
+    text = "We sharpen saw blades for free. Not sure if chisels too."
+    assert not no_forbidden(text, ("we sharpen",)).passed
+
+
 def test_no_forbidden_matches_after_normalisation():
     result = no_forbidden("Use code tools50 for 50 % off!", ("TOOLS50", "50%"))
     assert not result.passed
@@ -171,8 +194,9 @@ def test_within_length():
         "Our information does not mention student discounts.",
         "I don't have information about that.",
         "That isn't covered in the documents I have.",
-        "Please contact Toolshop support for help with that.",
-        "You could reach out to our customer support team.",
+        "This is not mentioned in the documents.",
+        "There is nothing in my documents about tool rental.",
+        "That information is unavailable.",
         "I’m not sure — please contact support.",
     ],
 )
@@ -187,10 +211,26 @@ def test_decline_phrasings_are_recognised(answer):
         "Returns are accepted within 30 days [kb-returns].",
         "I know exactly: it costs $10.",
         "",
+        # A redirect alone is not a decline (review round 1).
+        "Please contact Toolshop support for help with that.",
+        "You could reach out to our customer support team.",
+        "Yes! Tile cutters can be rented. Ask our support team to book one.",
+        # A bare negation is a policy statement, not a decline.
+        "Refurbished tools are not covered by the warranty [kb-warranty].",
+        "Rust is not covered.",
     ],
 )
 def test_answers_that_do_not_decline(answer):
     assert not declines(answer)
+
+
+def test_a_redirect_is_a_separate_signal():
+    assert redirects("Please reach out to our customer support team.")
+    assert redirects("Contact support.")
+    assert not redirects("I don't know.")
+    result = dont_know("Please contact support.", ())
+    assert not result.passed
+    assert "redirects to support" in result.detail
 
 
 SOURCES = (

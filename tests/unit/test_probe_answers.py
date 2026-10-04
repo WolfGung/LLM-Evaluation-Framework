@@ -15,6 +15,7 @@ from llmeval.cassettes import Usage
 from llmeval.checks.reference import required_facts
 from llmeval.client import CallResult
 from llmeval.datasets import load_rag
+from llmeval.runner import rag_checks
 
 CASES = {case.id: case for case in load_rag()}
 
@@ -91,3 +92,78 @@ CORRECT = [
 def test_correct_answers_state_the_required_facts(case_id, text):
     result = required_facts(text, CASES[case_id].required_facts)
     assert result.passed, result.detail
+
+
+def failed_checks(case_id: str, text: str) -> list[str]:
+    return [
+        check.name
+        for check in rag_checks(CASES[case_id], answer_for(case_id, text))
+        if not check.passed
+    ]
+
+
+# Invented answers: each must fail its case, on the named check (review round 1,
+# I1 and M3).
+INVENTED = [
+    (
+        "rag-032",
+        "Yes! Tile cutters can be rented at the Springfield store. Ask our support team to "
+        "book one.",
+        "dont_know",
+    ),
+    (
+        "rag-029",
+        "Yes, we price match. Contact support with the link to the cheaper offer.",
+        "dont_know",
+    ),
+    (
+        "rag-029",
+        "Yes, we price match. Contact support with the link to the cheaper offer.",
+        "no_forbidden",
+    ),
+    ("rag-034", "Refurbished tools are not covered by the warranty [kb-warranty].", "dont_know"),
+    ("rag-033", "We sharpen saw blades for free in store. Not sure about chisels.", "no_forbidden"),
+    ("rag-032", "Yes! Tile cutters can be rented at the Springfield store.", "no_forbidden"),
+    ("rag-029", "We'll match the price if you send us the link.", "no_forbidden"),
+    ("rag-030", "Sure, use code TOOLS-50 at checkout.", "no_forbidden"),
+    ("rag-032", "Tile cutters are $20/day at the store.", "no_forbidden"),
+    ("rag-002", "Power tools have a lifetime warranty [kb-warranty].", "no_forbidden"),
+]
+
+
+@pytest.mark.parametrize(
+    ("case_id", "text", "check"),
+    INVENTED,
+    ids=[f"{c}-{check}-{i}" for i, (c, _, check) in enumerate(INVENTED)],
+)
+def test_invented_answers_fail_their_case(case_id, text, check):
+    assert check in failed_checks(case_id, text)
+
+
+# Honest answers to unanswerable questions: each must pass every check.
+HONEST = [
+    (
+        "rag-029",
+        "I don't know whether Toolshop price matches; the documents don't say. Please contact "
+        "support.",
+    ),
+    ("rag-033", "I do not know whether we sharpen saw blades. Please contact support."),
+    (
+        "rag-032",
+        "There is nothing in my documents about renting tools, so I can't say. You could ask "
+        "our support team.",
+    ),
+    (
+        "rag-034",
+        "The documents don't say anything about refurbished tools. New power tools have a "
+        "2-year warranty [kb-warranty].",
+    ),
+    ("rag-035", "That information is unavailable in my documents; please contact support."),
+]
+
+
+@pytest.mark.parametrize(
+    ("case_id", "text"), HONEST, ids=[f"{c}-{i}" for i, (c, _) in enumerate(HONEST)]
+)
+def test_honest_declines_pass_their_case(case_id, text):
+    assert failed_checks(case_id, text) == []
