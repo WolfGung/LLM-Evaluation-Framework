@@ -12,6 +12,7 @@ import re
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, model_validator
@@ -45,13 +46,47 @@ class _Strict(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+# OpenRouter's reasoning effort levels.
+ReasoningEffort = Literal["max", "xhigh", "high", "medium", "low", "minimal", "none"]
+
+
+class ReasoningConfig(_Strict):
+    """OpenRouter's `reasoning` request option for models that think before answering.
+
+    Reasoning tokens are billed and count towards the answer length, so a role
+    sets the effort (or a token budget) on purpose instead of taking the model
+    default. OpenRouter accepts an effort or a token budget, not both.
+    """
+
+    effort: ReasoningEffort | None = None
+    max_tokens: int | None = Field(default=None, gt=0)
+    exclude: bool | None = None
+
+    @model_validator(mode="after")
+    def _effort_or_budget(self) -> ReasoningConfig:
+        if self.effort is not None and self.max_tokens is not None:
+            raise ValueError("reasoning takes effort or max_tokens, not both")
+        return self
+
+    def to_request(self) -> dict[str, object]:
+        return self.model_dump(exclude_none=True)
+
+
 class RoleConfig(_Strict):
-    """Call parameters for one model role (the system under test or the judge)."""
+    """Call parameters for one model role (the system under test or the judge).
+
+    `structured_output: true` sends the JSON schema as `response_format` and
+    routes only to endpoints that enforce it. Set it only for a model that
+    lists `response_format` and `structured_outputs` on OpenRouter; for any
+    other model the caller puts the schema in the prompt and validates the reply.
+    """
 
     model: str = Field(min_length=1)
     temperature: float = Field(ge=0, le=2)
     seed: int | None = None
     max_tokens: int = Field(gt=0)
+    reasoning: ReasoningConfig | None = None
+    structured_output: bool
 
 
 class ModelsConfig(_Strict):

@@ -11,6 +11,7 @@ import httpx
 import pytest
 
 from llmeval.cassettes import Usage
+from llmeval.config import ReasoningConfig, RoleConfig
 from llmeval.pricing import (
     BudgetExceeded,
     ModelPrice,
@@ -92,6 +93,28 @@ def test_paid_estimate_uses_max_completion_tokens():
     plan = [PlannedCall("vendor-b/paid", prompt_tokens=1000, max_completion_tokens=500)] * 2
 
     assert estimate_cost(plan, {"vendor-b/paid": price()}) == pytest.approx(0.006)
+
+
+def test_estimate_includes_the_reasoning_budget():
+    plan = [PlannedCall("vendor-b/paid", 1000, 500, max_reasoning_tokens=1000)]
+
+    assert estimate_cost(plan, {"vendor-b/paid": price()}) == pytest.approx(0.001 + 0.006)
+
+
+def test_planned_call_takes_its_sizes_from_the_role():
+    role = RoleConfig(
+        model="vendor-b/paid",
+        temperature=0,
+        max_tokens=500,
+        reasoning=ReasoningConfig(max_tokens=1000),
+        structured_output=True,
+    )
+
+    call = PlannedCall.for_role(role, prompt_tokens=1000)
+
+    assert call == PlannedCall("vendor-b/paid", 1000, 500, max_reasoning_tokens=1000)
+    no_budget = role.model_copy(update={"reasoning": ReasoningConfig(effort="low")})
+    assert PlannedCall.for_role(no_budget, prompt_tokens=10).max_reasoning_tokens == 0
 
 
 def test_estimate_needs_a_price_for_every_model():

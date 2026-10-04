@@ -32,12 +32,19 @@ from llmeval.cassettes import (
     request_key,
     utc_now,
 )
-from llmeval.config import Config, Mode
+from llmeval.config import Config, Mode, RoleConfig
 from llmeval.openrouter import OpenRouterError, http_client, read_json, require_key, send
 from llmeval.pricing import ModelPrice, PricingError, fetch_prices
 from llmeval.quota import RateLimiter, wait_or_stop
 
-__all__ = ["CallResult", "MissingRecording", "ModelClient", "Usage", "build_request"]
+__all__ = [
+    "CallResult",
+    "MissingRecording",
+    "ModelClient",
+    "Usage",
+    "build_request",
+    "build_role_request",
+]
 
 Message = Mapping[str, Any]
 
@@ -67,6 +74,20 @@ class CallResult:
     recorded_at: datetime
     key: str
     repeat: int
+    finish_reason: str | None = None
+
+    @property
+    def empty_reason(self) -> str | None:
+        """Why the answer is empty, or None when it has text.
+
+        "length" means the token budget ran out (often spent on reasoning);
+        "no_content" means the model stopped without writing anything.
+        """
+        if self.content.strip():
+            return None
+        if self.finish_reason in (None, "stop"):
+            return "no_content"
+        return self.finish_reason
 
     @classmethod
     def from_entry(cls, entry: CassetteEntry) -> CallResult:
@@ -81,6 +102,7 @@ class CallResult:
             recorded_at=entry.recorded_at,
             key=entry.key,
             repeat=entry.repeat,
+            finish_reason=entry.response.finish_reason,
         )
 
 
@@ -92,8 +114,13 @@ def build_request(
     seed: int | None,
     max_tokens: int,
     response_format: Mapping[str, Any] | None = None,
+    reasoning: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The exact JSON body sent to `/chat/completions` (and stored in the cassette)."""
+    """The exact JSON body sent to `/chat/completions` (and stored in the cassette).
+
+    Every keyword here is part of the cassette key, because the key hashes the
+    whole body.
+    """
     body: dict[str, Any] = {
         "model": model,
         "messages": [dict(message) for message in messages],
@@ -108,7 +135,35 @@ def build_request(
         # Route only to endpoints that support structured output, instead of
         # letting a provider silently ignore the schema.
         body["provider"] = {"require_parameters": True}
+    if reasoning is not None:
+        body["reasoning"] = dict(reasoning)
     return body
+
+
+def build_role_request(
+    messages: Sequence[Message],
+    role: RoleConfig,
+    response_format: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The request body for one call made in a model role (system or judge).
+
+    A schema is sent only for a role with `structured_output: true`; for any
+    other role the caller puts the schema in the prompt and validates the reply.
+    """
+    if response_format is not None and not role.structured_output:
+        raise ValueError(
+            f"{role.model} is configured with structured_output: false; "
+            "put the schema in the prompt instead of sending response_format"
+        )
+    return build_request(
+        messages,
+        model=role.model,
+        temperature=role.temperature,
+        seed=role.seed,
+        max_tokens=role.max_tokens,
+        response_format=response_format,
+        reasoning=role.reasoning.to_request() if role.reasoning else None,
+    )
 
 
 class ModelClient:
@@ -154,22 +209,17 @@ class ModelClient:
         self,
         messages: Sequence[Message],
         *,
-        model: str,
-        temperature: float,
-        seed: int | None,
-        max_tokens: int,
+        role: RoleConfig,
         response_format: Mapping[str, Any] | None = None,
         repeat: int = 0,
         tag: CallTag | None = None,
     ) -> CallResult:
-        body = build_request(
-            messages,
-            model=model,
-            temperature=temperature,
-            seed=seed,
-            max_tokens=max_tokens,
-            response_format=response_format,
-        )
+        """Answer `messages` with the model and parameters of `role`.
+
+        An empty answer is returned like any other: it is measured behaviour
+        for the checks to fail, and `CallResult.empty_reason` says why.
+        """
+        body = build_role_request(messages, role, response_format)
         key = request_key(body, repeat)
 
         if self.mode is Mode.REPLAY:
@@ -251,8 +301,8 @@ def _parse_answer(data: Mapping[str, Any], model_requested: str) -> StoredRespon
     return StoredResponse(
         id=data.get("id"),
         model=data.get("model") or model_requested,
-        # A model can return no text (for example, only reasoning); that is a
-        # result worth evaluating, not a transport error.
+        # A model can return no text (for example, it spent the budget on
+        # reasoning); that is a result worth evaluating, not a transport error.
         content=(choice.get("message") or {}).get("content") or "",
         finish_reason=choice.get("finish_reason"),
     )
@@ -262,7 +312,11 @@ def _parse_usage(data: Mapping[str, Any]) -> Usage:
     usage = data.get("usage")
     if not isinstance(usage, dict):
         raise OpenRouterError("response has no usage block")
+    details = usage.get("completion_tokens_details")
+    if not isinstance(details, dict):
+        details = {}
     return Usage(
-        prompt_tokens=usage.get("prompt_tokens", 0),
-        completion_tokens=usage.get("completion_tokens", 0),
+        prompt_tokens=usage.get("prompt_tokens") or 0,
+        completion_tokens=usage.get("completion_tokens") or 0,
+        reasoning_tokens=details.get("reasoning_tokens") or 0,
     )

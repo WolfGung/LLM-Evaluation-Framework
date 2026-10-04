@@ -17,6 +17,7 @@ from decimal import Decimal, InvalidOperation
 import httpx
 
 from llmeval.cassettes import StoredPrices, Usage, utc_now
+from llmeval.config import RoleConfig
 from llmeval.openrouter import get_json, http_client
 
 # English text averages about 4 characters per token. Assuming 3 makes the
@@ -70,6 +71,14 @@ class PlannedCall:
     model: str
     prompt_tokens: int
     max_completion_tokens: int
+    # A reasoning token budget, when the role sets one, is counted on top of
+    # max_tokens so the estimate stays an upper bound.
+    max_reasoning_tokens: int = 0
+
+    @classmethod
+    def for_role(cls, role: RoleConfig, prompt_tokens: int) -> PlannedCall:
+        reasoning_budget = role.reasoning.max_tokens if role.reasoning else None
+        return cls(role.model, prompt_tokens, role.max_tokens, reasoning_budget or 0)
 
 
 def fetch_prices(
@@ -102,13 +111,14 @@ def estimate_prompt_tokens(messages: Sequence[Mapping[str, object]]) -> int:
 
 
 def estimate_cost(plan: Iterable[PlannedCall], prices: Mapping[str, ModelPrice]) -> float:
-    """Upper-bound cost of a plan: every call is assumed to use its full max_tokens."""
+    """Upper-bound cost of a plan: every call is assumed to use its full token budgets."""
     total = Decimal(0)
     for call in plan:
         price = prices.get(call.model)
         if price is None:
             raise PricingError(f"no price for {call.model}; fetch prices before estimating")
-        total += call.prompt_tokens * price.prompt + call.max_completion_tokens * price.completion
+        completion_tokens = call.max_completion_tokens + call.max_reasoning_tokens
+        total += call.prompt_tokens * price.prompt + completion_tokens * price.completion
     return float(total)
 
 

@@ -16,7 +16,7 @@ from pydantic import SecretStr
 
 from llmeval.cassettes import CallTag, CassetteStore, request_key
 from llmeval.client import CallResult, MissingRecording, ModelClient, build_request
-from llmeval.config import Config, Mode, ModelsConfig, RoleConfig, Settings
+from llmeval.config import Config, Mode, ModelsConfig, ReasoningConfig, RoleConfig, Settings
 from llmeval.openrouter import MissingAPIKey, OpenRouterError
 from llmeval.quota import QuotaExhausted, RateLimiter
 
@@ -28,28 +28,48 @@ MESSAGES = [
     {"role": "user", "content": "Synthetic question?"},
 ]
 TAG = CallTag(function="rag", case="rag-001", version="v1")
+SYSTEM = RoleConfig(
+    model=MODEL,
+    temperature=0.2,
+    max_tokens=100,
+    reasoning=ReasoningConfig(effort="none"),
+    structured_output=False,
+)
+JUDGE = RoleConfig(
+    model="vendor-b/large:free",
+    temperature=0,
+    seed=7,
+    max_tokens=1500,
+    reasoning=ReasoningConfig(effort="low"),
+    structured_output=True,
+)
+SCHEMA = {"type": "json_schema", "json_schema": {"name": "t", "strict": True, "schema": {}}}
 
 
 def make_config(api_key: str | None = FAKE_KEY) -> Config:
-    models = ModelsConfig(
-        system=RoleConfig(model=MODEL, temperature=0.2, seed=7, max_tokens=100),
-        judge=RoleConfig(model="vendor-b/large:free", temperature=0, seed=7, max_tokens=100),
-        repeats=3,
-        rpm=18,
-    )
+    models = ModelsConfig(system=SYSTEM, judge=JUDGE, repeats=3, rpm=18)
     key = SecretStr(api_key) if api_key else None
     return Config(models=models, settings=Settings(api_key=key))
 
 
-def completion(content="Synthetic answer.", cost: float | None = 0.0) -> dict:
-    usage = {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17}
+def completion(
+    content: str | None = "Synthetic answer.",
+    cost: float | None = 0.0,
+    finish_reason: str = "stop",
+    reasoning_tokens: int | None = None,
+) -> dict:
+    usage: dict = {"prompt_tokens": 12, "completion_tokens": 5, "total_tokens": 17}
     if cost is not None:
         usage["cost"] = cost
+    if reasoning_tokens is not None:
+        usage["completion_tokens_details"] = {"reasoning_tokens": reasoning_tokens}
     return {
         "id": "gen-synthetic-1",
         "model": MODEL,
         "provider": "SyntheticProvider",
-        "choices": [{"index": 0, "finish_reason": "stop", "message": {"content": content}}],
+        "choices": [
+            {"index": 0, "finish_reason": finish_reason, "message": {"content": content}}
+        ],
         "usage": usage,
     }
 
@@ -105,9 +125,10 @@ def make_client(mode, store, transport=None, config=None, **overrides) -> ModelC
     return ModelClient(mode, store, config or make_config(), transport, **kwargs)
 
 
-def ask(client: ModelClient, repeat=0, tag=TAG, **params) -> CallResult:
-    values = {"model": MODEL, "temperature": 0.2, "seed": 7, "max_tokens": 100, **params}
-    return client.complete(MESSAGES, repeat=repeat, tag=tag, **values)
+def ask(client: ModelClient, repeat=0, tag=TAG, role=SYSTEM, response_format=None) -> CallResult:
+    return client.complete(
+        MESSAGES, role=role, response_format=response_format, repeat=repeat, tag=tag
+    )
 
 
 def cassette_text(directory) -> str:
@@ -273,21 +294,79 @@ def test_call_is_kept_when_no_cost_can_be_found(tmp_path):
     assert entry["response"]["content"] == "Synthetic answer."
 
 
-def test_structured_output_requires_supporting_endpoints(tmp_path):
-    schema = {"type": "json_schema", "json_schema": {"name": "t", "strict": True, "schema": {}}}
+def test_structured_role_sends_the_schema_to_supporting_endpoints_only(tmp_path):
     recorder = Recorder(httpx.Response(200, json=completion("{}")))
     with make_client(Mode.LIVE, CassetteStore(tmp_path), recorder.transport) as client:
-        ask(client, response_format=schema)
+        ask(client, role=JUDGE, response_format=SCHEMA)
 
     body = json.loads(recorder.requests[0].content)
-    assert body["response_format"] == schema
+    assert body["response_format"] == SCHEMA
     assert body["provider"] == {"require_parameters": True}
+    assert body["seed"] == 7
+    assert body["reasoning"] == {"effort": "low"}
+    assert body["max_tokens"] == 1500
+
+
+def test_unstructured_role_sends_no_schema(tmp_path):
+    recorder = Recorder(httpx.Response(200, json=completion()))
+    with make_client(Mode.LIVE, CassetteStore(tmp_path), recorder.transport) as client:
+        ask(client, role=SYSTEM)
+
+    body = json.loads(recorder.requests[0].content)
+    assert "response_format" not in body
+    assert "provider" not in body
+    assert "seed" not in body
+    assert body["reasoning"] == {"effort": "none"}
+
+
+def test_unstructured_role_refuses_a_schema(tmp_path):
+    # The caller must put the schema in the prompt for such a role; sending it
+    # anyway would be refused by endpoints that do not support it.
+    client = make_client(Mode.REPLAY, CassetteStore(tmp_path))
+
+    with pytest.raises(ValueError, match="structured_output"):
+        ask(client, role=SYSTEM, response_format=SCHEMA)
 
 
 def test_request_body_omits_unset_options():
     body = build_request(MESSAGES, model=MODEL, temperature=0, seed=None, max_tokens=50)
 
     assert body == {"model": MODEL, "messages": MESSAGES, "temperature": 0, "max_tokens": 50}
+
+
+def test_empty_completion_is_returned_and_recorded(tmp_path):
+    # An empty answer is measured behaviour for the checks to fail, not an error.
+    recorder = Recorder(
+        httpx.Response(
+            200, json=completion(content=None, finish_reason="length", reasoning_tokens=100)
+        )
+    )
+    with make_client(Mode.RECORD, CassetteStore(tmp_path), recorder.transport) as client:
+        result = ask(client)
+
+    assert result.content == ""
+    assert result.finish_reason == "length"
+    assert result.empty_reason == "length"
+    assert result.usage.reasoning_tokens == 100
+    assert CassetteStore(tmp_path).get(result.key).usage.reasoning_tokens == 100
+
+
+def test_empty_completion_that_stopped_normally(tmp_path):
+    recorder = Recorder(httpx.Response(200, json=completion(content="  ")))
+    with make_client(Mode.LIVE, CassetteStore(tmp_path), recorder.transport) as client:
+        result = ask(client)
+
+    assert result.empty_reason == "no_content"
+
+
+def test_answer_with_text_has_no_empty_reason(tmp_path):
+    recorder = Recorder(httpx.Response(200, json=completion()))
+    with make_client(Mode.LIVE, CassetteStore(tmp_path), recorder.transport) as client:
+        result = ask(client)
+
+    assert result.finish_reason == "stop"
+    assert result.empty_reason is None
+    assert result.usage.reasoning_tokens == 0
 
 
 BASE_REQUEST = {
@@ -297,6 +376,7 @@ BASE_REQUEST = {
     "seed": 7,
     "max_tokens": 100,
     "response_format": None,
+    "reasoning": None,
 }
 CHANGED_REQUEST = {
     "messages": [{"role": "user", "content": "Another synthetic question?"}],
@@ -305,6 +385,7 @@ CHANGED_REQUEST = {
     "seed": 8,
     "max_tokens": 101,
     "response_format": {"type": "json_object"},
+    "reasoning": {"effort": "low"},
 }
 
 

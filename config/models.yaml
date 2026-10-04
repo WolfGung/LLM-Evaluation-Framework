@@ -4,22 +4,35 @@
 # run costs nothing. Free variants allow about 20 requests per minute and
 # 50 requests per day, so recording is resumable across days.
 #
-# Chosen on 2026-10-04 from GET https://openrouter.ai/api/v1/models: both list
-# "structured_outputs", "response_format" and "seed" in supported_parameters.
-# They come from different vendors, and the judge is the larger model, so the
-# judge does not grade answers written by its own model family.
+# Facts from GET https://openrouter.ai/api/v1/models on 2026-10-04:
+# - qwen/qwen3.8-27b:free lists structured_outputs, reasoning and
+#   reasoning_effort, but NOT response_format or seed. So the system role sends
+#   no schema and no seed: the caller puts the schema in the prompt and
+#   validates the reply, and repeats measure how stable the answers are.
+# - nvidia/nemotron-3-super-120b-a12b:free lists response_format,
+#   structured_outputs, seed and reasoning. So the judge uses enforced
+#   structured output and a fixed seed.
+# The two models come from different vendors, so the judge does not grade
+# answers written by its own model family.
+#
+# Reasoning tokens are billed and count towards the answer length. The system
+# role turns reasoning off; the judge reasons a little, and its max_tokens
+# leaves room for that plus the verdict.
 
 system:                       # answers questions and triages tickets
-  model: liquid/lfm-2.5-2.6b:free
+  model: qwen/qwen3.8-27b:free
   temperature: 0.2
-  seed: 7
   max_tokens: 600
+  reasoning: {effort: none}
+  structured_output: false
 
 judge:                        # grades what rules cannot check
   model: nvidia/nemotron-3-super-120b-a12b:free
   temperature: 0
   seed: 7
-  max_tokens: 400
+  max_tokens: 1500
+  reasoning: {effort: low}
+  structured_output: true
 
 repeats: 3                    # runs per case for the stability layer
 rpm: 18                       # stay under the free limit of 20 requests per minute

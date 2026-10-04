@@ -11,6 +11,7 @@ import pytest
 from llmeval.config import (
     ConfigError,
     Mode,
+    ReasoningConfig,
     load_config,
     load_models_config,
     load_settings,
@@ -19,8 +20,19 @@ from llmeval.config import (
 REPO_CONFIG = Path(__file__).resolve().parents[2] / "config" / "models.yaml"
 
 VALID_YAML = """
-system: {model: vendor-a/small:free, temperature: 0.2, seed: 7, max_tokens: 600}
-judge: {model: vendor-b/large:free, temperature: 0, seed: 7, max_tokens: 400}
+system:
+  model: vendor-a/small:free
+  temperature: 0.2
+  max_tokens: 600
+  reasoning: {effort: none}
+  structured_output: false
+judge:
+  model: vendor-b/large:free
+  temperature: 0
+  seed: 7
+  max_tokens: 1500
+  reasoning: {effort: low}
+  structured_output: true
 repeats: 3
 rpm: 18
 """
@@ -36,7 +48,12 @@ def test_valid_config_loads(tmp_path):
     config = load_models_config(write(tmp_path, VALID_YAML))
 
     assert config.system.model == "vendor-a/small:free"
+    assert config.system.seed is None
+    assert config.system.reasoning.effort == "none"
+    assert config.system.structured_output is False
     assert config.judge.temperature == 0
+    assert config.judge.reasoning.effort == "low"
+    assert config.judge.structured_output is True
     assert config.repeats == 3
     assert config.rpm == 18
 
@@ -53,9 +70,14 @@ def test_judge_must_differ_from_system(tmp_path):
     [
         ("repeats: 3", "repeats: 0"),
         ("rpm: 18", "rpm: 0"),
-        ("max_tokens: 400", "max_tokens: 0"),
-        ("temperature: 0,", "temperature: 3,"),
+        ("max_tokens: 1500", "max_tokens: 0"),
+        ("temperature: 0\n", "temperature: 3\n"),
         ("rpm: 18", "rpm: 18\nunknown_field: 1"),
+        ("{effort: low}", "{effort: extreme}"),
+        ("{effort: low}", "{effort: low, max_tokens: 500}"),
+        ("{effort: low}", "{max_tokens: 0}"),
+        ("{effort: low}", "{effort: low, budget: 1}"),
+        ("  structured_output: true\n", ""),
     ],
 )
 def test_invalid_values_are_rejected(tmp_path, old, new):
@@ -70,11 +92,27 @@ def test_missing_file_names_the_path(tmp_path):
         load_models_config(missing)
 
 
+def test_reasoning_settings_become_the_request_option():
+    assert ReasoningConfig(effort="none").to_request() == {"effort": "none"}
+    assert ReasoningConfig(max_tokens=800, exclude=True).to_request() == {
+        "max_tokens": 800,
+        "exclude": True,
+    }
+
+
 def test_repository_config_is_valid_and_free():
     config = load_models_config(REPO_CONFIG)
 
     assert config.system.model.endswith(":free")
     assert config.judge.model.endswith(":free")
+    # The system model lists no response_format or seed on OpenRouter, so it
+    # gets the schema in the prompt; the judge uses enforced structured output.
+    assert config.system.structured_output is False
+    assert config.system.seed is None
+    assert config.judge.structured_output is True
+    assert config.judge.seed is not None
+    assert config.judge.reasoning is not None and config.judge.reasoning.effort == "low"
+    assert config.judge.max_tokens >= 1000
     assert config.judge.temperature == 0
     assert config.repeats == 3
     assert config.rpm == 18

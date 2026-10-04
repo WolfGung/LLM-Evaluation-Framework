@@ -109,8 +109,15 @@ class CallTag(_Record):
 
 
 class Usage(_Record):
+    """Token counts reported by the API.
+
+    `reasoning_tokens` is the part of `completion_tokens` the model spent
+    thinking; a large share with an empty answer means the budget ran out.
+    """
+
     prompt_tokens: int = Field(ge=0)
     completion_tokens: int = Field(ge=0)
+    reasoning_tokens: int = Field(default=0, ge=0)
 
     @property
     def total_tokens(self) -> int:
