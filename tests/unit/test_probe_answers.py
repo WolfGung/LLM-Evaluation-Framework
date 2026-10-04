@@ -58,6 +58,11 @@ CORRECT = [
         "whatever the brand [kb-batteries]. The store is open Monday–Saturday, 8 am–6 pm "
         "[kb-store-pickup].",
     ),
+    (
+        "rag-025",
+        "You can change it until the order is Packed; after that it can't be changed "
+        "[kb-shipping]. Check the status under Orders in your account [kb-order-status].",
+    ),
     ("rag-006", "Standard shipping takes between 3 and 5 business days [kb-delivery-times]."),
     ("rag-006", "It takes 3-5 working days from dispatch [kb-delivery-times]."),
     (

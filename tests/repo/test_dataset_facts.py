@@ -48,3 +48,26 @@ def test_multi_document_facts_need_every_document(rag_cases, kb):
                 for alternatives in case.fact_alternatives
                 for alt in alternatives
             ), f"{case.id}: {doc_id} holds none of the required facts"
+
+
+def _holds(doc: str, alternatives: tuple[str, ...]) -> bool:
+    return any(contains(doc, normalise(alt)) for alt in alternatives)
+
+
+def test_no_single_document_answers_a_multi_document_case(rag_cases, kb):
+    # Otherwise the case is answerable from one document and measures nothing
+    # a single-document case does not.
+    for case in (c for c in rag_cases if c.category == "multi_doc"):
+        for doc_id in case.expected_docs:
+            assert not all(_holds(kb[doc_id], alts) for alts in case.fact_alternatives), (
+                f"{case.id}: {doc_id} alone holds every required fact"
+            )
+
+
+def test_required_facts_are_not_words_of_the_question(rag_cases):
+    # A fact the question already states is passed by echoing the question.
+    for case in rag_cases:
+        question = normalise(case.question)
+        for alternatives in case.fact_alternatives:
+            echoed = [alt for alt in alternatives if contains(question, normalise(alt))]
+            assert not echoed, f"{case.id}: {', '.join(echoed)} is in the question"
