@@ -352,3 +352,22 @@ def test_the_rag_suite_replays_the_judge_and_gates_on_it(ws):
     assert code == 1, out
     assert "1 failed" in out
     assert "[judge] groundedness: 2/5 (pass needs 4 or more); judge: Invented." in out
+
+
+def test_a_changed_rubric_is_noticed_once(ws):
+    manifest = {
+        "models": {"system": MODELS.system.model, "judge": MODELS.judge.model},
+        "prompt_versions": {"rag": ["v1"]},
+        "repeats": 1,
+        "datasets": {"rag.jsonl": "0" * 64},
+        "recorded_from": "2026-01-01T10:00:00Z",
+        "recorded_to": "2026-01-01T10:01:00Z",
+        "planned_calls": 2,
+        "recorded_calls": 2,
+        "rubric_sha256": "0" * 64,
+    }
+    (ws / "cassettes" / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
+    code, out = run_eval_suite(ws, "-k", RAG_CASE.id, suite="tests/eval/test_rag_eval.py")
+    assert code == 1, out  # nothing is recorded: the replay miss still fails loudly
+    notice = "notice: rubric changed since the recording: re-record the judge layer"
+    assert out.count(notice) == 1

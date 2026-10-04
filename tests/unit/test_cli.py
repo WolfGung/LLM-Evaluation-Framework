@@ -110,7 +110,7 @@ def eval_args(ws, *extra):
     ]
 
 
-def write_manifest(ws, versions):
+def write_manifest(ws, versions, rubric_sha256=None):
     manifest = {
         "models": {"system": "synthetic/system:free", "judge": "synthetic/judge:free"},
         "prompt_versions": versions,
@@ -120,6 +120,7 @@ def write_manifest(ws, versions):
         "recorded_to": "2026-01-01T10:05:00Z",
         "planned_calls": 2,
         "recorded_calls": 2,
+        "rubric_sha256": rubric_sha256 or load_rubric(RUBRIC).sha256,
     }
     (ws / "cassettes" / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
 
@@ -275,6 +276,17 @@ def test_record_then_replay_end_to_end(workspace):
     assert replayed["summary"] == original["summary"]
     assert replayed["cases"][0]["runs"][0]["judge"]["scores"]["helpfulness"] == 4
     assert recorder.requests == 7  # replay made no request
+    assert "rubric changed" not in result.output
+
+
+def test_eval_says_when_the_rubric_changed_since_the_recording(workspace):
+    write_manifest(workspace, {"rag": ["v1"], "triage": ["v1"]}, rubric_sha256="0" * 64)
+    result = runner.invoke(app, eval_args(workspace))
+    assert result.exit_code == 1  # nothing is recorded in this workspace
+    assert (
+        result.output.count("notice: rubric changed since the recording: re-record the judge layer")
+        == 1
+    )
 
 
 def test_eval_refuses_a_broken_rubric(workspace):

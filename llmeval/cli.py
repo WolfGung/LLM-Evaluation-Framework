@@ -95,9 +95,11 @@ def eval_command(
         current = {p.name: file_sha256(p) for p in (rag_path, triage_path) if p.is_file()}
         if notice := manifest.dataset_notice(current):
             typer.echo(notice)
+        judge_rubric = load_rubric(rubric)
+        if notice := manifest.rubric_notice(judge_rubric.sha256):
+            typer.echo(notice)
         rag_cases = load_rag(rag_path) if "rag" in functions else ()
         triage_cases = load_triage(triage_path) if "triage" in functions else ()
-        judge_rubric = load_rubric(rubric)
         client = ModelClient(Mode.REPLAY, CassetteStore(cassettes_dir), replay_config)
         outcome = run(
             client,

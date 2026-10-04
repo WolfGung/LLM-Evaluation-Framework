@@ -250,6 +250,11 @@ class RunManifest(_Record):
     - `stability_cases`: the case ids that run `repeats` times for the
       stability layer; every other case runs once. None means every case runs
       `repeats` times. A subset lets a first recording fit a small daily quota.
+    - `rubric_sha256`: the judge rubric the judge layer was recorded with
+      (`Rubric.sha256` of `rubrics/judge.md`), next to the judge model in
+      `models`. None for a recording without the judge layer. The rubric is
+      part of every judge prompt, so an edited rubric needs a new recording of
+      the judge layer; `rubric_notice` says so before replay misses do.
     """
 
     schema_version: Literal[1] = 1
@@ -262,6 +267,7 @@ class RunManifest(_Record):
     planned_calls: int = Field(ge=1)
     recorded_calls: int = Field(ge=0)
     stability_cases: Annotated[tuple[str, ...], Field(min_length=1)] | None = None
+    rubric_sha256: Sha256 | None = None
 
     @model_validator(mode="after")
     def _complete_and_ordered(self) -> RunManifest:
@@ -303,6 +309,12 @@ class RunManifest(_Record):
             f"notice: datasets changed since the recording: {', '.join(changed)} "
             "(expectations are re-checked; a changed input fails replay)"
         )
+
+    def rubric_notice(self, current: str) -> str | None:
+        """One line when the rubric differs from the recorded one, else None."""
+        if self.rubric_sha256 is None or current == self.rubric_sha256:
+            return None
+        return "notice: rubric changed since the recording: re-record the judge layer"
 
 
 def repeats_for(case_id: str, repeats: int, stability_cases: Collection[str] | None) -> int:

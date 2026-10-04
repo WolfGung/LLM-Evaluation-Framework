@@ -171,3 +171,31 @@ def test_changed_datasets_are_named():
     assert notice is not None and notice.startswith("notice: ")
     assert "rag.jsonl" in notice and "\n" not in notice
     assert manifest.dataset_notice({"rag.jsonl": HASH, "triage.jsonl": "b" * 64}) is None
+
+
+# --- the rubric the judge layer was recorded with ------------------------------
+
+RUBRIC_NOTICE = "notice: rubric changed since the recording: re-record the judge layer"
+
+
+def test_the_manifest_keeps_the_rubric_hash():
+    manifest = RunManifest.model_validate(manifest_data(rubric_sha256="c" * 64))
+    assert manifest.rubric_sha256 == "c" * 64
+    assert manifest.models["judge"] == "vendor-b/large:free"
+    # A recording without the judge layer has no rubric.
+    assert RunManifest.model_validate(manifest_data()).rubric_sha256 is None
+
+
+def test_the_rubric_hash_must_be_a_sha256():
+    with pytest.raises(ValidationError, match="rubric_sha256"):
+        RunManifest.model_validate(manifest_data(rubric_sha256="not-a-hash"))
+
+
+def test_a_changed_rubric_gives_one_notice():
+    manifest = RunManifest.model_validate(manifest_data(rubric_sha256="c" * 64))
+    assert manifest.rubric_notice("c" * 64) is None
+    assert manifest.rubric_notice("d" * 64) == RUBRIC_NOTICE
+
+
+def test_no_recorded_rubric_gives_no_notice():
+    assert RunManifest.model_validate(manifest_data()).rubric_notice("d" * 64) is None

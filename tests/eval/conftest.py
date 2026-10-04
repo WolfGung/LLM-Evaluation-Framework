@@ -7,6 +7,8 @@
   skips with "<function> is not in the recorded run".
 - A broken manifest fails collection, and the summary ends with one
   "manifest error: ..." line.
+- A rubric that differs from the recorded one adds one "notice: rubric
+  changed since the recording" line; its judge calls then miss in replay.
 - No baseline (`results/baseline.json`), or no entry for the case: skipped
   with "pending baseline" after the replay.
 - A baseline entry: compared with `llmeval.baseline.compare` (pass, xfail,
@@ -21,8 +23,9 @@ import pytest
 
 from llmeval.baseline import load_baseline
 from llmeval.cassettes import PENDING_RECORDED_RUN, CassetteError, load_manifest
+from llmeval.checks.judge import RUBRIC_PATH, RubricError, load_rubric
 from llmeval.datasets import file_sha256
-from tests.eval.support import BASELINE, CASSETTES, DATASETS, UNRECORDED, Replay
+from tests.eval.support import BASELINE, CASSETTES, DATASETS, ROOT, UNRECORDED, Replay
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
@@ -65,4 +68,11 @@ def pytest_terminal_summary(terminalreporter) -> None:
         return
     current = {path.name: file_sha256(path) for path in DATASETS.glob("*.jsonl")}
     if notice := manifest.dataset_notice(current):
+        terminalreporter.write_line(notice)
+    try:
+        rubric = load_rubric(ROOT / RUBRIC_PATH)
+    except RubricError as exc:
+        terminalreporter.write_line(f"rubric error: {exc}")
+        return
+    if notice := manifest.rubric_notice(rubric.sha256):
         terminalreporter.write_line(notice)
