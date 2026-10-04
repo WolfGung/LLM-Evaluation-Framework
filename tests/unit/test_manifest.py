@@ -17,6 +17,7 @@ from llmeval.cassettes import (
     ManifestMismatch,
     RunManifest,
     load_manifest,
+    repeats_for,
 )
 
 HASH = "a" * 64
@@ -123,13 +124,20 @@ def test_the_manifest_round_trips_through_json():
 def test_without_a_stability_subset_every_case_repeats():
     manifest = RunManifest.model_validate(manifest_data())
     assert manifest.stability_cases is None
-    assert manifest.repeats_for("rag-001") == 3
+    assert repeats_for("rag-001", manifest.repeats, manifest.stability_cases) == 3
 
 
 def test_a_stability_subset_repeats_only_its_cases():
     manifest = RunManifest.model_validate(manifest_data(stability_cases=["rag-001", "tri-004"]))
-    assert manifest.repeats_for("rag-001") == 3
-    assert manifest.repeats_for("rag-002") == 1
+    assert repeats_for("rag-001", manifest.repeats, manifest.stability_cases) == 3
+    assert repeats_for("rag-002", manifest.repeats, manifest.stability_cases) == 1
+
+
+def test_there_is_one_repeats_rule():
+    from llmeval import runner
+
+    assert runner.repeats_for is repeats_for
+    assert not hasattr(RunManifest, "repeats_for")
 
 
 def test_an_empty_stability_subset_is_refused():

@@ -32,7 +32,13 @@ from app import assistant
 from app import triage as triage_app
 from app.prompting import ChatModel, load_prompt, prompt_versions
 from app.retrieval import BM25Index, default_index
-from llmeval.cassettes import PENDING_RECORDED_RUN, CallTag, load_manifest, request_key
+from llmeval.cassettes import (
+    PENDING_RECORDED_RUN,
+    CallTag,
+    load_manifest,
+    repeats_for,
+    request_key,
+)
 from llmeval.checks import CheckResult
 from llmeval.checks import deterministic as det
 from llmeval.checks import reference as ref
@@ -80,13 +86,6 @@ class PlannedRequest:
     @property
     def tag(self) -> CallTag:
         return CallTag(function=self.function, case=self.case_id, version=self.version)
-
-
-def repeats_for(case_id: str, repeats: int, stability_cases: Collection[str] | None) -> int:
-    """`repeats` for a stability case (or for every case when there is no subset), else 1."""
-    if stability_cases is None or case_id in stability_cases:
-        return repeats
-    return 1
 
 
 def _versions(versions: Mapping[str, Sequence[str]] | None, function: str) -> tuple[str, ...]:

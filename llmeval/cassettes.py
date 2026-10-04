@@ -22,7 +22,7 @@ import hashlib
 import json
 import os
 import re
-from collections.abc import Iterator, Mapping
+from collections.abc import Collection, Iterator, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -276,12 +276,6 @@ class RunManifest(_Record):
             )
         return self
 
-    def repeats_for(self, case_id: str) -> int:
-        """How many times case `case_id` was recorded."""
-        if self.stability_cases is None or case_id in self.stability_cases:
-            return self.repeats
-        return 1
-
     def check_models(self, *, system: str, judge: str) -> None:
         """Raise `ManifestMismatch` when the config names other models than the recording."""
         for role, configured in (("system", system), ("judge", judge)):
@@ -309,6 +303,14 @@ class RunManifest(_Record):
             f"notice: datasets changed since the recording: {', '.join(changed)} "
             "(expectations are re-checked; a changed input fails replay)"
         )
+
+
+def repeats_for(case_id: str, repeats: int, stability_cases: Collection[str] | None) -> int:
+    """How many times a case runs: `repeats` for a stability case, or for every
+    case when there is no subset; once otherwise."""
+    if stability_cases is None or case_id in stability_cases:
+        return repeats
+    return 1
 
 
 def load_manifest(root: Path | str) -> RunManifest | None:
