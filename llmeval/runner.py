@@ -23,7 +23,7 @@ reproduces it byte for byte.
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -82,6 +82,13 @@ class PlannedRequest:
         return CallTag(function=self.function, case=self.case_id, version=self.version)
 
 
+def repeats_for(case_id: str, repeats: int, stability_cases: Collection[str] | None) -> int:
+    """`repeats` for a stability case (or for every case when there is no subset), else 1."""
+    if stability_cases is None or case_id in stability_cases:
+        return repeats
+    return 1
+
+
 def _versions(versions: Mapping[str, Sequence[str]] | None, function: str) -> tuple[str, ...]:
     known = versions_of(function)
     chosen = tuple(versions[function]) if versions and function in versions else known
@@ -101,6 +108,7 @@ def plan_requests(
     triage_cases: Sequence[TriageCase] = (),
     versions: Mapping[str, Sequence[str]] | None = None,
     repeats: int = 1,
+    stability_cases: Collection[str] | None = None,
     index: BM25Index | None = None,
 ) -> list[PlannedRequest]:
     """Every call of a run, in run order: function, version, case, repeat.
@@ -108,20 +116,21 @@ def plan_requests(
     Builds the exact messages the run sends, without calling anything, so the
     keys can be counted against the cassettes and the cost estimated.
     `versions` maps a function to the prompt versions to run (default: all).
+    `stability_cases` limits the repeats to those case ids (see `repeats_for`).
     """
     plan: list[PlannedRequest] = []
     if rag_cases:
         for version in _versions(versions, "rag"):
             for case in rag_cases:
                 messages, _ = assistant.prepare(case.question, version, index=index)
-                plan += _planned("rag", case.id, version, messages, None, role, repeats)
+                n = repeats_for(case.id, repeats, stability_cases)
+                plan += _planned("rag", case.id, version, messages, None, role, n)
     if triage_cases:
         for version in _versions(versions, "triage"):
             for case in triage_cases:
                 messages, response_format = triage_app.prepare(case.text, version, role)
-                plan += _planned(
-                    "triage", case.id, version, messages, response_format, role, repeats
-                )
+                n = repeats_for(case.id, repeats, stability_cases)
+                plan += _planned("triage", case.id, version, messages, response_format, role, n)
     return plan
 
 
@@ -199,12 +208,13 @@ def run_rag(
     version: str,
     *,
     repeats: int,
+    stability_cases: Collection[str] | None = None,
     index: BM25Index | None = None,
 ) -> list[CaseRecord]:
     records = []
     for case in cases:
         runs = []
-        for repeat in range(repeats):
+        for repeat in range(repeats_for(case.id, repeats, stability_cases)):
             answer = assistant.answer(
                 client, role, case.question, version, index=index, repeat=repeat, case=case.id
             )
@@ -240,11 +250,12 @@ def run_triage(
     version: str,
     *,
     repeats: int,
+    stability_cases: Collection[str] | None = None,
 ) -> list[CaseRecord]:
     records = []
     for case in cases:
         runs = []
-        for repeat in range(repeats):
+        for repeat in range(repeats_for(case.id, repeats, stability_cases)):
             error: str | None = None
             try:
                 answer = triage_app.triage(
@@ -292,13 +303,24 @@ def evaluate(
     mode: Mode,
     dataset_path: Path,
     repeats: int,
+    stability_cases: Collection[str] | None = None,
     index: BM25Index | None = None,
 ) -> FunctionResults:
     """Run one function with one prompt version over its dataset."""
     if function == "rag":
-        records = run_rag(client, role, cases, version, repeats=repeats, index=index)
+        records = run_rag(
+            client,
+            role,
+            cases,
+            version,
+            repeats=repeats,
+            stability_cases=stability_cases,
+            index=index,
+        )
     elif function == "triage":
-        records = run_triage(client, role, cases, version, repeats=repeats)
+        records = run_triage(
+            client, role, cases, version, repeats=repeats, stability_cases=stability_cases
+        )
     else:
         raise ValueError(f"unknown function {function!r}; known: {', '.join(EVAL_FUNCTIONS)}")
     prompt = load_prompt(PROMPT_NAMES[function], version)
@@ -337,6 +359,7 @@ def run(
     dataset_paths: Mapping[str, Path],
     versions: Mapping[str, Sequence[str]] | None = None,
     repeats: int = 1,
+    stability_cases: Collection[str] | None = None,
     index: BM25Index | None = None,
 ) -> RunOutcome:
     """Evaluate every function that has cases, for each chosen prompt version.
@@ -364,6 +387,7 @@ def run(
             mode=mode,
             dataset_path=dataset_paths[function],
             repeats=repeats,
+            stability_cases=stability_cases,
             index=index,
         )
         for function, cases in work

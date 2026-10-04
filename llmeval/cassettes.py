@@ -67,6 +67,10 @@ class CassetteError(RuntimeError):
     """A cassette file is broken or a write would corrupt the store."""
 
 
+class ManifestMismatch(CassetteError):
+    """The recorded run does not match the current configuration."""
+
+
 def utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -243,6 +247,9 @@ class RunManifest(_Record):
     - `planned_calls` / `recorded_calls`: the call plan and the calls in the
       cassettes for it. A manifest exists only for a complete recording, so
       `recorded_calls` is never below `planned_calls`.
+    - `stability_cases`: the case ids that run `repeats` times for the
+      stability layer; every other case runs once. None means every case runs
+      `repeats` times. A subset lets a first recording fit a small daily quota.
     """
 
     schema_version: Literal[1] = 1
@@ -254,6 +261,7 @@ class RunManifest(_Record):
     recorded_to: datetime
     planned_calls: int = Field(ge=1)
     recorded_calls: int = Field(ge=0)
+    stability_cases: Annotated[tuple[str, ...], Field(min_length=1)] | None = None
 
     @model_validator(mode="after")
     def _complete_and_ordered(self) -> RunManifest:
@@ -267,6 +275,40 @@ class RunManifest(_Record):
                 "a manifest is written only for a complete recording"
             )
         return self
+
+    def repeats_for(self, case_id: str) -> int:
+        """How many times case `case_id` was recorded."""
+        if self.stability_cases is None or case_id in self.stability_cases:
+            return self.repeats
+        return 1
+
+    def check_models(self, *, system: str, judge: str) -> None:
+        """Raise `ManifestMismatch` when the config names other models than the recording."""
+        for role, configured in (("system", system), ("judge", judge)):
+            recorded = self.models[role]
+            if recorded != configured:
+                raise ManifestMismatch(
+                    f"{role} model: recorded with {recorded}, config says {configured}: "
+                    "re-record or restore the config"
+                )
+
+    def changed_datasets(self, current: Mapping[str, str]) -> list[str]:
+        """Dataset files whose current sha256 differs from the recorded one."""
+        return [
+            name
+            for name, recorded in self.datasets.items()
+            if name in current and current[name] != recorded
+        ]
+
+    def dataset_notice(self, current: Mapping[str, str]) -> str | None:
+        """One line naming changed datasets, or None when nothing changed."""
+        changed = self.changed_datasets(current)
+        if not changed:
+            return None
+        return (
+            f"notice: datasets changed since the recording: {', '.join(changed)} "
+            "(expectations are re-checked; a changed input fails replay)"
+        )
 
 
 def load_manifest(root: Path | str) -> RunManifest | None:

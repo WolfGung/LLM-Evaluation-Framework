@@ -106,7 +106,7 @@ def write_manifest(cassettes, repeats=1):
     (cassettes / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
 
 
-def run_all(client, tmp_path, mode=Mode.REPLAY, repeats=1, versions=None):
+def run_all(client, tmp_path, mode=Mode.REPLAY, repeats=1, versions=None, stability_cases=None):
     datasets = tmp_path / "datasets"
     datasets.mkdir(exist_ok=True)
     (datasets / "rag.jsonl").write_text("synthetic\n", encoding="utf-8")
@@ -123,6 +123,7 @@ def run_all(client, tmp_path, mode=Mode.REPLAY, repeats=1, versions=None):
         dataset_paths={"rag": datasets / "rag.jsonl", "triage": datasets / "triage.jsonl"},
         versions=versions or {"rag": ("v1",), "triage": ("v1",)},
         repeats=repeats,
+        stability_cases=stability_cases,
         index=INDEX,
     )
 
@@ -161,6 +162,32 @@ def test_planned_keys_are_the_keys_the_run_uses(tmp_path):
 
     used = [request_key(call["body"], call["repeat"]) for call in fake.calls]
     assert sorted(used) == sorted(p.key for p in plan)
+
+
+def test_a_stability_subset_repeats_only_its_cases_in_the_plan():
+    plan = plan_requests(
+        UNSTRUCTURED,
+        rag_cases=RAG_CASES,
+        triage_cases=TRIAGE_CASES,
+        versions={"rag": ("v1",), "triage": ("v1",)},
+        repeats=3,
+        stability_cases={"rag-001", "tri-002"},
+        index=INDEX,
+    )
+    repeats = {}
+    for p in plan:
+        repeats[p.case_id] = repeats.get(p.case_id, 0) + 1
+    assert repeats == {"rag-001": 3, "rag-002": 1, "rag-003": 1, "tri-001": 1, "tri-002": 3}
+
+
+def test_the_run_follows_the_stability_subset(tmp_path):
+    write_manifest(tmp_path / "cassettes", repeats=3)
+    fake = FakeModel(reply=reply)
+    outcome = run_all(fake, tmp_path, repeats=3, stability_cases={"rag-001"})
+    rag = next(r for r in outcome.results if r.function == "rag")
+    assert [len(case.runs) for case in rag.cases] == [3, 1, 1]
+    assert rag.repeats == 3
+    assert len(fake.calls) == 3 + 1 + 1 + 2
 
 
 def test_the_plan_refuses_an_unknown_version():

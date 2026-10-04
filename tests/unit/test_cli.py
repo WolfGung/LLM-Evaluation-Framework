@@ -141,6 +141,19 @@ def test_eval_ignores_a_live_mode_in_the_environment(workspace, monkeypatch):
     assert "pending first recorded run" in result.output
 
 
+def test_eval_refuses_a_manifest_recorded_with_other_models(workspace):
+    write_manifest(workspace, {"rag": ["v1"], "triage": ["v1"]})
+    (workspace / "config.yaml").write_text(
+        CONFIG_YAML.replace("synthetic/system:free", "synthetic/other:free"), encoding="utf-8"
+    )
+    result = runner.invoke(app, eval_args(workspace))
+    assert result.exit_code == 1
+    assert (
+        "system model: recorded with synthetic/system:free, config says synthetic/other:free: "
+        "re-record or restore the config"
+    ) in result.output
+
+
 def test_eval_refuses_an_unknown_function(workspace):
     result = runner.invoke(app, eval_args(workspace, "--function", "chat"))
     assert result.exit_code != 0
@@ -217,6 +230,8 @@ def test_record_then_replay_end_to_end(workspace):
     assert result.exit_code == 0, result.output
     assert sorted(p.name for p in (ws / "results").iterdir()) == ["rag-v1.json", "triage-v2.json"]
     assert "rag v1" in result.output and "triage v2" in result.output
+    # The synthetic manifest holds placeholder hashes, so both datasets differ.
+    assert "notice: datasets changed since the recording: rag.jsonl, triage.jsonl" in result.output
 
     replayed = json.loads((ws / "results" / "rag-v1.json").read_text(encoding="utf-8"))
     original = recorded.results[0].model_dump(mode="json")

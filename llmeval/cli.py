@@ -21,7 +21,14 @@ from llmeval.cassettes import CassetteError, CassetteStore, load_manifest
 from llmeval.checks.retrieval import retrieval_recall
 from llmeval.client import MissingRecording, ModelClient
 from llmeval.config import DEFAULT_MODELS_PATH, ConfigError, Mode, load_config
-from llmeval.datasets import DATASETS_DIR, RAG_PATH, DatasetError, load_rag, load_triage
+from llmeval.datasets import (
+    DATASETS_DIR,
+    RAG_PATH,
+    DatasetError,
+    file_sha256,
+    load_rag,
+    load_triage,
+)
 from llmeval.results import RESULTS_DIR, FunctionResults
 from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, run
 
@@ -72,7 +79,13 @@ def eval_command(
             typer.echo("pending first recorded run")
             return
         replay_config = load_config(config, env={})
+        manifest.check_models(
+            system=replay_config.models.system.model, judge=replay_config.models.judge.model
+        )
         rag_path, triage_path = datasets_dir / "rag.jsonl", datasets_dir / "triage.jsonl"
+        current = {p.name: file_sha256(p) for p in (rag_path, triage_path) if p.is_file()}
+        if notice := manifest.dataset_notice(current):
+            typer.echo(notice)
         rag_cases = load_rag(rag_path) if "rag" in functions else ()
         triage_cases = load_triage(triage_path) if "triage" in functions else ()
         client = ModelClient(Mode.REPLAY, CassetteStore(cassettes_dir), replay_config)
@@ -87,8 +100,9 @@ def eval_command(
             dataset_paths={"rag": rag_path, "triage": triage_path},
             versions={f: v for f, v in manifest.prompt_versions.items() if f in EVAL_FUNCTIONS},
             repeats=manifest.repeats,
+            stability_cases=manifest.stability_cases,
         )
-    except (MissingRecording, CassetteError, ConfigError, DatasetError) as exc:
+    except (MissingRecording, CassetteError, ConfigError, DatasetError, OSError) as exc:
         raise _fail(str(exc)) from None
     for result, path in zip(outcome.results, outcome.written, strict=True):
         typer.echo(_line(result))

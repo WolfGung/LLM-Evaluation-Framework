@@ -14,6 +14,7 @@ from llmeval.cassettes import (
     MANIFEST_FILE,
     PENDING_RECORDED_RUN,
     CassetteError,
+    ManifestMismatch,
     RunManifest,
     load_manifest,
 )
@@ -117,3 +118,48 @@ def test_invalid_manifests_are_refused(changes):
 def test_the_manifest_round_trips_through_json():
     manifest = RunManifest.model_validate(manifest_data())
     assert RunManifest.model_validate_json(manifest.model_dump_json()) == manifest
+
+
+def test_without_a_stability_subset_every_case_repeats():
+    manifest = RunManifest.model_validate(manifest_data())
+    assert manifest.stability_cases is None
+    assert manifest.repeats_for("rag-001") == 3
+
+
+def test_a_stability_subset_repeats_only_its_cases():
+    manifest = RunManifest.model_validate(manifest_data(stability_cases=["rag-001", "tri-004"]))
+    assert manifest.repeats_for("rag-001") == 3
+    assert manifest.repeats_for("rag-002") == 1
+
+
+def test_an_empty_stability_subset_is_refused():
+    with pytest.raises(ValidationError):
+        RunManifest.model_validate(manifest_data(stability_cases=[]))
+
+
+def test_matching_models_pass_the_check():
+    manifest = RunManifest.model_validate(manifest_data())
+    manifest.check_models(system="vendor-a/small:free", judge="vendor-b/large:free")
+
+
+def test_a_changed_model_is_a_clear_error():
+    manifest = RunManifest.model_validate(manifest_data())
+    with pytest.raises(ManifestMismatch) as caught:
+        manifest.check_models(system="vendor-c/other:free", judge="vendor-b/large:free")
+    assert str(caught.value) == (
+        "system model: recorded with vendor-a/small:free, config says vendor-c/other:free: "
+        "re-record or restore the config"
+    )
+    assert isinstance(caught.value, CassetteError)
+
+
+def test_changed_datasets_are_named():
+    manifest = RunManifest.model_validate(manifest_data())
+    assert manifest.changed_datasets({"rag.jsonl": HASH, "triage.jsonl": "b" * 64}) == []
+    assert manifest.changed_datasets({"rag.jsonl": "c" * 64, "triage.jsonl": "b" * 64}) == [
+        "rag.jsonl"
+    ]
+    notice = manifest.dataset_notice({"rag.jsonl": "c" * 64, "triage.jsonl": "b" * 64})
+    assert notice is not None and notice.startswith("notice: ")
+    assert "rag.jsonl" in notice and "\n" not in notice
+    assert manifest.dataset_notice({"rag.jsonl": HASH, "triage.jsonl": "b" * 64}) is None
