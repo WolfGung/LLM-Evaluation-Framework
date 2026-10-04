@@ -65,21 +65,37 @@ Two more rules:
 
 ## How this guideline relates to the prompts
 
-Prompt `triage_v2` encodes these rules almost word for word: the categories,
-the priority rules from the top, and the order-id rules. Prompt `triage_v1`
-gives only the schema and a one-line meaning of each field. So v2's advantage
-on priority and on order-id normalisation is partly by construction: the
-labels follow rules that v2 shows the model and v1 does not. The evaluation
-reports this next to the comparison.
+Prompt `triage_v2` carries most of these rules: the seven categories with
+one-line definitions, the priority rules from the top, and the order-id rules.
+Prompt `triage_v1` gives only the schema and a one-line meaning of each field.
+So v2's advantage on priority and on order-id normalisation is partly by
+construction: the labels follow rules that v2 shows the model and v1 does not.
+The evaluation reports this next to the comparison.
 
-Where this guideline is more precise than the v2 prompt:
+This guideline differs from the v2 prompt in 8 places. A v2 answer that
+follows its own wording can disagree with a label in these places; that is a
+finding about the prompt, not a labelling error.
 
-- v2's `normal` rule names "a payment question". Here that means a question
-  about a specific charge, hold or payment. A general question such as
-  "Do you take Apple Pay?" is `low` (L1). A model that reads v2 literally may
-  answer `normal`.
-- v2 does not say that a status question about a named order is `normal`.
-  Here it is (N1), because support has to look the order up.
-- v2's `warranty` category does not mention questions about warranty terms.
-  Here they are `warranty`.
-- v2 does not mention ids with the wrong number of digits. Here they are `null`.
+1. **General payment questions.** v2's `normal` rule names "a payment
+   question". Here that means a question about a specific charge, hold or
+   payment; a general question such as "Do you take Apple Pay?" is `low` (L1,
+   tri-018). A model that reads v2 literally may answer `normal`.
+2. **Status of a named order.** v2 does not say that a status question about a
+   named order is `normal`; its `low` rule ("needs no action on an order") can
+   be read either way. Here it is `normal` (N1, tri-028), because support has
+   to look the order up.
+3. **Warranty terms.** v2's `warranty` category does not mention questions
+   about warranty terms. Here they are `warranty` (tri-025).
+4. **Ids with the wrong number of digits.** v2 does not mention them. Here
+   they are `null` (tri-007).
+5. **Arrived broken.** v2 lists "a late, lost or damaged parcel" under
+   `shipping`. Here an item that arrived broken, faulty or wrong is `returns`
+   (tie-break 1, tri-012).
+6. **Stuck in Received.** v2's `high` rule names a late or lost parcel, a
+   wrong or broken item and a late refund, but not an order that stays
+   Received for more than 2 business days. Here that is `high` (H3, tri-030).
+7. **Incomplete item.** v2's `high` rule names a "wrong or broken item", not
+   an incomplete one. Here an incomplete item is `high` (H2, tri-012).
+8. **Swollen battery.** v2's safety list is "smokes, sparks, overheats, leaks
+   or injured someone". Here a swollen battery is a safety risk too (U1,
+   tri-022; that ticket also says "hot to the touch").

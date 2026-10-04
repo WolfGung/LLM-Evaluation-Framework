@@ -104,7 +104,7 @@ def test_the_guideline_defines_every_rule_under_its_priority():
 
 def test_the_guideline_says_v2_encodes_the_rules():
     text = GUIDELINE.read_text(encoding="utf-8")
-    assert "partly by construction" in text
+    assert "partly by construction" in " ".join(text.split())
 
 
 def test_a_written_order_id_is_extracted_in_normal_form(triage_cases):
@@ -117,3 +117,26 @@ def test_a_written_order_id_is_extracted_in_normal_form(triage_cases):
             assert case.order_id is None, case.id
         else:
             assert case.order_id in found, case.id
+
+
+def test_the_guideline_counts_its_divergences_from_v2_exactly():
+    text = GUIDELINE.read_text(encoding="utf-8")
+    section = text.split("## How this guideline relates to the prompts", 1)[1]
+    stated = re.search(r"differs from the v2 prompt in (\d+) places", section)
+    assert stated, "the section states the number of divergences"
+    listed = re.findall(r"^\d+\. ", section, flags=re.MULTILINE)
+    assert len(listed) == int(stated.group(1))
+    assert "almost word for word" not in text
+    for case_id in ("tri-012", "tri-030"):
+        assert case_id in section
+
+
+BORDERLINE = ("tri-010", "tri-012", "tri-014", "tri-019", "tri-030", "tri-033")
+
+
+def test_borderline_cases_explain_their_labels(triage_cases, rag_cases):
+    notes = {c.id: c.note for c in (*triage_cases, *rag_cases)}
+    for case_id in (*BORDERLINE, "rag-034", "rag-035"):
+        assert notes[case_id] and len(notes[case_id]) > 40, case_id
+    for case_id in ("rag-034", "rag-035"):
+        assert "correct answer" in notes[case_id].lower(), case_id
