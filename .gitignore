@@ -20,5 +20,8 @@ htmlcov/
 allure-results/
 allure-report/
 
+# Live-mode results: not reproducible from cassettes, never committed
+results-live/
+
 # Local secrets
 .env

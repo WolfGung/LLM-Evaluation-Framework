@@ -24,6 +24,7 @@ from llmeval.client import CallResult
 
 LAYERS = ("retrieval", "deterministic", "reference")
 RESULTS_DIR = Path("results")
+LIVE_RESULTS_DIR = Path("results-live")
 SCHEMA_VERSION = 1
 
 CATEGORY_LABELS = tuple(str(c) for c in Category)
@@ -210,8 +211,25 @@ def results_path(results_dir: Path | str, function: str, version: str) -> Path:
     return Path(results_dir) / f"{function}-{version}.json"
 
 
-def write_results(results: FunctionResults, results_dir: Path | str) -> Path:
-    path = results_path(results_dir, results.function, results.version)
+def _write(results: FunctionResults, directory: Path | str) -> Path:
+    path = results_path(directory, results.function, results.version)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(results.model_dump_json(indent=2) + "\n", encoding="utf-8")
     return path
+
+
+def write_results(results: FunctionResults, results_dir: Path | str) -> Path:
+    """Write replay results of a recorded run (the only kind `results/` takes)."""
+    if results.mode != "replay":
+        raise ValueError(
+            f"only replay results go to {results_dir}; got {results.mode} results "
+            f"(live results go to {LIVE_RESULTS_DIR}/, a recording is replayed first)"
+        )
+    return _write(results, results_dir)
+
+
+def write_live_results(results: FunctionResults, live_dir: Path | str) -> Path:
+    """Write results of a live run to the git-ignored live directory."""
+    if results.mode != "live":
+        raise ValueError(f"only live results go to {live_dir}; got {results.mode} results")
+    return _write(results, live_dir)

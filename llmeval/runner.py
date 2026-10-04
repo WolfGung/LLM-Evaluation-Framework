@@ -2,17 +2,19 @@
 
 One run covers datasets x prompt versions x repeats. Every model call goes
 through the client (`ModelClient` or any `ChatModel`), so a replay run needs
-no key and no network. The results of one function and prompt version go to
-`results/<function>-<version>.json`: a record per case and repeat with every
-check, and pass rates per layer.
+no key and no network. The results of one function and prompt version are a
+`FunctionResults` (see `llmeval.results`).
 
-When results are written:
+Where results are written:
 
-- replay with `cassettes/manifest.json` (a complete recording): yes, and a
-  missing cassette entry raises `MissingRecording` instead of being skipped;
-- replay without a manifest: no. The run is "pending first recorded run",
-  calls nothing and writes nothing;
-- record or live: yes, and the file says which mode produced it.
+- replay with `cassettes/manifest.json` (a complete recording): to
+  `results/`, and a missing cassette entry raises `MissingRecording` instead
+  of being skipped;
+- replay without a manifest: nowhere. The run is "pending first recorded
+  run" and calls nothing;
+- record: nowhere. Recording fills the cassettes; the results and the
+  baseline come from a replay of the recorded run;
+- live: to the git-ignored `results-live/`, never to `results/`.
 
 The results file is a pure function of the replies, so a replay run
 reproduces it byte for byte.
@@ -39,12 +41,14 @@ from llmeval.client import build_role_request
 from llmeval.config import Mode, RoleConfig
 from llmeval.datasets import RagCase, TriageCase, file_sha256
 from llmeval.results import (
+    LIVE_RESULTS_DIR,
     CallRecord,
     CaseRecord,
     CheckRecord,
     FunctionResults,
     RunRecord,
     summarise,
+    write_live_results,
     write_results,
 )
 
@@ -327,6 +331,7 @@ def run(
     mode: Mode,
     cassettes_dir: Path | str,
     results_dir: Path | str,
+    live_results_dir: Path | str = LIVE_RESULTS_DIR,
     rag_cases: Sequence[RagCase] = (),
     triage_cases: Sequence[TriageCase] = (),
     dataset_paths: Mapping[str, Path],
@@ -364,5 +369,10 @@ def run(
         for function, cases in work
         for version in _versions(versions, function)
     )
-    written = tuple(write_results(result, results_dir) for result in results)
+    if mode is Mode.REPLAY:
+        written = tuple(write_results(result, results_dir) for result in results)
+    elif mode is Mode.LIVE:
+        written = tuple(write_live_results(result, live_results_dir) for result in results)
+    else:
+        written = ()
     return RunOutcome(pending=False, reason=None, results=results, written=written)

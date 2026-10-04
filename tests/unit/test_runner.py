@@ -16,7 +16,7 @@ from llmeval.checks.reference import INVALID
 from llmeval.client import MissingRecording, ModelClient
 from llmeval.config import Config, Mode, ModelsConfig, Settings
 from llmeval.datasets import RagCase, TriageCase
-from llmeval.results import FunctionResults, results_path
+from llmeval.results import FunctionResults, results_path, write_live_results, write_results
 from llmeval.runner import plan_requests, run
 from tests.app.fakes import STRUCTURED, UNSTRUCTURED, FakeModel
 
@@ -117,6 +117,7 @@ def run_all(client, tmp_path, mode=Mode.REPLAY, repeats=1, versions=None):
         mode=mode,
         cassettes_dir=tmp_path / "cassettes",
         results_dir=tmp_path / "results",
+        live_results_dir=tmp_path / "results-live",
         rag_cases=RAG_CASES,
         triage_cases=TRIAGE_CASES,
         dataset_paths={"rag": datasets / "rag.jsonl", "triage": datasets / "triage.jsonl"},
@@ -194,13 +195,34 @@ def test_replay_with_a_manifest_and_a_missing_entry_fails_loudly(tmp_path):
     assert not (tmp_path / "results").exists()
 
 
-@pytest.mark.parametrize("mode", [Mode.RECORD, Mode.LIVE])
-def test_record_and_live_runs_write_results_without_a_manifest(tmp_path, mode):
-    outcome = run_all(FakeModel(reply=reply), tmp_path, mode=mode)
+def test_a_record_run_writes_no_results(tmp_path):
+    # Recording fills the cassettes; results come from a replay of the
+    # recorded run, never from the recording itself.
+    outcome = run_all(FakeModel(reply=reply), tmp_path, mode=Mode.RECORD)
     assert not outcome.pending
+    assert outcome.written == ()
+    assert {r.mode for r in outcome.results} == {"record"}
+    assert not (tmp_path / "results").exists()
+    assert not (tmp_path / "results-live").exists()
+
+
+def test_a_live_run_writes_only_to_the_live_directory(tmp_path):
+    outcome = run_all(FakeModel(reply=reply), tmp_path, mode=Mode.LIVE)
+    assert {p.parent for p in outcome.written} == {tmp_path / "results-live"}
     assert {p.name for p in outcome.written} == {"rag-v1.json", "triage-v1.json"}
-    stored = json.loads((tmp_path / "results" / "rag-v1.json").read_text(encoding="utf-8"))
-    assert stored["mode"] == str(mode)
+    stored = json.loads((tmp_path / "results-live" / "rag-v1.json").read_text(encoding="utf-8"))
+    assert stored["mode"] == "live"
+    assert not (tmp_path / "results").exists()
+
+
+def test_results_take_replay_results_only(tmp_path):
+    live = run_all(FakeModel(reply=reply), tmp_path, mode=Mode.LIVE).results[0]
+    with pytest.raises(ValueError, match="only replay results"):
+        write_results(live, tmp_path / "results")
+    write_manifest(tmp_path / "cassettes")
+    replayed = run_all(FakeModel(reply=reply), tmp_path).results[0]
+    with pytest.raises(ValueError, match="only live results"):
+        write_live_results(replayed, tmp_path / "results-live")
 
 
 # --- results ----------------------------------------------------------------
