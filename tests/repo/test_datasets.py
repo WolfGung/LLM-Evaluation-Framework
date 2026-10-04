@@ -141,3 +141,12 @@ def test_borderline_cases_explain_their_labels(triage_cases, rag_cases):
         assert notes[case_id] and len(notes[case_id]) > 40, case_id
     for case_id in ("rag-034", "rag-035"):
         assert "correct answer" in notes[case_id].lower(), case_id
+
+
+def test_tri_010_and_tri_033_notes_follow_the_ticket(triage_cases):
+    notes = {c.id: c.note.lower() for c in triage_cases if c.note}
+    # The ticket says the sander was sent two weeks ago, not that two weeks
+    # passed since it arrived.
+    assert "sent" in notes["tri-010"] and "two weeks have passed" not in notes["tri-010"]
+    # The ticket mentions the customer's account, so the note weighs `other`.
+    assert "other" in notes["tri-033"] and "account" in notes["tri-033"]
