@@ -83,6 +83,20 @@ def test_http_error_does_not_contain_the_key():
     assert caught.value.__context__ is None
 
 
+def test_long_error_is_scrubbed_before_it_is_cut():
+    def echo_at_the_cut(request: httpx.Request) -> httpx.Response:
+        # The key straddles the length limit of the error detail.
+        return httpx.Response(400, json={"error": {"message": "x" * 290 + FAKE_KEY}})
+
+    with (
+        http_client(httpx.MockTransport(echo_at_the_cut)) as client,
+        pytest.raises(OpenRouterError) as caught,
+    ):
+        get_json(client, "/key", api_key=FAKE_KEY)
+
+    assert FAKE_KEY[:8] not in str(caught.value)
+
+
 def test_network_error_does_not_contain_the_key():
     def fail(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError(f"refused while sending {request.headers['authorization']}")

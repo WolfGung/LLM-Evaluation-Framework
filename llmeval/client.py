@@ -18,7 +18,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from itertools import count
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 
@@ -26,6 +26,7 @@ from llmeval.cassettes import (
     CallTag,
     CassetteEntry,
     CassetteStore,
+    CostSource,
     StoredResponse,
     Usage,
     request_key,
@@ -33,7 +34,7 @@ from llmeval.cassettes import (
 )
 from llmeval.config import Config, Mode
 from llmeval.openrouter import OpenRouterError, http_client, read_json, require_key, send
-from llmeval.pricing import ModelPrice, fetch_prices
+from llmeval.pricing import ModelPrice, PricingError, fetch_prices
 from llmeval.quota import RateLimiter, wait_or_stop
 
 __all__ = ["CallResult", "MissingRecording", "ModelClient", "Usage", "build_request"]
@@ -60,8 +61,8 @@ class CallResult:
     model_requested: str
     model_used: str
     usage: Usage
-    cost_usd: float
-    cost_source: Literal["provider", "published_prices"]
+    cost_usd: float | None
+    cost_source: CostSource
     latency_ms: float
     recorded_at: datetime
     key: str
@@ -222,16 +223,20 @@ class ModelClient:
 
     def _cost(
         self, data: Mapping[str, Any], usage: Usage, model_requested: str
-    ) -> tuple[float, Literal["provider", "published_prices"], ModelPrice | None]:
+    ) -> tuple[float | None, CostSource, ModelPrice | None]:
         provider_cost = data["usage"].get("cost")
         if isinstance(provider_cost, int | float):
             return float(provider_cost), "provider", None
         # OpenRouter bills by the requested model id (a ":free" id costs 0),
         # so its published price is the fallback.
         if model_requested not in self._prices:
-            self._prices.update(
-                fetch_prices([model_requested], transport=self._transport, now=self._now)
-            )
+            try:
+                self._prices.update(
+                    fetch_prices([model_requested], transport=self._transport, now=self._now)
+                )
+            except (PricingError, OpenRouterError):
+                # The call has already used quota; keep it and say the cost is unknown.
+                return None, "unknown", None
         price = self._prices[model_requested]
         return price.cost(usage), "published_prices", price
 

@@ -258,6 +258,21 @@ def test_cost_from_published_prices_when_provider_sends_none(tmp_path):
     assert [r.url.path for r in recorder.requests][-1] == "/api/v1/models"
 
 
+def test_call_is_kept_when_no_cost_can_be_found(tmp_path):
+    # The call already used quota, so it is recorded even without a price.
+    recorder = Recorder(
+        httpx.Response(200, json=completion(cost=None)), httpx.Response(503, json={})
+    )
+    with make_client(Mode.RECORD, CassetteStore(tmp_path), recorder.transport) as client:
+        result = ask(client)
+
+    entry = json.loads(cassette_text(tmp_path))
+    assert result.cost_source == "unknown"
+    assert result.cost_usd is None
+    assert entry["cost_source"] == "unknown"
+    assert entry["response"]["content"] == "Synthetic answer."
+
+
 def test_structured_output_requires_supporting_endpoints(tmp_path):
     schema = {"type": "json_schema", "json_schema": {"name": "t", "strict": True, "schema": {}}}
     recorder = Recorder(httpx.Response(200, json=completion("{}")))

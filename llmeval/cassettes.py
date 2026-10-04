@@ -5,8 +5,9 @@ back (answer, usage, cost, latency, timestamps). It has no field for headers,
 so the API key has nowhere to go.
 
 The key is a sha256 of the canonical JSON of the whole request body plus the
-repeat index. Repeats are part of the key on purpose: three runs of one request are
-three separate recordings, which is what the stability layer measures.
+repeat index. Repeats are part of the key on purpose: three runs of one
+request are three separate recordings, which is what the stability layer
+measures.
 """
 
 from __future__ import annotations
@@ -39,6 +40,10 @@ REQUEST_FIELDS = frozenset(
 )
 
 UNTAGGED_FILE_STEM = "untagged"
+
+# Where a call's cost came from: OpenRouter's usage.cost, the published
+# prices, or nowhere (the price lookup failed, but the call is still kept).
+CostSource = Literal["provider", "published_prices", "unknown"]
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
@@ -137,8 +142,8 @@ class CassetteEntry(_Record):
     request: dict[str, Any]
     response: StoredResponse
     usage: Usage
-    cost_usd: float = Field(ge=0)
-    cost_source: Literal["provider", "published_prices"]
+    cost_usd: float | None = Field(ge=0)
+    cost_source: CostSource
     prices: StoredPrices | None = None
     latency_ms: float = Field(ge=0)
     requested_at: datetime

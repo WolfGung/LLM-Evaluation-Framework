@@ -72,6 +72,8 @@ class RateLimit:
 class QuotaExhausted(RuntimeError):
     """The free quota is used up; the run stops and can be resumed after `reset_at`."""
 
+    headline = "free daily quota reached"
+
     def __init__(
         self, reset_at: datetime | None, recorded: int | None = None, needed: int | None = None
     ) -> None:
@@ -82,10 +84,10 @@ class QuotaExhausted(RuntimeError):
 
     def with_progress(self, recorded: int, needed: int) -> QuotaExhausted:
         """The same error with the run's progress, for the final message."""
-        return QuotaExhausted(self.reset_at, recorded, needed)
+        return type(self)(self.reset_at, recorded, needed)
 
     def _message(self) -> str:
-        parts = ["free daily quota reached"]
+        parts = [self.headline]
         if self.recorded is not None and self.needed is not None:
             parts.append(f"{self.recorded} of {self.needed} calls recorded")
         if self.reset_at is None:
@@ -93,6 +95,12 @@ class QuotaExhausted(RuntimeError):
         else:
             parts.append(f"rerun after {self.reset_at.astimezone(UTC):%Y-%m-%d %H:%M} UTC")
         return "; ".join(parts)
+
+
+class RateLimitRetriesExhausted(QuotaExhausted):
+    """Short per-minute waits did not help; the run stops the same way."""
+
+    headline = f"rate limited after {MAX_RETRIES} retries"
 
 
 def parse_rate_limit(headers: Mapping[str, str]) -> RateLimit:
@@ -108,14 +116,18 @@ def wait_or_stop(headers: Mapping[str, str], *, now: datetime, attempt: int) -> 
 
     Returns the seconds to wait before retrying when the limit resets soon
     (the per-minute limit). Raises `QuotaExhausted` when it resets later (the
-    daily quota), when the reset time is unknown, or after `MAX_RETRIES`.
+    daily quota) or the reset time is unknown, and `RateLimitRetriesExhausted`
+    after `MAX_RETRIES` short waits.
     """
     limit = parse_rate_limit(headers)
-    if limit.reset_at is not None and attempt < MAX_RETRIES:
-        wait = (limit.reset_at - now).total_seconds()
-        if wait <= MAX_SHORT_WAIT_S:
-            return max(wait, 1.0)
-    raise QuotaExhausted(limit.reset_at)
+    if limit.reset_at is None:
+        raise QuotaExhausted(None)
+    wait = (limit.reset_at - now).total_seconds()
+    if wait > MAX_SHORT_WAIT_S:
+        raise QuotaExhausted(limit.reset_at)
+    if attempt >= MAX_RETRIES:
+        raise RateLimitRetriesExhausted(limit.reset_at)
+    return max(wait, 1.0)
 
 
 def free_daily_remaining(

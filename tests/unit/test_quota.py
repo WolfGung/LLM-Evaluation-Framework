@@ -139,9 +139,13 @@ def test_missing_reset_stops_the_run():
         wait_or_stop({}, now=NOW, attempt=0)
 
 
-def test_retries_are_limited():
-    with pytest.raises(QuotaExhausted):
+def test_retries_are_limited_and_say_so():
+    with pytest.raises(QuotaExhausted) as caught:
         wait_or_stop(reset_header(NOW + timedelta(seconds=5)), now=NOW, attempt=3)
+
+    error = caught.value.with_progress(recorded=3, needed=9)
+    assert str(error).startswith("rate limited after 3 retries; 3 of 9 calls recorded")
+    assert "free daily quota" not in str(error)
 
 
 def test_short_wait_limit_covers_one_minute_window():

@@ -100,7 +100,8 @@ def read_json(response: httpx.Response, *, api_key: str | None = None) -> dict[s
     """Return the JSON body of a successful response, or raise a scrubbed error."""
     path = response.request.url.path
     if response.is_error:
-        detail = scrub(_error_detail(response), api_key)
+        # Scrub first, then cut: a cut key would no longer match the scrubber.
+        detail = scrub(_error_detail(response), api_key)[:300] or response.reason_phrase
         raise OpenRouterError(
             f"{path} returned HTTP {response.status_code}: {detail}", response.status_code
         )
@@ -123,5 +124,4 @@ def _error_detail(response: httpx.Response) -> str:
         message = error.get("message") if isinstance(error, dict) else error
     except (ValueError, AttributeError):
         message = None
-    text = str(message) if message else response.text
-    return text[:300] or response.reason_phrase
+    return str(message) if message else response.text
