@@ -23,6 +23,7 @@ from app.triage import (
     strict_schema,
     triage,
     triage_schema,
+    unwrap_reply,
 )
 from llmeval.cassettes import CallTag
 from llmeval.client import MissingRecording
@@ -297,3 +298,11 @@ def test_a_missing_recording_propagates():
     model = FakeModel(error=MissingRecording("k" * 64, 0, None))
     with pytest.raises(MissingRecording):
         triage(model, UNSTRUCTURED, TICKET, "v1")
+
+
+def test_unwrap_reply_returns_the_text_the_parser_reads():
+    assert unwrap_reply('  {"a": 1}\n') == '{"a": 1}'
+    assert unwrap_reply('```json\n{"a": 1}\n```') == '{"a": 1}'
+    # Only a whole-reply ```json block is unwrapped; anything else stays as is.
+    assert unwrap_reply('```\n{"a": 1}\n```') == '```\n{"a": 1}\n```'
+    assert unwrap_reply('Here: ```json\n{"a": 1}\n```') == 'Here: ```json\n{"a": 1}\n```'

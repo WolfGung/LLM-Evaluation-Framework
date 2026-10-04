@@ -155,13 +155,21 @@ def prepare(
     return messages, response_format_for(role)
 
 
+def unwrap_reply(raw: str) -> str:
+    """The text `parse_triage` reads: the stripped reply, or the content of a
+    whole-reply ```json block. The evaluation's checks use it too, so they
+    read a reply exactly as the parser does."""
+    text = raw.strip()
+    if fenced := _FENCED_JSON.match(text):
+        return fenced.group(1)
+    return text
+
+
 def parse_triage(raw: str) -> TriageResult:
     """Validate a reply. Raises `TriageError` with the raw text on any problem."""
-    text = raw.strip()
-    if not text:
+    if not raw.strip():
         raise TriageError("empty", raw, "the reply has no text")
-    if fenced := _FENCED_JSON.match(text):
-        text = fenced.group(1)
+    text = unwrap_reply(raw)
     try:
         json.loads(text)
     except json.JSONDecodeError as exc:

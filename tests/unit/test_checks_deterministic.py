@@ -1,0 +1,262 @@
+"""Deterministic checks: rules a program can decide without a model.
+
+Synthetic data: every reply and answer below is a made-up string written for
+the test, not a model output.
+"""
+
+import json
+
+import pytest
+
+from llmeval.checks import CheckResult
+from llmeval.checks.deterministic import (
+    MAX_ANSWER_WORDS,
+    cites_retrieved,
+    declines,
+    dont_know,
+    has_text,
+    invented_specifics,
+    no_forbidden,
+    no_unretrieved_citations,
+    triage_checks,
+    triage_enums_valid,
+    triage_json_valid,
+    triage_required_fields,
+    triage_schema_valid,
+    within_length,
+)
+from llmeval.checks.retrieval import retrieval_recall, retrieval_recall_value
+
+GOOD = {
+    "category": "shipping",
+    "priority": "high",
+    "order_id": "TS-123456",
+    "summary": "Synthetic parcel is late.",
+}
+
+
+def reply(**changes):
+    data = {**GOOD, **changes}
+    return json.dumps({k: v for k, v in data.items() if v is not ...})
+
+
+# --- triage -----------------------------------------------------------------
+
+
+def test_a_valid_reply_passes_every_triage_check():
+    results = triage_checks(reply())
+    assert [r.name for r in results] == [
+        "json_valid",
+        "required_fields",
+        "enums_valid",
+        "schema_valid",
+    ]
+    assert all(r.passed for r in results)
+
+
+def test_a_fenced_json_reply_is_read_like_the_parser_reads_it():
+    assert all(r.passed for r in triage_checks(f"```json\n{reply()}\n```"))
+
+
+@pytest.mark.parametrize(
+    ("raw", "detail"),
+    [
+        ("", "empty"),
+        ("   ", "empty"),
+        ("Sure! Here it is: {}", "not valid JSON"),
+        ("[1, 2]", "not a JSON object"),
+        ("{'category': 'shipping'}", "not valid JSON"),
+    ],
+)
+def test_json_valid_fails_with_a_reason(raw, detail):
+    result = triage_json_valid(raw)
+    assert not result.passed
+    assert detail in result.detail
+
+
+def test_required_fields_names_what_is_missing():
+    result = triage_required_fields(reply(order_id=..., summary=...))
+    assert not result.passed
+    assert "order_id" in result.detail and "summary" in result.detail
+
+
+def test_a_null_order_id_counts_as_present():
+    assert triage_required_fields(reply(order_id=None)).passed
+
+
+def test_enums_valid_names_the_bad_values():
+    result = triage_enums_valid(reply(category="billing", priority="asap"))
+    assert not result.passed
+    assert "billing" in result.detail and "asap" in result.detail
+
+
+def test_enums_valid_fails_when_a_field_is_missing():
+    assert not triage_enums_valid(reply(priority=...)).passed
+
+
+def test_schema_valid_catches_what_the_other_checks_allow():
+    # Valid JSON, all fields, valid enums, but an order id in the wrong form
+    # and an extra field: only the full schema check fails.
+    raw = json.dumps({**GOOD, "order_id": "ts 123456", "confidence": 0.9})
+    results = {r.name: r for r in triage_checks(raw)}
+    assert results["json_valid"].passed
+    assert results["required_fields"].passed
+    assert results["enums_valid"].passed
+    assert not results["schema_valid"].passed
+    assert "order_id" in results["schema_valid"].detail
+
+
+def test_checks_on_non_json_fail_without_raising():
+    results = triage_checks("I cannot triage this.")
+    assert not any(r.passed for r in results)
+
+
+def test_triage_schema_valid_alone():
+    assert triage_schema_valid(reply()).passed
+    assert not triage_schema_valid(reply(summary="x" * 201)).passed
+
+
+# --- RAG answers ------------------------------------------------------------
+
+
+def test_has_text():
+    assert has_text("Returns take 30 days [kb-returns].").passed
+    result = has_text("  ", "length")
+    assert not result.passed
+    assert "length" in result.detail
+
+
+def test_cites_retrieved():
+    assert cites_retrieved(("kb-returns",), ("kb-returns", "kb-refunds")).passed
+    assert not cites_retrieved((), ("kb-returns",)).passed
+    assert not cites_retrieved(("kb-warranty",), ("kb-returns",)).passed
+
+
+def test_no_unretrieved_citations():
+    assert no_unretrieved_citations(("kb-returns",), ("kb-returns",)).passed
+    assert no_unretrieved_citations((), ("kb-returns",)).passed
+    result = no_unretrieved_citations(("kb-returns", "kb-made-up"), ("kb-returns",))
+    assert not result.passed
+    assert "kb-made-up" in result.detail
+
+
+def test_no_forbidden_matches_after_normalisation():
+    result = no_forbidden("Use code tools50 for 50 % off!", ("TOOLS50", "50%"))
+    assert not result.passed
+    assert "TOOLS50" in result.detail and "50%" in result.detail
+    assert no_forbidden("Returns take 30 days.", ("60 days",)).passed
+    assert no_forbidden("anything", ()).passed
+
+
+def test_within_length():
+    assert within_length("word " * MAX_ANSWER_WORDS).passed
+    result = within_length("word " * (MAX_ANSWER_WORDS + 1))
+    assert not result.passed
+    assert str(MAX_ANSWER_WORDS + 1) in result.detail
+    assert within_length("a b c", limit=2).passed is False
+
+
+# --- "I don't know" ---------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "I don't know.",
+        "I do not know whether we offer that.",
+        "I'm not sure, sorry.",
+        "I can't find that in our documents.",
+        "I couldn't find any information about price matching.",
+        "The documents don't say anything about rentals.",
+        "Our information does not mention student discounts.",
+        "I don't have information about that.",
+        "That isn't covered in the documents I have.",
+        "Please contact Toolshop support for help with that.",
+        "You could reach out to our customer support team.",
+        "I’m not sure — please contact support.",
+    ],
+)
+def test_decline_phrasings_are_recognised(answer):
+    assert declines(answer)
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "Yes, we price match any competitor.",
+        "Returns are accepted within 30 days [kb-returns].",
+        "I know exactly: it costs $10.",
+        "",
+    ],
+)
+def test_answers_that_do_not_decline(answer):
+    assert not declines(answer)
+
+
+SOURCES = (
+    "Contacting support\n\nphone: +1 555 0199, Monday to Friday 8:00 to 20:00.",
+    "Do you deliver on Sundays?",
+)
+
+
+def test_specifics_from_the_sources_or_the_question_are_not_invented():
+    answer = "I don't know. Call +1-555-0199, Monday to Friday from 8 am."
+    assert invented_specifics(answer, SOURCES) == []
+
+
+def test_invented_numbers_and_days_are_listed():
+    answer = "I'm not sure, but delivery on Sunday costs $9.99 and takes 2 hours."
+    assert invented_specifics(answer, SOURCES) == ["$9.99", "2"]
+
+
+def test_dont_know_passes_a_decline_without_invented_specifics():
+    result = dont_know("I don't know. Please contact support at +1 555 0199.", SOURCES)
+    assert result.passed
+
+
+def test_dont_know_fails_when_nothing_is_declined():
+    result = dont_know("Yes, we deliver on Sundays.", SOURCES)
+    assert not result.passed
+    assert "no decline" in result.detail
+
+
+def test_dont_know_fails_a_decline_that_still_invents():
+    result = dont_know("I'm not sure, but Sunday delivery is $9.99.", SOURCES)
+    assert not result.passed
+    assert "$9.99" in result.detail
+
+
+def test_dont_know_does_not_depend_on_one_wording():
+    # The same behaviour in different words passes; the exact sentence of a
+    # prompt version is not what is measured.
+    for answer in ("I don't know.", "The documents don't say.", "I can't find that."):
+        assert dont_know(answer, SOURCES).passed
+
+
+def test_dont_know_fails_an_empty_answer():
+    assert not dont_know("", SOURCES).passed
+
+
+# --- retrieval --------------------------------------------------------------
+
+
+def test_retrieval_recall_passes_when_every_expected_document_is_retrieved():
+    assert retrieval_recall(("kb-a", "kb-b"), ("kb-b", "kb-c", "kb-a")).passed
+
+
+def test_retrieval_recall_names_the_missing_documents():
+    result = retrieval_recall(("kb-a", "kb-b"), ("kb-b",))
+    assert not result.passed
+    assert "kb-a" in result.detail
+    assert "1 of 2" in result.detail
+
+
+def test_retrieval_recall_value():
+    assert retrieval_recall_value(("kb-a", "kb-b"), ("kb-b",)) == 0.5
+    assert retrieval_recall_value((), ("kb-b",)) is None
+
+
+def test_check_results_are_plain_records():
+    result = CheckResult("x", True, "fine")
+    assert (result.name, result.passed, result.detail) == ("x", True, "fine")
+    assert result.to_dict() == {"name": "x", "passed": True, "detail": "fine"}
