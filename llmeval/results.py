@@ -36,6 +36,7 @@ from llmeval.checks.judge import (
 )
 from llmeval.checks.retrieval import retrieval_recall_value
 from llmeval.client import CallResult
+from llmeval.stability import Stability, stability
 
 LAYERS = ("retrieval", "deterministic", "reference", "safety", "judge")
 RESULTS_DIR = Path("results")
@@ -231,6 +232,8 @@ class Summary(_Record):
     - Triage: `accuracy` per label and `confusion` matrices (expected label by
       predicted label, with `invalid` for no usable value).
     - `judge`: the judge layer's reliability and scores, when runs were graded.
+    - `stability`: the share of repeated cases whose repeats agree on every
+      rule-based check (see `llmeval.stability`); None when no case repeats.
     """
 
     cases: int
@@ -243,6 +246,7 @@ class Summary(_Record):
     accuracy: dict[str, float | None] | None = None
     confusion: dict[str, dict[str, dict[str, int]]] | None = None
     judge: JudgeSummary | None = None
+    stability: Stability | None = None
 
 
 class FunctionResults(_Record):
@@ -439,6 +443,7 @@ def summarise(function: str, cases: Sequence[CaseRecord]) -> Summary:
     graded = [(run.output, run.judge) for _, run in runs if run.judge is not None]
     if graded:
         summary["judge"] = summarise_judge(graded)
+    summary["stability"] = stability(function, cases)
     return Summary(**summary)
 
 

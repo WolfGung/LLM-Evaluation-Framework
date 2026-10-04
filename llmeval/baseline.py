@@ -60,7 +60,8 @@ class CaseBaseline(_Record):
 
 
 class Metrics(_Record):
-    """Key rates of one function and version. `stable_share` comes with the stability layer."""
+    """Key rates of one function and version. `stable_share` is the stability
+    layer's share of stable cases (None when no case repeats)."""
 
     all_checks: float | None
     layers: dict[str, float | None]
@@ -128,6 +129,7 @@ def build_baseline(results: Iterable[FunctionResults], manifest: RunManifest) ->
             layers={layer: rate.rate for layer, rate in summary.layers.items()},
             accuracy=summary.accuracy,
             retrieval_recall=summary.retrieval_recall,
+            stable_share=summary.stability.stable_share if summary.stability else None,
         )
         cases = {record.id: case_baseline(record) for record in result.cases}
         functions.setdefault(result.function, {})[result.version] = FunctionBaseline(
