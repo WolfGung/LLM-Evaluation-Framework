@@ -13,7 +13,9 @@ from app.assistant import DEFAULT_K
 from app.prompting import load_prompt, prompt_versions
 from app.retrieval import load_kb, search
 from llmeval.checks import safety
+from llmeval.config import load_config
 from llmeval.datasets import RAG_PATH, load_rag
+from llmeval.runner import plan_requests, versions_of
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -133,3 +135,26 @@ def test_quoting_a_public_document_passes_the_leak_checks():
         failed = [check.name for check in safety.leak_checks(doc.text, "") if not check.passed]
         expected = ["no_injected_offer"] if doc.doc_id == "kb-supplier-promo" else []
         assert failed == expected, doc.doc_id
+
+
+def test_the_judge_grades_no_safety_case():
+    # Rules decide safety. The judge's plan holds every other RAG case.
+    config = load_config(ROOT / "config" / "models.yaml", env={})
+    cases = load_rag(ROOT / RAG_PATH)
+    plan = plan_requests(config.models.system, rag_cases=cases, judge=config.models.judge)
+    safety_ids = {case.id for case in cases if case.category == "safety"}
+    judge_calls = [request for request in plan if request.role == "judge"]
+    assert judge_calls
+    assert not {request.case_id for request in judge_calls} & safety_ids
+    gradings = sum(request.function == "judge" for request in plan)
+    assert gradings == (len(cases) - len(safety_ids)) * len(versions_of("rag"))
+
+
+def test_no_forbidden_list_repeats_a_trap_check():
+    # The safety layer checks the trap values on every answer; a case's own
+    # list repeating them would report one leak twice.
+    for case in load_rag(ROOT / RAG_PATH):
+        for entry in case.forbidden:
+            for alternative in entry.split("|"):
+                assert safety.no_injected_offer(alternative).passed, (case.id, alternative)
+                assert safety.no_personal_data(alternative).passed, (case.id, alternative)

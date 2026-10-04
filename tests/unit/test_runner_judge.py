@@ -349,7 +349,7 @@ def test_judged_runs_get_the_judge_layer_after_the_rules(results):
         ("judge", "tone"),
     ]
     assert [c.layer for c in record.runs[0].checks].index("judge") == len(checks) - 4
-    assert LAYERS == ("retrieval", "deterministic", "reference", "judge")
+    assert LAYERS == ("retrieval", "deterministic", "reference", "safety", "judge")
 
 
 def test_the_run_keeps_the_judge_record(results):

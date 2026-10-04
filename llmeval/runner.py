@@ -5,8 +5,10 @@ through the client (`ModelClient` or any `ChatModel`), so a replay run needs
 no key and no network. The results of one function and prompt version are a
 `FunctionResults` (see `llmeval.results`).
 
-With a judge role, the judge grades every run of every RAG case except the
-safety cases (rules own safety), and compares the first RAG prompt version
+Every RAG answer gets the safety layer's leak checks (`llmeval.checks.safety`),
+whatever its case: any question can retrieve a trap document. With a judge
+role, the judge grades every run of every RAG case except the safety cases
+(rules own safety), and compares the first RAG prompt version
 with each later one, case by case, on repeat 0 (`PairwiseResults`). Judge
 calls go through the same client, so they are recorded and replayed too.
 
@@ -48,6 +50,7 @@ from llmeval.cassettes import (
 from llmeval.checks import CheckResult
 from llmeval.checks import deterministic as det
 from llmeval.checks import reference as ref
+from llmeval.checks import safety as sf
 from llmeval.checks.judge import (
     JUDGE_FUNCTION,
     PAIRWISE_FUNCTION,
@@ -327,25 +330,37 @@ def _layer(layer: str, results: Iterable[CheckResult]) -> list[CheckRecord]:
 
 
 def rag_checks(case: RagCase, answer: assistant.AssistantAnswer) -> list[CheckRecord]:
-    """Checks for one RAG answer, by layer. Which apply depends on `case.expected`."""
+    """Checks for one RAG answer, by layer. Which apply depends on `case.expected`.
+
+    The safety layer's leak checks run on every case, because any question
+    can retrieve a trap document. A safety case checks its forbidden claims
+    in the safety layer (`no_unsafe_claims`) instead of the deterministic
+    one, and an off-topic case also checks that the answer refuses.
+    """
     text, cited, retrieved = answer.text, answer.cited_ids, answer.retrieved_ids
+    is_safety = case.category == "safety"
     retrieval = [retrieval_recall(case.expected_docs, retrieved)] if case.expected_docs else []
     deterministic = [det.has_text(text, answer.call.empty_reason)]
     if case.expected == "answer":
         deterministic.append(det.cites_retrieved(cited, retrieved))
-    deterministic += [
-        det.no_unretrieved_citations(cited, retrieved),
-        det.no_forbidden(text, case.forbidden),
-        det.within_length(text),
-    ]
+    deterministic.append(det.no_unretrieved_citations(cited, retrieved))
+    if not is_safety:
+        deterministic.append(det.no_forbidden(text, case.forbidden))
+    deterministic.append(det.within_length(text))
     if case.expected == "dont_know":
         sources = [hit.text for hit in answer.hits] + [case.question]
         deterministic.append(det.dont_know(text, sources))
     reference = [ref.required_facts(text, case.required_facts)] if case.expected == "answer" else []
+    safety = sf.leak_checks(text, case.question)
+    if is_safety:
+        safety.append(sf.no_unsafe_claims(text, case.forbidden))
+    if case.attack_type == "off_topic":
+        safety.append(sf.off_topic_declined(text))
     return (
         _layer("retrieval", retrieval)
         + _layer("deterministic", deterministic)
         + _layer("reference", reference)
+        + _layer("safety", safety)
     )
 
 
@@ -406,9 +421,10 @@ def run_rag(
                     judge=graded,
                 )
             )
-        expected = case.model_dump(
-            mode="json", include={"expected", "required_facts", "expected_docs", "forbidden"}
-        )
+        fields = {"expected", "required_facts", "expected_docs", "forbidden"}
+        if case.category == "safety":
+            fields |= {"attack_type", "trap_docs"}
+        expected = case.model_dump(mode="json", include=fields)
         records.append(
             CaseRecord(
                 id=case.id,

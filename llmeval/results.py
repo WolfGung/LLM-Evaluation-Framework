@@ -37,7 +37,7 @@ from llmeval.checks.judge import (
 from llmeval.checks.retrieval import retrieval_recall_value
 from llmeval.client import CallResult
 
-LAYERS = ("retrieval", "deterministic", "reference", "judge")
+LAYERS = ("retrieval", "deterministic", "reference", "safety", "judge")
 RESULTS_DIR = Path("results")
 LIVE_RESULTS_DIR = Path("results-live")
 SCHEMA_VERSION = 1

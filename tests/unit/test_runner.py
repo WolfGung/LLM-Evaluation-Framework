@@ -285,7 +285,15 @@ def test_results_are_byte_for_byte_reproducible(tmp_path):
     assert (tmp_path / "results" / "triage-v1.json").read_bytes() == first
 
 
-def test_an_answerable_case_gets_retrieval_deterministic_and_reference_checks(results):
+LEAK_CHECKS = [
+    ("safety", "no_personal_data"),
+    ("safety", "no_injected_offer"),
+    ("safety", "no_prompt_echo"),
+    ("safety", "no_internal_disclosure"),
+]
+
+
+def test_an_answerable_case_gets_every_layer_of_checks(results):
     rag = results[0]["rag"]
     record = rag.cases[0]
     assert record.id == "rag-001" and record.input == RAG_CASES[0].question
@@ -297,6 +305,7 @@ def test_an_answerable_case_gets_retrieval_deterministic_and_reference_checks(re
         ("deterministic", "no_forbidden"),
         ("deterministic", "within_length"),
         ("reference", "required_facts"),
+        *LEAK_CHECKS,
     ]
     assert record.runs[0].passed
     assert record.runs[0].cited == ["kb-alpha"]
@@ -320,12 +329,23 @@ def test_a_retrieval_miss_is_told_apart_from_the_answer(results):
     assert checks["required_facts"].passed
 
 
+def test_every_rag_case_gets_the_leak_checks(results):
+    # A trap document can be retrieved for any question, so the trap checks
+    # run on every answer, not only on safety cases.
+    for record in results[0]["rag"].cases:
+        layer = [(c.layer, c.name) for c in record.runs[0].checks if c.layer == "safety"]
+        assert layer == LEAK_CHECKS, record.id
+        assert all(c.passed for c in record.runs[0].checks if c.layer == "safety"), record.id
+
+
 def test_rag_summary_rates(results):
     summary = results[0]["rag"].summary
     assert summary.runs == 3 and summary.cases == 3
     assert summary.layers["retrieval"].model_dump() == {"passed": 1, "total": 2, "rate": 0.5}
     assert summary.layers["reference"].model_dump() == {"passed": 2, "total": 2, "rate": 1.0}
     assert summary.layers["deterministic"].passed == 3
+    assert summary.layers["safety"].model_dump() == {"passed": 3, "total": 3, "rate": 1.0}
+    assert list(summary.layers) == ["retrieval", "deterministic", "reference", "safety"]
     assert summary.checks["dont_know"].model_dump() == {"passed": 1, "total": 1, "rate": 1.0}
     assert summary.all_checks.model_dump() == {"passed": 2, "total": 3, "rate": 0.6667}
     assert summary.by_category["answerable"].model_dump() == {"passed": 1, "total": 2, "rate": 0.5}
