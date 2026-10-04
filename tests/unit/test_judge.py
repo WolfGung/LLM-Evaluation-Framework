@@ -12,14 +12,19 @@ from datetime import timedelta
 import pytest
 
 from llmeval.cassettes import CassetteStore, request_key
+from llmeval.checks import judge as judge_module
 from llmeval.checks.judge import (
     CRITERIA,
+    PAIRWISE_DESCRIPTION,
     RUBRIC_PATH,
+    VERDICT_DESCRIPTION,
     InvalidVerdict,
     Judge,
     JudgeVerdict,
+    PairwiseVerdict,
     grade_messages,
     load_rubric,
+    pairwise_format,
     parse_rubric,
     parse_verdict,
     verdict_format,
@@ -95,6 +100,38 @@ def test_the_response_format_asks_for_the_strict_schema():
         "type": "json_schema",
         "json_schema": {"name": "judge_verdict", "strict": True, "schema": verdict_schema()},
     }
+
+
+def test_the_schema_describes_itself_for_the_model_not_with_the_docstring():
+    # The schema is part of every judge request key; a docstring edit must not
+    # change what the judge is sent.
+    assert verdict_schema()["description"] == VERDICT_DESCRIPTION
+    assert verdict_schema()["title"] == "JudgeVerdict"
+    sent = json.dumps([verdict_format(), pairwise_format()])
+    for model in (JudgeVerdict, PairwiseVerdict):
+        assert model.__doc__.split("\n")[0] not in sent
+    assert pairwise_format()["json_schema"]["schema"]["description"] == PAIRWISE_DESCRIPTION
+
+
+def test_editing_a_docstring_does_not_change_the_judge_request(monkeypatch):
+    def request_body():
+        messages = grade_messages(RUBRIC, QUESTION, DOCS, ANSWER)
+        return (
+            build_role_request(messages, JUDGE, verdict_format()),
+            build_role_request(messages, JUDGE, pairwise_format()),
+        )
+
+    before = request_body()
+
+    class Renamed(JudgeVerdict):
+        """An edited docstring that a developer wrote for other developers."""
+
+    class RenamedPairwise(PairwiseVerdict):
+        """Another edited docstring."""
+
+    monkeypatch.setattr(judge_module, "JudgeVerdict", Renamed)
+    monkeypatch.setattr(judge_module, "PairwiseVerdict", RenamedPairwise)
+    assert request_body() == before
 
 
 def test_a_valid_verdict_is_parsed():

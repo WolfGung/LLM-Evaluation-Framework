@@ -200,7 +200,8 @@ class JudgeVerdict(_Verdict):
     """The judge's grade of one answer.
 
     The schema has no length, pattern or range keywords, so strict structured
-    output modes accept it; scores are an enum of 1 to 5.
+    output modes accept it; scores are an enum of 1 to 5. This docstring is
+    not sent: the schema carries `VERDICT_DESCRIPTION` instead.
     """
 
     groundedness: Score
@@ -215,29 +216,39 @@ class JudgeVerdict(_Verdict):
 
 
 VERDICT_SCHEMA_NAME = "judge_verdict"
+# What the schema tells the judge. Written for the model on purpose: the
+# schema is part of every judge request key, so Pydantic's default (the class
+# docstring, written for developers) would make a docstring edit change every
+# recorded judge call.
+VERDICT_DESCRIPTION = "Scores for one answer by the rubric, the pass decision and short reasons."
+PAIRWISE_DESCRIPTION = "The better of answers A and B by the rubric, or tie, with short reasons."
 
 
-def _response_format(name: str, model: type[BaseModel]) -> dict[str, Any]:
-    return {
-        "type": "json_schema",
-        "json_schema": {"name": name, "strict": True, "schema": model.model_json_schema()},
-    }
+def _schema(model: type[BaseModel], title: str, description: str) -> dict[str, Any]:
+    """The model's JSON schema with a fixed title and description, so neither
+    the class name nor its docstring reaches the request."""
+    return {**model.model_json_schema(), "title": title, "description": description}
+
+
+def _response_format(name: str, schema: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "json_schema", "json_schema": {"name": name, "strict": True, "schema": schema}}
 
 
 def verdict_schema() -> dict[str, Any]:
-    return JudgeVerdict.model_json_schema()
+    return _schema(JudgeVerdict, "JudgeVerdict", VERDICT_DESCRIPTION)
 
 
 def verdict_format() -> dict[str, Any]:
     """`response_format` for a verdict: the strict JSON schema of `JudgeVerdict`."""
-    return _response_format(VERDICT_SCHEMA_NAME, JudgeVerdict)
+    return _response_format(VERDICT_SCHEMA_NAME, verdict_schema())
 
 
 Preference = Literal["A", "B", "tie"]
 
 
 class PairwiseVerdict(_Verdict):
-    """The judge's choice between two answers shown as A and B."""
+    """The judge's choice between two answers shown as A and B (not sent: see
+    `PAIRWISE_DESCRIPTION`)."""
 
     preferred: Preference
     reasons: str
@@ -247,12 +258,12 @@ PAIRWISE_SCHEMA_NAME = "pairwise_verdict"
 
 
 def pairwise_schema() -> dict[str, Any]:
-    return PairwiseVerdict.model_json_schema()
+    return _schema(PairwiseVerdict, "PairwiseVerdict", PAIRWISE_DESCRIPTION)
 
 
 def pairwise_format() -> dict[str, Any]:
     """`response_format` for a pairwise choice: the strict JSON schema of `PairwiseVerdict`."""
-    return _response_format(PAIRWISE_SCHEMA_NAME, PairwiseVerdict)
+    return _response_format(PAIRWISE_SCHEMA_NAME, pairwise_schema())
 
 
 VerdictErrorKind = Literal["empty", "invalid_json", "invalid_schema"]
