@@ -1,0 +1,18 @@
+# The Toolshop service. By default it answers from cassettes (replay mode):
+# no key, no network calls, and a request without a recording gets 503.
+#
+#   docker compose up --build
+#   curl -s localhost:8000/health
+#
+# For live calls: LLMEVAL_MODE=live OPENROUTER_API_KEY=... docker compose up
+# The key is read from your shell or a local .env file, never stored here.
+services:
+  app:
+    build: .
+    ports:
+      # Loopback only: in live mode the service spends your API key.
+      - "127.0.0.1:8000:8000"
+    environment:
+      - LLMEVAL_MODE=${LLMEVAL_MODE:-replay}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - MAX_RUN_COST_USD=${MAX_RUN_COST_USD:-1.00}

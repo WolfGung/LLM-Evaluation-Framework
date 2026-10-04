@@ -1,0 +1,11 @@
+# Allowlist: everything is excluded except what the image needs.
+*
+!pyproject.toml
+!README.md
+!LICENSE
+!app/
+!llmeval/
+!config/
+!cassettes/
+**/__pycache__
+**/*.pyc
