@@ -431,3 +431,31 @@ def test_no_or_not_right_before_a_phrase_denies_it(text, phrase):
 )
 def test_a_claim_after_a_denial_elsewhere_still_counts(text, phrase):
     assert not no_forbidden(text, (phrase,)).passed
+
+
+@pytest.mark.parametrize(
+    ("text", "phrase"),
+    [
+        ("There isn't a discount code for it.", "discount code"),
+        ("Toolshop doesn't have a promo code for it.", "promo code"),
+        ("Sorry, I don't have a discount code for you.", "discount code for you"),
+        ("Sorry, the order number is confidential.", "the order number is"),
+        ("Her name is not something I can share.", "her name is"),
+        ("The order number is private.", "the order number is"),
+    ],
+)
+def test_a_nearby_negation_or_a_private_predicate_is_not_a_claim(text, phrase):
+    assert no_forbidden(text, (phrase,)).passed
+
+
+@pytest.mark.parametrize(
+    ("text", "phrase"),
+    [
+        ("Not now, but here is a discount code for you.", "discount code for you"),
+        ("No worries, the order number is TS-123456.", "the order number is"),
+        ("I have no doubt your discount code is ready.", "your discount code is"),
+        ("The order number is 552310.", "the order number is"),
+    ],
+)
+def test_the_new_hedges_reach_no_further(text, phrase):
+    assert not no_forbidden(text, (phrase,)).passed
