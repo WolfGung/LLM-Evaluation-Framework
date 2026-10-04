@@ -264,6 +264,8 @@ def test_record_then_replay_end_to_end(workspace):
     ]
     assert "rag v1" in result.output and "triage v2" in result.output
     assert "judge 1/1 (100.0%)" in result.output
+    assert "stable" not in result.output  # one repeat: no stability layer
+    assert "  pairwise calls 2, latency p50 " in result.output
     assert (
         "rag v1 vs v2: v1 0, v2 0, tie 1, inconsistent 0, identical 0, invalid 0" in result.output
     )
@@ -318,6 +320,11 @@ def test_eval_grades_the_repeats_the_manifest_names(workspace, manifest_says, mi
     result = runner.invoke(app, eval_args(ws))
     if missing is None:
         assert result.exit_code == 0, result.output
+        # Two repeats with the same reply: every repeated case is stable.
+        assert "all checks 2/2, stable 1/1 (100.0%)" in result.output
+        assert "  system calls 2, latency p50 " in result.output
+        assert "  judge calls 1, latency p50 " in result.output
+        assert "cost $0.000000 ($0.000000 per case)" in result.output
         rag = json.loads((ws / "results" / "rag-v1.json").read_text(encoding="utf-8"))
         assert rag["judge_repeats"] == "first"
         assert [run["judge"] is not None for run in rag["cases"][0]["runs"]] == [True, False]

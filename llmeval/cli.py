@@ -31,6 +31,7 @@ from llmeval.datasets import (
     load_rag,
     load_triage,
 )
+from llmeval.perf import Performance
 from llmeval.results import RESULTS_DIR, FunctionResults, PairwiseResults
 from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, run
 
@@ -54,13 +55,44 @@ def _line(result: FunctionResults) -> str:
     ]
     total = result.summary.all_checks
     parts.append(f"all checks {total.passed}/{total.total}")
+    if (stable := result.summary.stability) is not None:
+        parts.append(f"stable {stable.stable}/{stable.repeated} ({stable.stable_share:.1%})")
     return f"{result.function} {result.version}: " + ", ".join(parts)
 
 
-def _pairwise_line(result: PairwiseResults) -> str:
+def _ms(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.0f} ms"
+
+
+def _perf_line(label: str, perf: Performance) -> str:
+    """One line of performance: latency, mean tokens and cost (unknown costs named)."""
+    cost = perf.cost
+    spent = f"cost ${cost.total_usd:.6f}"
+    if cost.unknown_calls:
+        spent += f" known, {cost.unknown_calls} calls with unknown cost"
+    elif cost.per_case_usd is not None:
+        spent += f" (${cost.per_case_usd:.6f} per case)"
+    return (
+        f"  {label} calls {perf.calls}, latency p50 {_ms(perf.latency.p50_ms)}, "
+        f"p95 {_ms(perf.latency.p95_ms)}, mean tokens in {perf.mean_prompt_tokens} "
+        f"out {perf.mean_completion_tokens}, {spent}"
+    )
+
+
+def _result_lines(result: FunctionResults) -> list[str]:
+    lines = [_line(result), _perf_line("system", result.summary.performance)]
+    if result.summary.judge is not None:
+        lines.append(_perf_line("judge", result.summary.judge.performance))
+    return lines
+
+
+def _pairwise_lines(result: PairwiseResults) -> list[str]:
     first, second = result.versions
     counts = ", ".join(f"{outcome} {n}" for outcome, n in result.summary.outcomes.items())
-    return f"{result.function} {first} vs {second}: {counts}"
+    return [
+        f"{result.function} {first} vs {second}: {counts}",
+        _perf_line("pairwise", result.summary.performance),
+    ]
 
 
 @app.command("eval")
@@ -126,10 +158,11 @@ def eval_command(
         OSError,
     ) as exc:
         raise _fail(str(exc)) from None
-    lines = [_line(result) for result in outcome.results]
-    lines += [_pairwise_line(result) for result in outcome.pairwise]
-    for line, path in zip(lines, outcome.written, strict=True):
-        typer.echo(line)
+    blocks = [_result_lines(result) for result in outcome.results]
+    blocks += [_pairwise_lines(result) for result in outcome.pairwise]
+    for block, path in zip(blocks, outcome.written, strict=True):
+        for line in block:
+            typer.echo(line)
         typer.echo(f"  wrote {path}")
 
 
