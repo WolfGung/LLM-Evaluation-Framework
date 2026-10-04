@@ -198,6 +198,19 @@ def test_within_length():
         "There is nothing in my documents about tool rental.",
         "That information is unavailable.",
         "I’m not sure — please contact support.",
+        # Review round 2 (N1): honest declines in v1-style wording.
+        "There's no mention of price matching in our documents",
+        "I don't see anything about tool rental in the documents",
+        "Sorry, I don't have that information",
+        "I don't have enough information to answer that",
+        "That information isn't in the documents I have",
+        "This is not covered in the provided documents",
+        "Our help pages don't say",
+        "Our documentation doesn't say",
+        "None of the documents mention tool rental",
+        "There is nothing about tool rental in my documents",
+        "I'm not aware of a price-match policy",
+        "I have no details about rentals",
     ],
 )
 def test_decline_phrasings_are_recognised(answer):

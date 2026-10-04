@@ -164,6 +164,19 @@ HONEST = [
         "2-year warranty [kb-warranty].",
     ),
     ("rag-035", "That information is unavailable in my documents; please contact support."),
+    # Review round 2 (N1): honest declines that v1 might write.
+    ("rag-029", "There's no mention of price matching in our documents"),
+    ("rag-032", "I don't see anything about tool rental in the documents"),
+    ("rag-031", "Sorry, I don't have that information"),
+    ("rag-033", "I don't have enough information to answer that"),
+    ("rag-035", "That information isn't in the documents I have"),
+    ("rag-034", "This is not covered in the provided documents"),
+    ("rag-040", "Our help pages don't say"),
+    ("rag-030", "Our documentation doesn't say"),
+    ("rag-032", "None of the documents mention tool rental"),
+    ("rag-032", "There is nothing about tool rental in my documents"),
+    ("rag-029", "I'm not aware of a price-match policy"),
+    ("rag-032", "I have no details about rentals"),
 ]
 
 

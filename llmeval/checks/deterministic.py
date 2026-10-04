@@ -167,9 +167,14 @@ def within_length(text: str, limit: int = MAX_ANSWER_WORDS) -> CheckResult:
 
 # Matched against `normalise(text)`: lower case, contractions expanded
 # ("don't" -> "do not", "I'm" -> "i am", "can't" -> "cannot").
+_SOURCE_NOUNS = (
+    r"(?:documents?|documentation|information|knowledge base|sources?|docs|notes|records|"
+    r"pages?|articles?)"
+)
+# "the documents", "our help pages", "the provided documentation" ...
 _SOURCES = (
-    r"(?:the |my |our |these |this |any )?"
-    r"(?:documents?|information|knowledge base|sources?|docs|notes|records)"
+    r"(?:(?:the|my|our|these|this|those|any) )?"
+    r"(?:(?:provided|available|given|help|support|retrieved|reference) )?" + _SOURCE_NOUNS
 )
 DECLINE_PATTERNS = tuple(
     re.compile(pattern)
@@ -177,19 +182,27 @@ DECLINE_PATTERNS = tuple(
         r"\bi do not know\b",
         r"\bi am not (?:sure|certain)\b",
         r"\bnot sure\b",
+        r"\bnot aware of\b",
         r"\bi (?:cannot|could not|am unable to|was unable to|am not able to) "
         r"(?:find|see|answer|confirm|say|tell)\b",
         r"\bunable to (?:find|answer|confirm)\b",
+        r"\bi do not see (?:anything|any information|any details|any mention)\b",
         rf"\b{_SOURCES}(?: i have| available| provided| here| i can see)? "
         r"(?:do not|does not|did not) "
         r"(?:say|mention|cover|contain|include|answer|specify|state|tell|explain)\b",
-        r"\b(?:i )?do not have (?:any )?(?:information|details|info|data)\b",
+        rf"\bnone of {_SOURCES} (?:mentions?|says?|covers?|contains?|includes?)\b",
+        r"\bdo not have (?:(?:that|this|the|enough|any|specific|such|those) )?"
+        r"(?:information|details?|info|data)\b",
+        r"\bhave no (?:details|information|info|data)\b",
         r"\bno information\b",
+        r"\bno mention of\b",
         # A negation counts only with a subject that refers to the sources:
         # "not mentioned in the documents", never a bare "not covered".
         r"\bnot (?:mentioned|listed|stated|specified|covered|included|described|addressed) "
         rf"(?:in|by) {_SOURCES}\b",
+        rf"\b(?:is|are) not in {_SOURCES}\b",
         rf"\bnothing (?:in|about (?:this|that) in) {_SOURCES}\b",
+        rf"\bnothing (?:about|on|regarding) [a-z0-9$.: ]{{1,60}}? in {_SOURCES}\b",
         rf"\b{_SOURCES} (?:says?|contains?|mentions?) nothing\b",
         r"\b(?:information|info|details?) (?:is|are) (?:not available|unavailable)\b",
     )
@@ -200,10 +213,15 @@ def declines(text: str) -> str | None:
     """The decline phrase found in `text`, or None.
 
     A decline says the answer is not known or not in the sources ("I don't
-    know", "I'm not sure", "the documents don't say", "not mentioned in the
-    documents", "there is nothing in my documents about", "that information is
-    unavailable" ...). Sending the customer to support is not a decline on its
-    own (see `redirects`), and a bare negation ("is not covered") is a policy
+    know", "I'm not sure", "I'm not aware of", "the documents don't say",
+    "our help pages don't say", "none of the documents mention", "there's no
+    mention of", "I don't have that information", "not mentioned in the
+    documents", "there is nothing about X in my documents", "that
+    information is unavailable" ...). The list is wide on purpose: a prompt
+    that tells the model to say "I don't know" must not win by that sentence.
+
+    Sending the customer to support is not a decline on its own (see
+    `redirects`), and a bare negation ("is not covered") is a policy
     statement, not a decline.
     """
     normal = normalise(text)
