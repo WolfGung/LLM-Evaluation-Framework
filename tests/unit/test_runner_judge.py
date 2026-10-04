@@ -289,6 +289,38 @@ def test_identical_answers_share_one_judge_recording(tmp_path):
     assert len(handler.bodies) == len(store)
 
 
+def test_identical_answers_stay_out_of_the_position_counts(tmp_path):
+    same = {**ANSWERS, ("v2", RAG_CASES[1].question): ANSWERS[("v1", RAG_CASES[1].question)]}
+
+    def same_reply(messages):
+        if messages[0]["content"] == RUBRIC.text:
+            return judge_reply(messages[-1]["content"])
+        question = messages[-1]["content"]
+        if question.startswith("Synthetic:"):
+            return TRIAGE_REPLY
+        return same[(version_of(messages), question)]
+
+    write_manifest(tmp_path / "cassettes")
+    outcome = run_all(FakeModel(reply=same_reply), tmp_path)
+    pairwise = outcome.pairwise[0]
+    # rag-002: the same text twice. The judge's "B" in both orders would look
+    # like two choices of position B; it is counted as identical instead.
+    assert pairwise.cases[1].outcome == "identical"
+    summary = pairwise.summary
+    assert summary.outcomes == {
+        "v1": 0,
+        "v2": 1,
+        "tie": 0,
+        "inconsistent": 0,
+        "identical": 1,
+        "invalid": 0,
+    }
+    assert summary.valid.model_dump() == {"count": 2, "total": 2, "rate": 1.0}
+    assert summary.inconsistent.model_dump() == {"count": 0, "total": 1, "rate": 0.0}
+    assert summary.inconsistent_kinds["same_position_b"] == 0
+    assert summary.position_bias.model_dump() == {"count": 1, "total": 2, "rate": 0.5}
+
+
 # --- the judge layer in the results --------------------------------------------
 
 
@@ -407,7 +439,14 @@ def test_pairwise_results_compare_the_first_version_with_the_next(results):
     assert [order.winner for order in first.orders] == ["v2", "v2"]
     summary = pairwise.summary
     assert summary.pairs == 2
-    assert summary.outcomes == {"v1": 0, "v2": 2, "tie": 0, "inconsistent": 0, "invalid": 0}
+    assert summary.outcomes == {
+        "v1": 0,
+        "v2": 2,
+        "tie": 0,
+        "inconsistent": 0,
+        "identical": 0,
+        "invalid": 0,
+    }
     assert summary.valid.model_dump() == {"count": 2, "total": 2, "rate": 1.0}
     assert summary.inconsistent.model_dump() == {"count": 0, "total": 2, "rate": 0.0}
     # The judge picked v2 in both positions: answer A in half of its choices.

@@ -408,8 +408,8 @@ class Judgement:
 
 Side = Literal["v1", "v2"]
 Winner = Literal["v1", "v2", "tie"]
-Outcome = Literal["v1", "v2", "tie", "inconsistent", "invalid"]
-OUTCOMES: tuple[Outcome, ...] = ("v1", "v2", "tie", "inconsistent", "invalid")
+Outcome = Literal["v1", "v2", "tie", "inconsistent", "identical", "invalid"]
+OUTCOMES: tuple[Outcome, ...] = ("v1", "v2", "tie", "inconsistent", "identical", "invalid")
 
 
 @dataclass(frozen=True)
@@ -535,6 +535,12 @@ class Judge:
         do not, and `invalid` when either verdict is invalid. `versions` names
         the prompt versions behind `answer_v1` and `answer_v2`, for the
         recording only.
+
+        Two answers with the same text give `identical`, whatever the verdicts
+        say: both orders are then the same request, so one recorded verdict
+        serves both and tells nothing about position or preference. The judge
+        is still asked (one recording), which keeps the call plan exact before
+        the answers exist.
         """
         answers: dict[Side, str] = {"v1": answer_v1, "v2": answer_v2}
         orders: list[OrderJudgement] = []
@@ -556,7 +562,10 @@ class Judge:
                 )
             else:
                 orders.append(OrderJudgement(first, parsed, None, "", call.content, call))
-        return PairwiseResult(combine(orders[0].winner, orders[1].winner), (orders[0], orders[1]))
+        outcome: Outcome = (
+            "identical" if answer_v1 == answer_v2 else combine(orders[0].winner, orders[1].winner)
+        )
+        return PairwiseResult(outcome, (orders[0], orders[1]))
 
     def checks(self, judgement: Judgement) -> list[CheckResult]:
         """The judge layer's checks for one answer.

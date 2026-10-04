@@ -262,7 +262,9 @@ def test_record_then_replay_end_to_end(workspace):
     ]
     assert "rag v1" in result.output and "triage v2" in result.output
     assert "judge 1/1 (100.0%)" in result.output
-    assert "rag v1 vs v2: v1 0, v2 0, tie 1, inconsistent 0, invalid 0" in result.output
+    assert (
+        "rag v1 vs v2: v1 0, v2 0, tie 1, inconsistent 0, identical 0, invalid 0" in result.output
+    )
     # The synthetic manifest holds placeholder hashes, so both datasets differ.
     assert "notice: datasets changed since the recording: rag.jsonl, triage.jsonl" in result.output
 

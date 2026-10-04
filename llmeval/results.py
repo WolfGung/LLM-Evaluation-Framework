@@ -296,8 +296,9 @@ class PairwiseCaseRecord(_Record):
     """One case compared: both answers (repeat 0), the outcome and both orders.
 
     `outcome` is a version id when both orders preferred it, `tie`,
-    `inconsistent` when the orders disagree, or `invalid` when a verdict was
-    invalid. An inconsistent pair is never resolved by picking one order.
+    `inconsistent` when the orders disagree, `identical` when both versions
+    wrote the same text, or `invalid` when a verdict was invalid. An
+    inconsistent pair is never resolved by picking one order.
     """
 
     id: str
@@ -332,16 +333,22 @@ class PairwiseSummary(_Record):
     """The comparison of two versions over every compared case.
 
     - `outcomes`: pairs per outcome (first version, second version, tie,
-      inconsistent, invalid);
+      inconsistent, identical, invalid);
     - `valid`: pairs whose two verdicts are both valid (the judge's reliability);
-    - `inconsistent`: inconsistent pairs among the valid ones, and
-      `inconsistent_kinds`: how they disagreed (the same position twice, or a
-      tie in one order);
+    - `inconsistent`: inconsistent pairs among the compared ones (valid and
+      not identical), and `inconsistent_kinds`: how they disagreed (the same
+      position twice, or a tie in one order);
     - `position_bias`: choices of answer A among the choices of a side, over
-      pairs where both orders chose a side; 0.5 means no lean, 1.0 means the
-      judge always picks A;
+      compared pairs where both orders chose a side; 0.5 means no lean, 1.0
+      means the judge always picks A;
     - `longer_preferred`: over the same choices, how often the judge chose
-      the longer answer (pairs of equal length left out).
+      the longer answer (pairs of equal length left out). Like the
+      length-score correlation, it is a cheap check, not proof: the longer
+      answer may also be the better one.
+
+    Identical pairs (both versions wrote the same text) are left out of
+    `inconsistent`, `position_bias` and `longer_preferred`: their two orders
+    are one request, so the verdict says nothing about position or preference.
     """
 
     pairs: int
@@ -483,8 +490,14 @@ def summarise_pairwise(
     outcomes = {names.get(outcome, outcome): 0 for outcome in OUTCOMES}
     for case in cases:
         outcomes[case.outcome] += 1
-    valid = [case for case in cases if case.outcome != "invalid"]
-    preferences = [(case.orders[0].preferred, case.orders[1].preferred) for case in cases]
+    both_valid = [all(order.error is None for order in case.orders) for case in cases]
+    # Pairs the judge really compared: two different answers, two valid verdicts.
+    compared = [
+        case
+        for case, valid in zip(cases, both_valid, strict=True)
+        if valid and case.outcome != "identical"
+    ]
+    preferences = [(case.orders[0].preferred, case.orders[1].preferred) for case in compared]
     kinds = {kind: 0 for kind in INCONSISTENCIES}
     for first, second in preferences:
         if kind := inconsistency(first, second):
@@ -493,19 +506,20 @@ def summarise_pairwise(
     return PairwiseSummary(
         pairs=len(cases),
         outcomes=outcomes,
-        valid=Share.of(case.outcome != "invalid" for case in cases),
-        inconsistent=Share.of(case.outcome == "inconsistent" for case in valid),
+        valid=Share.of(both_valid),
+        inconsistent=Share.of(case.outcome == "inconsistent" for case in compared),
         inconsistent_kinds=kinds,
         position_bias=Share(
             count=chose_a, total=chose, rate=round(chose_a / chose, 4) if chose else None
         ),
-        longer_preferred=Share.of(_longer_preferred(cases, versions)),
+        longer_preferred=Share.of(_longer_preferred(compared, versions)),
     )
 
 
 def _longer_preferred(cases: Sequence[PairwiseCaseRecord], versions: tuple[str, str]) -> list[bool]:
     """For each side choice in pairs where both orders chose a side: was it
-    the longer answer? Pairs of equal length are left out."""
+    the longer answer? Pairs of equal length are left out. A cheap check of
+    verbosity bias, not proof: the longer answer may also be the better one."""
     flags = []
     for case in cases:
         if any(order.preferred not in ("A", "B") for order in case.orders):
