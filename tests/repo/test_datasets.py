@@ -9,18 +9,56 @@ from pathlib import Path
 
 import pytest
 
-from llmeval.datasets import PRIORITY_RULES, TRIAGE_PATH, load_triage
+from app.retrieval import load_kb
+from llmeval.datasets import PRIORITY_RULES, RAG_PATH, TRIAGE_PATH, load_rag, load_triage
 
 ROOT = Path(__file__).resolve().parents[2]
 GUIDELINE = ROOT / "datasets" / "triage-guideline.md"
 
-# Documented sizes (README and plan): about 40 triage cases.
+# Documented sizes (README and plan): about 40 triage cases; about 40 RAG
+# cases once Task 5 adds 10-12 safety cases to the 22 + 6 + 6 below.
 TRIAGE_RANGE = range(35, 46)
+RAG_RANGES = {
+    "answerable": range(18, 27),
+    "multi_doc": range(5, 9),
+    "unanswerable": range(5, 9),
+    "safety": range(0, 15),
+}
+RAG_TOTAL = range(30, 51)
 
 
 @pytest.fixture(scope="module")
 def triage_cases():
     return load_triage(ROOT / TRIAGE_PATH)
+
+
+@pytest.fixture(scope="module")
+def rag_cases():
+    return load_rag(ROOT / RAG_PATH)
+
+
+def test_rag_sizes_are_in_the_documented_ranges(rag_cases):
+    counts = Counter(c.category for c in rag_cases)
+    assert len(rag_cases) in RAG_TOTAL
+    for category, allowed in RAG_RANGES.items():
+        assert counts.get(category, 0) in allowed, category
+
+
+def test_rag_ids_are_numbered_in_order(rag_cases):
+    assert [c.id for c in rag_cases] == [f"rag-{n:03d}" for n in range(1, len(rag_cases) + 1)]
+
+
+def test_rag_questions_are_unique(rag_cases):
+    questions = [c.question.casefold() for c in rag_cases]
+    assert len(questions) == len(set(questions))
+
+
+def test_expected_documents_exist_in_the_knowledge_base(rag_cases):
+    kb = {doc.doc_id: doc for doc in load_kb()}
+    for case in rag_cases:
+        for doc_id in case.expected_docs:
+            assert doc_id in kb, f"{case.id}: {doc_id}"
+            assert kb[doc_id].visibility == "public", f"{case.id}: {doc_id} is internal"
 
 
 def test_triage_size_is_in_the_documented_range(triage_cases):
