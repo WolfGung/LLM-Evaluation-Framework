@@ -9,18 +9,46 @@ The rubric lives in `rubrics/judge.md`. Its body is the judge's instructions
 Its front matter gives the code the criteria and the minimum score per
 criterion. The loader refuses a rubric whose prose pass rule and front matter
 disagree, so the judge and the code apply one rule.
+
+Judge calls go through the same model client as the system under test, in the
+`judge` role of `config/models.yaml` (another model, temperature 0, a fixed
+seed, structured output). They are recorded and replayed like any other call.
+The prompt is built from the rubric, the question, the retrieved documents and
+the answer only, so its request key is deterministic.
+
+The verdict is requested with a strict JSON schema and validated with Pydantic
+after parsing. An empty or invalid verdict is an invalid judgement: it is kept,
+counted and reported, never dropped and never asked again.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Literal
 
 import yaml
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+)
+
+from app.assistant import format_documents
+from app.prompting import ChatModel
+from app.retrieval import Hit
+from app.triage import unwrap_reply
+from llmeval.cassettes import CallTag
+from llmeval.checks import CheckResult
+from llmeval.client import CallResult
+from llmeval.config import RoleConfig
 
 RUBRIC_PATH = Path("rubrics/judge.md")
 CRITERIA = ("groundedness", "helpfulness", "tone")
@@ -141,3 +169,250 @@ def load_rubric(path: Path | str = RUBRIC_PATH) -> Rubric:
     except OSError as exc:
         raise RubricError(f"cannot read the rubric {path}: {exc.strerror}") from None
     return parse_rubric(source, name=path.name)
+
+
+# --- the verdict --------------------------------------------------------------
+
+
+def _whole_score(value: object) -> object:
+    # Literal[1..5] alone accepts 4.0 and true (true == 1 in Python).
+    if type(value) is not int:
+        raise ValueError("a score must be a whole number from 1 to 5")
+    return value
+
+
+Score = Annotated[Literal[1, 2, 3, 4, 5], BeforeValidator(_whole_score)]
+
+
+class _Verdict(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("reasons", check_fields=False)
+    @classmethod
+    def _reasons_have_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("reasons must not be blank")
+        return value
+
+
+class JudgeVerdict(_Verdict):
+    """The judge's grade of one answer.
+
+    The schema has no length, pattern or range keywords, so strict structured
+    output modes accept it; scores are an enum of 1 to 5.
+    """
+
+    groundedness: Score
+    helpfulness: Score
+    tone: Score
+    passed: bool = Field(alias="pass")
+    reasons: str
+
+    @property
+    def scores(self) -> dict[str, int]:
+        return {criterion: getattr(self, criterion) for criterion in CRITERIA}
+
+
+VERDICT_SCHEMA_NAME = "judge_verdict"
+
+
+def _response_format(name: str, model: type[BaseModel]) -> dict[str, Any]:
+    return {
+        "type": "json_schema",
+        "json_schema": {"name": name, "strict": True, "schema": model.model_json_schema()},
+    }
+
+
+def verdict_schema() -> dict[str, Any]:
+    return JudgeVerdict.model_json_schema()
+
+
+def verdict_format() -> dict[str, Any]:
+    """`response_format` for a verdict: the strict JSON schema of `JudgeVerdict`."""
+    return _response_format(VERDICT_SCHEMA_NAME, JudgeVerdict)
+
+
+VerdictErrorKind = Literal["empty", "invalid_json", "invalid_schema"]
+
+
+class InvalidVerdict(ValueError):
+    """The judge's reply is not a valid verdict. `kind` says what was wrong."""
+
+    def __init__(self, kind: VerdictErrorKind, detail: str) -> None:
+        self.kind = kind
+        self.detail = detail
+        super().__init__(f"invalid judgement ({kind}): {detail}")
+
+
+def parse_verdict[V: _Verdict](raw: str, model: type[V] = JudgeVerdict) -> V:
+    """Validate a reply. The only leniency is the one triage has: the whole
+    reply may be one ```json block."""
+    if not raw.strip():
+        raise InvalidVerdict("empty", "the reply has no text")
+    text = unwrap_reply(raw)
+    try:
+        json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise InvalidVerdict("invalid_json", f"{exc.msg} at line {exc.lineno}") from None
+    try:
+        return model.model_validate_json(text, strict=True)
+    except ValidationError as exc:
+        problems = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc']) or 'reply'}: {err['msg']}"
+            for err in exc.errors(include_input=False, include_url=False)
+        )
+    raise InvalidVerdict("invalid_schema", problems)
+
+
+# --- the prompt ---------------------------------------------------------------
+
+JUDGE_FUNCTION = "judge"
+ADHOC = "adhoc"
+Docs = Sequence[Hit]
+
+
+def _material(question: str, docs: Docs) -> str:
+    return (
+        f"<question>\n{question}\n</question>\n\n"
+        f"<documents>\n{format_documents(tuple(docs))}\n</documents>"
+    )
+
+
+def grade_messages(rubric: Rubric, question: str, docs: Docs, answer: str) -> list[dict[str, str]]:
+    """The judge's messages for one answer: the rubric, then the material.
+
+    Pure and deterministic, so a planner can compute the request key once the
+    answer is known.
+    """
+    user = (
+        'Grade the answer with the rubric (see "Grading one answer").\n\n'
+        f"{_material(question, docs)}\n\n<answer>\n{answer}\n</answer>"
+    )
+    return [{"role": "system", "content": rubric.text}, {"role": "user", "content": user}]
+
+
+def grade_tag(case: str, version: str) -> CallTag:
+    """The cassette tag of a grading call: file `judge-<version>.jsonl`, and a
+    case label that says it is the judge (`rag-001:judge/v1/0` in a replay miss)."""
+    return CallTag(function=JUDGE_FUNCTION, case=f"{case}:judge", version=version)
+
+
+# --- the judge ----------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Judgement:
+    """The judge's grade of one answer, valid or not.
+
+    - `verdict`: the parsed verdict, or None for an invalid judgement;
+    - `error` and `detail`: what was wrong with an invalid one;
+    - `raw`: the reply exactly as the judge wrote it;
+    - `short_of`: criteria below the rubric's minimum;
+    - `rule_pass`: the rubric's pass rule applied to the scores (None when invalid).
+    """
+
+    verdict: JudgeVerdict | None
+    error: VerdictErrorKind | None
+    detail: str
+    raw: str
+    call: CallResult
+    short_of: tuple[str, ...] = ()
+
+    @property
+    def valid(self) -> bool:
+        return self.verdict is not None
+
+    @property
+    def rule_pass(self) -> bool | None:
+        return None if self.verdict is None else not self.short_of
+
+    @property
+    def agrees(self) -> bool | None:
+        """Whether the judge's own `pass` matches the rubric rule on its scores."""
+        return None if self.verdict is None else self.verdict.passed == self.rule_pass
+
+
+def _reply(call: CallResult) -> tuple[str, InvalidVerdict | None]:
+    if call.empty_reason is not None:
+        return call.content, InvalidVerdict(
+            "empty", f"the judge returned no text ({call.empty_reason})"
+        )
+    return call.content, None
+
+
+def _short(text: str, limit: int = 300) -> str:
+    text = " ".join(text.split())
+    return text if len(text) <= limit else text[: limit - 1] + "\u2026"
+
+
+class Judge:
+    """Grades answers with the rubric, through any `ChatModel` (the model client or a fake)."""
+
+    def __init__(self, client: ChatModel, role: RoleConfig, rubric: Rubric) -> None:
+        if not role.structured_output:
+            raise ValueError(
+                f"the judge role ({role.model}) needs structured_output: true; "
+                "its verdict is requested with a strict JSON schema"
+            )
+        self.client = client
+        self.role = role
+        self.rubric = rubric
+
+    def grade(
+        self,
+        question: str,
+        docs: Docs,
+        answer: str,
+        *,
+        case: str = ADHOC,
+        version: str = ADHOC,
+        repeat: int = 0,
+    ) -> Judgement:
+        """Grade one answer. `version` is the prompt version that wrote it and
+        `repeat` the system run it came from; both only name the recording."""
+        messages = grade_messages(self.rubric, question, docs, answer)
+        call = self.client.complete(
+            messages,
+            role=self.role,
+            response_format=verdict_format(),
+            repeat=repeat,
+            tag=grade_tag(case, version),
+        )
+        raw, problem = _reply(call)
+        if problem is None:
+            try:
+                verdict = parse_verdict(raw)
+            except InvalidVerdict as exc:
+                problem = exc
+            else:
+                short_of = self.rubric.short_of(verdict.scores)
+                return Judgement(verdict, None, "", raw, call, short_of)
+        return Judgement(None, problem.kind, problem.detail, raw, call)
+
+    def checks(self, judgement: Judgement) -> list[CheckResult]:
+        """The judge layer's checks for one answer.
+
+        A valid verdict gives `verdict_valid` plus one check per criterion
+        (score at least the rubric's minimum), so the layer passes exactly when
+        the rubric's pass rule does. An invalid verdict gives one failing
+        `verdict_valid`: the answer could not be graded, and the check name
+        says the judge is why.
+        """
+        verdict = judgement.verdict
+        if verdict is None:
+            detail = f"invalid judgement ({judgement.error}): {_short(judgement.detail)}"
+            return [CheckResult("verdict_valid", False, detail)]
+        note = "the judge returned a valid verdict"
+        if not judgement.agrees:
+            note += (
+                f"; the judge's own pass ({str(verdict.passed).lower()}) differs from "
+                f"the rubric rule ({str(judgement.rule_pass).lower()})"
+            )
+        results = [CheckResult("verdict_valid", True, note)]
+        for criterion in self.rubric.criteria:
+            score, minimum = verdict.scores[criterion], self.rubric.pass_rule[criterion]
+            detail = f"{score}/5 (pass needs {minimum} or more)"
+            if score < minimum:
+                detail += f"; judge: {_short(verdict.reasons)}"
+            results.append(CheckResult(criterion, score >= minimum, detail))
+        return results
