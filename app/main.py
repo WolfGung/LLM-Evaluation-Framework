@@ -7,8 +7,10 @@
 By default the model client comes from `config/models.yaml` and the
 environment, in replay mode: answers come from `cassettes/`, no key is needed,
 and a request without a recording gets 503 with the replay miss message.
-`LLMEVAL_MODE=live` with `OPENROUTER_API_KEY` calls the model. The service
-never records: cassettes come only from `make record`.
+`LLMEVAL_MODE=live` with `OPENROUTER_API_KEY` calls the model, and only when
+both configured roles are free models: the service has no per-run budget.
+The service never records: cassettes and paid runs go through `make record`,
+which estimates the cost first.
 
 Tests pass their own model with `create_app(client=..., role=...)`.
 """
@@ -39,6 +41,11 @@ CASSETTES_DIR = Path("cassettes")
 SERVICE_MODES = (Mode.REPLAY, Mode.LIVE)
 MAX_QUESTION_CHARS = 2000
 MAX_TICKET_CHARS = 5000
+FREE_SUFFIX = ":free"
+REPLAY_MISS_HINT = (
+    "In replay mode the service answers only recorded dataset questions; "
+    "for other questions run it with LLMEVAL_MODE=live (free models only)."
+)
 
 T = TypeVar("T")
 
@@ -97,13 +104,28 @@ class TriageResponse(BaseModel):
 
 
 def build_client(config: Config, cassettes_dir: Path | str = CASSETTES_DIR) -> ModelClient:
-    """The service's own model client: replay (default) or live, never record."""
+    """The service's own model client: replay (default) or live, never record.
+
+    Live mode is allowed only with free models: each request would spend
+    without a cost estimate, because the service has no per-run budget.
+    """
     mode = config.settings.mode
     if mode not in SERVICE_MODES:
         raise ServiceConfigError(
             f"LLMEVAL_MODE={mode} is not available in the service (use replay or live); "
             "cassettes are recorded with make record"
         )
+    if mode is Mode.LIVE:
+        roles = {"system": config.models.system, "judge": config.models.judge}
+        if paid := [
+            f"{n}={r.model}" for n, r in roles.items() if not r.model.endswith(FREE_SUFFIX)
+        ]:
+            raise ServiceConfigError(
+                f"live mode in the service needs free models (ids ending {FREE_SUFFIX}), "
+                f"but config/models.yaml has {', '.join(paid)}. Live mode in the service has "
+                "no per-run budget; recording and paid runs go through make record, "
+                "which estimates the cost first"
+            )
     return ModelClient(mode, CassetteStore(cassettes_dir), config)
 
 
@@ -190,7 +212,7 @@ def create_app(
 
     @app.exception_handler(MissingRecording)
     async def _missing(_: Request, exc: MissingRecording) -> JSONResponse:
-        return JSONResponse(status_code=503, content={"detail": str(exc)})
+        return JSONResponse(status_code=503, content={"detail": f"{exc}. {REPLAY_MISS_HINT}"})
 
     @app.exception_handler(QuotaExhausted)
     async def _quota(_: Request, exc: QuotaExhausted) -> JSONResponse:

@@ -5,7 +5,8 @@ Two output paths, chosen by the model role:
 - `structured_output: false` (the default system model): the JSON schema of
   `TriageResult` is in the prompt, and the reply is parsed and validated here.
 - `structured_output: true`: the same prompt, plus `response_format` with the
-  schema, so OpenRouter routes only to endpoints that enforce it.
+  schema, so OpenRouter routes only to endpoints that enforce it. That copy
+  drops minLength, maxLength and pattern (see `strict_schema`).
 
 Parsing is deliberately strict, because the evaluation measures how often the
 model returns valid JSON. The only thing tolerated is the whole reply being
@@ -21,7 +22,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from app.prompting import ChatModel, load_prompt, render
 from llmeval.cassettes import CallTag
@@ -62,6 +63,13 @@ class TriageResult(BaseModel):
     order_id: str | None = Field(pattern=r"^TS-\d{6}$")
     summary: str = Field(min_length=1, max_length=200)
 
+    @field_validator("summary")
+    @classmethod
+    def _summary_has_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("summary must not be blank")
+        return value
+
 
 TriageErrorKind = Literal["empty", "invalid_json", "invalid_schema"]
 
@@ -92,8 +100,33 @@ class TriageAnswer:
     call: CallResult
 
 
+# Keywords that strict structured-output modes of some providers refuse.
+# They are dropped from the schema sent as `response_format` only; the prompt
+# carries the full schema and Pydantic still checks every limit after parsing.
+STRICT_UNSUPPORTED = frozenset({"minLength", "maxLength", "pattern"})
+
+
 def triage_schema() -> dict[str, Any]:
+    """The full JSON schema of `TriageResult`, as shown in the prompt."""
     return TriageResult.model_json_schema()
+
+
+def _strip(node: Any, *, names: bool = False) -> Any:
+    # Under "properties" the keys are field names, not keywords, so they stay.
+    if isinstance(node, dict):
+        return {
+            key: _strip(value, names=key == "properties" and not names)
+            for key, value in node.items()
+            if names or key not in STRICT_UNSUPPORTED
+        }
+    if isinstance(node, list):
+        return [_strip(item) for item in node]
+    return node
+
+
+def strict_schema() -> dict[str, Any]:
+    """The schema sent as `response_format`: the full one without length and pattern limits."""
+    return _strip(triage_schema())
 
 
 def response_format_for(role: RoleConfig) -> dict[str, Any] | None:
@@ -102,7 +135,7 @@ def response_format_for(role: RoleConfig) -> dict[str, Any] | None:
         return None
     return {
         "type": "json_schema",
-        "json_schema": {"name": SCHEMA_NAME, "strict": True, "schema": triage_schema()},
+        "json_schema": {"name": SCHEMA_NAME, "strict": True, "schema": strict_schema()},
     }
 
 

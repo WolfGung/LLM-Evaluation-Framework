@@ -11,7 +11,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from app.main import ServiceConfigError, build_client, create_app
+from app.main import REPLAY_MISS_HINT, ServiceConfigError, build_client, create_app
 from app.retrieval import load_kb
 from llmeval.client import MissingRecording, ModelClient
 from llmeval.config import Config, Mode, Settings, load_models_config
@@ -37,9 +37,16 @@ def fake_app(model, role=UNSTRUCTURED):
     return create_app(client=model, role=role)
 
 
-def config(mode: Mode, key: str | None = None) -> Config:
+def config(mode: Mode, key: str | None = None, *, paid: str | None = None) -> Config:
+    """The repository's model config; `paid` swaps that role to a non-free model id."""
+    models = load_models_config()
+    if paid is not None:
+        role = getattr(models, paid)
+        models = models.model_copy(
+            update={paid: role.model_copy(update={"model": "vendor-x/paid-model"})}
+        )
     return Config(
-        models=load_models_config(),
+        models=models,
         settings=Settings(mode=mode, api_key=SecretStr(key) if key else None),
     )
 
@@ -186,8 +193,24 @@ def test_the_default_client_answers_a_replay_miss_with_503(tmp_path):
     assert health.json()["mode"] == "replay"
     for response in (assist, triage):
         assert response.status_code == 503
-        assert response.json()["detail"].startswith("no recording for adhoc/")
-        assert response.json()["detail"].endswith(": run make record")
+        detail = response.json()["detail"]
+        assert detail.startswith("no recording for adhoc/")
+        assert ": run make record" in detail
+        assert detail.endswith(REPLAY_MISS_HINT)
+
+
+def test_the_replay_miss_hint_points_ad_hoc_questions_to_live_mode():
+    assert "only recorded dataset questions" in REPLAY_MISS_HINT
+    assert "LLMEVAL_MODE=live" in REPLAY_MISS_HINT
+    response = call(
+        fake_app(FakeModel(error=MissingRecording("a" * 64, 0, None))),
+        "POST",
+        "/assist",
+        json={"question": "Q?", "version": "v1"},
+    )
+    assert response.json()["detail"] == (
+        f"no recording for key aaaaaaaaaaaa/0: run make record. {REPLAY_MISS_HINT}"
+    )
 
 
 def test_build_client_uses_the_configured_mode_and_cassettes(tmp_path):
@@ -207,8 +230,32 @@ def test_live_mode_needs_a_key(tmp_path):
         build_client(config(Mode.LIVE), tmp_path)
 
 
-def test_a_bad_mode_stops_the_server_at_startup(tmp_path):
-    app = create_app(config=config(Mode.RECORD, key="synthetic-key-123"), cassettes_dir=tmp_path)
+@pytest.mark.parametrize("paid", ["system", "judge"])
+def test_live_mode_refuses_a_paid_model(tmp_path, paid):
+    with pytest.raises(ServiceConfigError) as caught:
+        build_client(config(Mode.LIVE, key="synthetic-key-123", paid=paid), tmp_path)
+    message = str(caught.value)
+    assert "vendor-x/paid-model" in message
+    assert "no per-run budget" in message
+    assert "make record" in message
+
+
+def test_live_mode_starts_with_free_roles(tmp_path):
+    # Building a live client opens no connection; nothing is called here.
+    with build_client(config(Mode.LIVE, key="synthetic-key-123"), tmp_path) as client:
+        assert client.mode is Mode.LIVE
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        config(Mode.RECORD, key="synthetic-key-123"),
+        config(Mode.LIVE, key="synthetic-key-123", paid="system"),
+    ],
+    ids=["record", "live-paid"],
+)
+def test_a_bad_mode_stops_the_server_at_startup(tmp_path, bad):
+    app = create_app(config=bad, cassettes_dir=tmp_path)
     with pytest.raises(ServerDidNotStart), serve(app):
         pass
 

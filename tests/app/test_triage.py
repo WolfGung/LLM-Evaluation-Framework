@@ -20,6 +20,7 @@ from app.triage import (
     parse_triage,
     prepare,
     response_format_for,
+    strict_schema,
     triage,
     triage_schema,
 )
@@ -91,6 +92,63 @@ def test_the_schema_requires_every_field_and_forbids_extras():
     schema = triage_schema()
     assert sorted(schema["required"]) == ["category", "order_id", "priority", "summary"]
     assert schema["additionalProperties"] is False
+
+
+@pytest.mark.parametrize("summary", ["   ", "\n\t"])
+def test_summary_must_not_be_blank(summary):
+    with pytest.raises(ValidationError):
+        TriageResult(**{**GOOD, "summary": summary})
+    with pytest.raises(TriageError) as caught:
+        parse_triage(json.dumps({**GOOD, "summary": summary}))
+    assert caught.value.kind == "invalid_schema"
+
+
+STRIPPED = {"minLength", "maxLength", "pattern"}
+
+
+def keywords(schema, *, names=False):
+    """Every schema keyword at any depth; property names are not keywords."""
+    found = set()
+    if isinstance(schema, dict):
+        for key, value in schema.items():
+            if not names:
+                found.add(key)
+            found |= keywords(value, names=key == "properties" and not names)
+    elif isinstance(schema, list):
+        for item in schema:
+            found |= keywords(item)
+    return found
+
+
+def without(schema, *, names=False):
+    if isinstance(schema, dict):
+        return {
+            key: without(value, names=key == "properties" and not names)
+            for key, value in schema.items()
+            if names or key not in STRIPPED
+        }
+    if isinstance(schema, list):
+        return [without(item) for item in schema]
+    return schema
+
+
+def test_the_strict_schema_drops_length_and_pattern_keywords():
+    assert keywords(triage_schema()) >= STRIPPED
+    assert not keywords(strict_schema()) & STRIPPED
+    assert strict_schema() == without(triage_schema())
+
+
+def test_the_strict_schema_leaves_the_full_schema_unchanged():
+    before = TriageResult.model_json_schema()
+    strict_schema()
+    assert triage_schema() == before
+    assert before["properties"]["summary"]["maxLength"] == 200
+
+
+def test_the_prompt_keeps_the_full_schema_on_the_structured_path():
+    messages, response_format = prepare(TICKET, "v1", STRUCTURED)
+    assert json.dumps(triage_schema(), indent=2) in messages[0]["content"]
+    assert response_format["json_schema"]["schema"] == strict_schema()
 
 
 def test_parse_accepts_a_plain_json_object():
@@ -176,7 +234,7 @@ def test_prepare_for_a_structured_role_also_sends_the_schema():
     messages, response_format = prepare(TICKET, "v2", STRUCTURED)
     assert response_format == {
         "type": "json_schema",
-        "json_schema": {"name": "triage_result", "strict": True, "schema": triage_schema()},
+        "json_schema": {"name": "triage_result", "strict": True, "schema": strict_schema()},
     }
     # The prompt is the same on both paths; only the enforcement differs.
     assert messages == prepare(TICKET, "v2", UNSTRUCTURED)[0]
@@ -211,7 +269,7 @@ def test_triage_on_the_structured_path_routes_to_supporting_endpoints_only():
     outcome = triage(model, STRUCTURED, TICKET, "v2")
     assert outcome.result.order_id == "TS-104233"
     [call] = model.calls
-    assert call["body"]["response_format"]["json_schema"]["schema"] == triage_schema()
+    assert call["body"]["response_format"]["json_schema"]["schema"] == strict_schema()
     assert call["body"]["provider"] == {"require_parameters": True}
     assert call["tag"] == CallTag(function="triage", case="adhoc", version="v2")
 
