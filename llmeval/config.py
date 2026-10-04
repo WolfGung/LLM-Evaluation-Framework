@@ -120,6 +120,10 @@ class ModelsConfig(_Strict):
 class Settings(_Strict):
     """Values that come from the environment, not from the repository."""
 
+    # pydantic quotes the rejected input in its errors; for an invalid key
+    # that input is the key itself.
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
     mode: Mode = Mode.REPLAY
     max_run_cost_usd: float = Field(default=DEFAULT_MAX_RUN_COST_USD, ge=0)
     api_key: SecretStr | None = None
@@ -172,7 +176,9 @@ def load_settings(env: Mapping[str, str] | None = None) -> Settings:
         problems = "; ".join(
             f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in exc.errors()
         )
-        raise ConfigError(f"invalid environment settings: {problems}") from None
+    # Raised outside the except block: a chained ValidationError would keep the
+    # key as its input value in __context__, even with `from None`.
+    raise ConfigError(f"invalid environment settings: {problems}")
 
 
 def load_config(

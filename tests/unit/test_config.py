@@ -4,6 +4,7 @@ Synthetic data: the YAML documents and environment mappings below are made up
 for the tests; only `test_repository_config_*` reads the real config file.
 """
 
+import traceback
 from pathlib import Path
 
 import pytest
@@ -173,6 +174,28 @@ def test_settings_built_directly_refuse_a_bad_key(bad_key):
 
     assert "OPENROUTER_API_KEY" in str(caught.value)
     assert "abc" not in str(caught.value)
+
+
+@pytest.mark.parametrize("bad_key", ["k-123\u0444abc", "k-123\nabc", "k-123 abc"])
+def test_a_bad_plain_string_key_is_not_echoed(bad_key):
+    with pytest.raises(ValidationError) as caught:
+        Settings(api_key=bad_key)
+
+    assert "abc" not in str(caught.value)
+    assert "abc" not in repr(caught.value)
+
+
+def test_load_settings_error_carries_no_trace_of_the_key():
+    secret = "k-SECRET-123\u0444tail"
+
+    with pytest.raises(ConfigError) as caught:
+        load_settings({"OPENROUTER_API_KEY": secret})
+
+    printed = "".join(traceback.format_exception(caught.value)) + repr(caught.value)
+    assert "SECRET" not in printed
+    # A chained pydantic error would still hold the key as its input value.
+    assert caught.value.__context__ is None
+    assert caught.value.__cause__ is None
 
 
 @pytest.mark.parametrize(

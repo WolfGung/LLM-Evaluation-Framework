@@ -309,7 +309,7 @@ def _parse_answer(
 ) -> StoredResponse:
     choices = data.get("choices")
     if not choices:
-        detail = scrub(_error_message(data.get("error")) or "no choices", api_key)
+        detail = _error_detail(data.get("error"), api_key, fallback="no choices")
         raise OpenRouterError(f"response has no answer: {detail}")
     choice = choices[0]
     finish_reason = choice.get("finish_reason")
@@ -317,7 +317,7 @@ def _parse_answer(
         # The provider failed mid-generation. That says nothing about the
         # model, so it is raised rather than recorded, and the next record run
         # retries the call.
-        detail = scrub(_error_message(choice.get("error")) or "no detail", api_key)
+        detail = _error_detail(choice.get("error"), api_key, fallback="no detail")
         raise OpenRouterError(
             f"provider failed while answering (finish_reason: error): {detail}; not recorded"
         )
@@ -331,9 +331,13 @@ def _parse_answer(
     )
 
 
-def _error_message(error: object) -> str | None:
+def _error_detail(error: object, api_key: str | None, *, fallback: str) -> str:
+    """The provider's error message, scrubbed first and then cut to 300 characters.
+
+    In the other order a key across the cut would no longer match the scrubber.
+    """
     message = error.get("message") if isinstance(error, dict) else error
-    return str(message)[:300] if message else None
+    return scrub(str(message) if message else fallback, api_key)[:300]
 
 
 def _parse_usage(data: Mapping[str, Any]) -> Usage:

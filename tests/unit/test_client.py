@@ -333,6 +333,32 @@ def test_provider_error_mid_answer_is_not_recorded(tmp_path):
     assert len(CassetteStore(tmp_path)) == 1
 
 
+def test_choice_error_is_scrubbed_before_it_is_cut(tmp_path):
+    failed = completion(content="", finish_reason="error")
+    failed["choices"][0]["error"] = {"message": "x" * 295 + FAKE_KEY}
+    recorder = Recorder(httpx.Response(200, json=failed))
+
+    with (
+        make_client(Mode.LIVE, CassetteStore(tmp_path), recorder.transport) as client,
+        pytest.raises(OpenRouterError) as caught,
+    ):
+        ask(client)
+
+    assert FAKE_KEY[:5] not in str(caught.value)
+
+
+def test_missing_choices_error_is_scrubbed_before_it_is_cut(tmp_path):
+    recorder = Recorder(httpx.Response(200, json={"error": {"message": "x" * 295 + FAKE_KEY}}))
+
+    with (
+        make_client(Mode.LIVE, CassetteStore(tmp_path), recorder.transport) as client,
+        pytest.raises(OpenRouterError) as caught,
+    ):
+        ask(client)
+
+    assert FAKE_KEY[:5] not in str(caught.value)
+
+
 def test_structured_role_sends_the_schema_to_supporting_endpoints_only(tmp_path):
     recorder = Recorder(httpx.Response(200, json=completion("{}")))
     with make_client(Mode.LIVE, CassetteStore(tmp_path), recorder.transport) as client:
