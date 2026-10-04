@@ -5,7 +5,7 @@ answer however the model formats it:
 
 - case, curly quotes, dashes, apostrophes and punctuation;
 - contractions ("doesn't" -> "does not", "can't" and "can not" -> "cannot",
-  "we'll" -> "we will");
+  "we'll" -> "we will", "here's" -> "here is");
 - number words ("thirty days" -> "30 day", "twenty-five" -> "25");
 - currency ("6.95 dollars", "USD 6.95", "$ 6.95", "$6.95" -> "$6.95";
   "$75.00" -> "$75"; "$1,200" -> "$1200") and rates ("$20/day", "$20 a
@@ -63,6 +63,7 @@ _CONTRACTIONS = (
     (re.compile(r"\b(you|we|they)'re\b"), r"\1 are"),
     (re.compile(r"\b(i|you|we|they)'ve\b"), r"\1 have"),
     (re.compile(r"\bi'm\b"), "i am"),
+    (re.compile(r"\b(here|there|that|what|it|who|where)'s\b"), r"\1 is"),
     (re.compile(r"\b(i|you|we|they|he|she)'d\b"), r"\1 would"),
 )
 _ORDINAL = re.compile(r"(\d)(?:st|nd|rd|th)\b")

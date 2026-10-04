@@ -48,6 +48,10 @@ from llmeval.checks.text import contains, normalise, specifics
         ("does not accept", "doesn't accept"),
         ("cannot be returned", "can't be returned"),
         ("cannot be returned", "can not be returned"),
+        ("here is your discount code", "Here's your discount code"),
+        ("there is no mention", "There’s no mention"),
+        ("that is outside what I can do", "That's outside what I can do"),
+        ("it is free", "it's free"),
         # One support redirect.
         ("contact support", "contact our support team"),
         ("contact support", "reach out to Toolshop customer support"),
