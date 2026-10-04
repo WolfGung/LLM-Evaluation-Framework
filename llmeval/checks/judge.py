@@ -465,10 +465,13 @@ def combine(first: Winner | None, second: Winner | None) -> Outcome:
 
 @dataclass(frozen=True)
 class PairwiseResult:
-    """Both orders of one comparison: (A=v1, B=v2), then (A=v2, B=v1)."""
+    """Both orders of one comparison: (A=v1, B=v2), then (A=v2, B=v1).
+
+    `orders` is empty for identical answers: the judge is not asked.
+    """
 
     outcome: Outcome
-    orders: tuple[OrderJudgement, OrderJudgement]
+    orders: tuple[OrderJudgement, ...]
 
 
 def _parse[V: _Verdict](call: CallResult, model: type[V]) -> V | InvalidVerdict:
@@ -549,12 +552,14 @@ class Judge:
         the prompt versions behind `answer_v1` and `answer_v2`, for the
         recording only.
 
-        Two answers with the same text give `identical`, whatever the verdicts
-        say: both orders are then the same request, so one recorded verdict
-        serves both and tells nothing about position or preference. The judge
-        is still asked (one recording), which keeps the call plan exact before
-        the answers exist.
+        Two answers with the same text give `identical` and no call in any
+        mode (live, record or replay): both orders would be the same request,
+        and its verdict would tell nothing about position or preference. The
+        call plan agrees (`llmeval.runner.plan_requests` plans no question for
+        identical recorded answers), so `orders` is empty.
         """
+        if answer_v1 == answer_v2:
+            return PairwiseResult("identical", ())
         answers: dict[Side, str] = {"v1": answer_v1, "v2": answer_v2}
         orders: list[OrderJudgement] = []
         for first, second in (("v1", "v2"), ("v2", "v1")):
@@ -575,10 +580,7 @@ class Judge:
                 )
             else:
                 orders.append(OrderJudgement(first, parsed, None, "", call.content, call))
-        outcome: Outcome = (
-            "identical" if answer_v1 == answer_v2 else combine(orders[0].winner, orders[1].winner)
-        )
-        return PairwiseResult(outcome, (orders[0], orders[1]))
+        return PairwiseResult(combine(orders[0].winner, orders[1].winner), tuple(orders))
 
     def checks(self, judgement: Judgement) -> list[CheckResult]:
         """The judge layer's checks for one answer.

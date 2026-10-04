@@ -142,18 +142,20 @@ def test_the_comparison_replays_without_the_network(tmp_path):
     assert handler.bodies == []
 
 
-def test_identical_answers_are_their_own_outcome(tmp_path):
-    # Both orders are the same request, so one recorded verdict serves both and
-    # says nothing about position or preference.
-    handler = SyntheticTransport([preference("A")])
-    with make_client(tmp_path, Mode.RECORD, handler) as client:
+@pytest.mark.parametrize("mode", [Mode.LIVE, Mode.RECORD, Mode.REPLAY])
+def test_identical_answers_are_their_own_outcome_with_no_call(tmp_path, mode):
+    # Both orders would be the same request, so a verdict says nothing about
+    # position or preference. Every mode skips the call: before, live asked
+    # twice, record asked once and replay read that one recording twice.
+    handler = SyntheticTransport([preference("A"), preference("B")])
+    with make_client(tmp_path, mode, handler) as client:
         result = Judge(client, JUDGE, RUBRIC).compare(
             QUESTION, DOCS, V1, V1, case="rag-001", versions=("v1", "v2")
         )
     assert result.outcome == "identical"
-    assert len(handler.bodies) == 1 and len(CassetteStore(tmp_path)) == 1
-    assert result.orders[0].call.key == result.orders[1].call.key
-    assert [order.preferred for order in result.orders] == ["A", "A"]
+    assert result.orders == ()
+    assert handler.bodies == []
+    assert len(CassetteStore(tmp_path)) == 0
 
 
 def test_combine_is_the_whole_rule():

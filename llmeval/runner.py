@@ -290,7 +290,12 @@ def _planned_comparisons(
     answers: Answers | None,
     index: BM25Index | None,
 ) -> list[PlannedRequest]:
-    """Two questions per judged case and version pair, on the answers of repeat 0."""
+    """Two questions per judged case and version pair, on the answers of repeat 0.
+
+    Identical recorded answers get no question (outcome `identical`, see
+    `Judge.compare`). Before the answers are recorded both questions are
+    planned, so the count is an upper bound until then.
+    """
     plan = []
     for pair in pairs_of(versions):
         for case in cases:
@@ -298,6 +303,8 @@ def _planned_comparisons(
             keys = (system[(case.id, pair[0], 0)], system[(case.id, pair[1], 0)])
             texts = [answers(key) if answers else None for key in keys]
             ready = all(text is not None for text in texts)
+            if ready and texts[0] == texts[1]:
+                continue
             first, second = (text or "" for text in texts)
             for shown_as_a, a, b in ((pair[0], first, second), (pair[1], second, first)):
                 messages = compare_messages(rubric, case.question, hits, a, b)

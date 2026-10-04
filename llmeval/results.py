@@ -297,8 +297,9 @@ class PairwiseCaseRecord(_Record):
 
     `outcome` is a version id when both orders preferred it, `tie`,
     `inconsistent` when the orders disagree, `identical` when both versions
-    wrote the same text, or `invalid` when a verdict was invalid. An
-    inconsistent pair is never resolved by picking one order.
+    wrote the same text (the judge is not asked, so `orders` is empty), or
+    `invalid` when a verdict was invalid. An inconsistent pair is never
+    resolved by picking one order.
     """
 
     id: str
@@ -334,7 +335,8 @@ class PairwiseSummary(_Record):
 
     - `outcomes`: pairs per outcome (first version, second version, tie,
       inconsistent, identical, invalid);
-    - `valid`: pairs whose two verdicts are both valid (the judge's reliability);
+    - `valid`: pairs whose two verdicts are both valid (the judge's
+      reliability), over the pairs the judge was asked;
     - `inconsistent`: inconsistent pairs among the compared ones (valid and
       not identical), and `inconsistent_kinds`: how they disagreed (the same
       position twice, or a tie in one order);
@@ -346,9 +348,9 @@ class PairwiseSummary(_Record):
       length-score correlation, it is a cheap check, not proof: the longer
       answer may also be the better one.
 
-    Identical pairs (both versions wrote the same text) are left out of
-    `inconsistent`, `position_bias` and `longer_preferred`: their two orders
-    are one request, so the verdict says nothing about position or preference.
+    Identical pairs (both versions wrote the same text) are not asked, so
+    they have no verdicts and stay out of `valid`, `inconsistent`,
+    `position_bias` and `longer_preferred`; they count only in `outcomes`.
     """
 
     pairs: int
@@ -490,13 +492,11 @@ def summarise_pairwise(
     outcomes = {names.get(outcome, outcome): 0 for outcome in OUTCOMES}
     for case in cases:
         outcomes[case.outcome] += 1
-    both_valid = [all(order.error is None for order in case.orders) for case in cases]
+    # Identical pairs are not asked; every other pair has two verdicts.
+    asked = [case for case in cases if case.outcome != "identical"]
+    both_valid = [all(order.error is None for order in case.orders) for case in asked]
     # Pairs the judge really compared: two different answers, two valid verdicts.
-    compared = [
-        case
-        for case, valid in zip(cases, both_valid, strict=True)
-        if valid and case.outcome != "identical"
-    ]
+    compared = [case for case, valid in zip(asked, both_valid, strict=True) if valid]
     preferences = [(case.orders[0].preferred, case.orders[1].preferred) for case in compared]
     kinds = {kind: 0 for kind in INCONSISTENCIES}
     for first, second in preferences:

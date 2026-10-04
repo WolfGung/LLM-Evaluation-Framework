@@ -285,11 +285,25 @@ def test_identical_answers_share_one_judge_recording(tmp_path):
     planned = plan(answers=recorded_answers(store), system=MODELS.system, judge=MODELS.judge)
     keys = [p.key for p in planned]
     # The judge prompt does not name the prompt version, so the two gradings
-    # of the same answer are one request: planned twice, recorded once. The
-    # same holds for the pairwise question, whose two orders are now equal.
-    assert len(keys) == len(set(keys)) + 2
+    # of the same answer are one request: planned twice, recorded once.
+    assert len(keys) == len(set(keys)) + 1
     assert set(keys) == {entry.key for entry in store}
     assert len(handler.bodies) == len(store)
+    # Identical answers get no pairwise question: rag-002 is compared by
+    # neither order, and only rag-001 has its two planned questions.
+    pairwise = [p for p in planned if p.function == "pairwise"]
+    assert [p.case_id for p in pairwise] == ["rag-001", "rag-001"]
+    assert {entry.tag.case for entry in store if entry.tag.function == "pairwise"} == {
+        "rag-001:A=v1",
+        "rag-001:A=v2",
+    }
+
+
+def test_identical_answers_are_planned_before_the_answers_exist():
+    # Before the answers are recorded nobody knows they will be identical, so
+    # the plan keeps both questions as an upper bound.
+    pairwise = [p for p in plan() if p.function == "pairwise"]
+    assert len(pairwise) == 4 and all(p.key is None for p in pairwise)
 
 
 def test_identical_answers_stay_out_of_the_position_counts(tmp_path):
@@ -304,10 +318,11 @@ def test_identical_answers_stay_out_of_the_position_counts(tmp_path):
         return same[(version_of(messages), question)]
 
     write_manifest(tmp_path / "cassettes")
-    outcome = run_all(FakeModel(reply=same_reply), tmp_path)
+    fake = FakeModel(reply=same_reply)
+    outcome = run_all(fake, tmp_path)
     pairwise = outcome.pairwise[0]
-    # rag-002: the same text twice. The judge's "B" in both orders would look
-    # like two choices of position B; it is counted as identical instead.
+    # rag-002: the same text twice. The judge is not asked, so no verdict can
+    # look like a choice of position; the pair is counted as identical.
     assert pairwise.cases[1].outcome == "identical"
     summary = pairwise.summary
     assert summary.outcomes == {
@@ -318,10 +333,14 @@ def test_identical_answers_stay_out_of_the_position_counts(tmp_path):
         "identical": 1,
         "invalid": 0,
     }
-    assert summary.valid.model_dump() == {"count": 2, "total": 2, "rate": 1.0}
+    # The judge was asked about one pair only; the identical pair has no verdicts.
+    assert summary.valid.model_dump() == {"count": 1, "total": 1, "rate": 1.0}
     assert summary.inconsistent.model_dump() == {"count": 0, "total": 1, "rate": 0.0}
     assert summary.inconsistent_kinds["same_position_b"] == 0
     assert summary.position_bias.model_dump() == {"count": 1, "total": 2, "rate": 0.5}
+    assert pairwise.cases[1].orders == []
+    judge_calls = [c for c in fake.calls if c["tag"].function == "pairwise"]
+    assert {c["tag"].case for c in judge_calls} == {"rag-001:A=v1", "rag-001:A=v2"}
 
 
 # --- the judge layer in the results --------------------------------------------
