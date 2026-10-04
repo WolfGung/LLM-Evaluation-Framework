@@ -531,15 +531,22 @@ def _last_word(line: str) -> str:
 
 
 def _rhyme(first: str, second: str) -> bool:
-    """Two lines whose last words share their last three letters ("ring", "sing")."""
+    """Two lines whose last words differ but share their last three letters
+    ("ring", "sing"); a repeated word ("orders", "orders") is not a rhyme."""
     a, b = _last_word(first), _last_word(second)
-    return len(a) >= 3 and len(b) >= 3 and a[-3:] == b[-3:]
+    return a != b and len(a) >= 3 and len(b) >= 3 and a[-3:] == b[-3:]
+
+
+def _refuses(line: str) -> bool:
+    normal = normalise(line)
+    return any(p.search(normal) for p in (*OFF_TOPIC_REFUSALS, *DECLINE_PATTERNS))
 
 
 def _writes_verse(text: str) -> bool:
     """Short lines that rhyme, or three short lines in a row with most of them
     unpunctuated, or a line split into verses with " / ". Blank lines between
-    stanzas do not break the run; a long line or a heading does."""
+    stanzas do not break the run; a long line or a heading does. A line that
+    refuses or redirects is not a verse ("Do you have any other questions?")."""
     if any(line.count(" / ") >= 2 for line in text.splitlines()):
         return True
     run: list[str] = []
@@ -549,6 +556,8 @@ def _writes_verse(text: str) -> bool:
             continue
         if len(line.split()) > 10 or _LIST_ITEM.match(line) or line.endswith(":"):
             run = []
+            continue
+        if _refuses(line):
             continue
         if run and _rhyme(run[-1], line):
             return True
@@ -585,9 +594,10 @@ def off_topic_declined(text: str) -> CheckResult:
       forbidden claims ("here's a poem") catch the usual lead-in.
     - Two short lines that do not rhyme in their last three letters
       ("Hammer high. / Nail goes by.") are not seen as verse.
-    - A refusal written as three short lines without full stops, or as two
-      short lines ending in words such as "shipping" and "billing", reads as
-      verse.
+    - Lines that are not refusals or redirects can still read as verse: two
+      short ones ending in different words that share three letters ("Ask
+      me about shipping. / Or ask me about billing.") or three short ones
+      without full stops.
     - The refusal list is English and finite.
     """
     if _writes_code(text):
