@@ -387,3 +387,35 @@ def test_an_invalid_verdict_fails_one_check_that_names_the_judge(tmp_path):
     assert check.name == "verdict_valid"
     assert not check.passed
     assert check.detail.startswith("invalid judgement (invalid_json): ")
+
+
+@pytest.mark.parametrize("empty", ["", "  \n"], ids=["no text", "whitespace"])
+def test_an_empty_answer_fails_the_rule_whatever_the_judge_scores(tmp_path, empty):
+    # The rubric scores an empty answer 1, but a judge may ignore that. The
+    # rule does not depend on the judge obeying: an empty answer fails.
+    handler = SyntheticTransport(verdict(5, 5, 5, True))
+    with make_client(tmp_path, Mode.RECORD, handler) as client:
+        judge = Judge(client, JUDGE, RUBRIC)
+        judgement = judge.grade(QUESTION, DOCS, empty)
+    assert judgement.valid and judgement.short_of == ()
+    assert judgement.rule_pass is False
+    assert judgement.agrees is False  # the judge said pass
+    checks = judge.checks(judgement)
+    assert checks[0].name == "verdict_valid" and checks[0].passed
+    assert [(c.name, c.passed) for c in checks[1:]] == [(name, False) for name in CRITERIA]
+    assert checks[1].detail == (
+        "5/5 (pass needs 4 or more); the answer is empty, which fails every criterion "
+        "whatever the score"
+    )
+
+
+def test_an_empty_answer_counts_as_a_failed_run_in_the_judge_summary(tmp_path):
+    from llmeval.results import JudgeRecord, summarise_judge
+
+    with make_client(tmp_path, Mode.RECORD, SyntheticTransport(verdict(5, 5, 5, True))) as client:
+        judgement = Judge(client, JUDGE, RUBRIC).grade(QUESTION, DOCS, "")
+    record = JudgeRecord.of(judgement)
+    assert record.rule_pass is False and record.judge_pass is True
+    summary = summarise_judge([("", record)])
+    assert summary.rule_pass.model_dump() == {"passed": 0, "total": 1, "rate": 0.0}
+    assert summary.pass_disagreements == 1

@@ -195,7 +195,7 @@ class JudgeSummary(_Record):
       rule on their scores;
     - `empty_answers`: graded runs whose answer was empty. The rubric scores
       them 1 on every criterion, so they stay out of the scores below; they
-      still count in `rule_pass`, as failed runs;
+      still count in `rule_pass`, as failed runs, whatever the judge scored;
     - `mean_scores` and `score_counts`: per criterion, over valid verdicts on
       non-empty answers;
     - `length_score_correlation`: per criterion, between the answer's length

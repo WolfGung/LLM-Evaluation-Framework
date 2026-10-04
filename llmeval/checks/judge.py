@@ -382,7 +382,10 @@ class Judgement:
     - `error` and `detail`: what was wrong with an invalid one;
     - `raw`: the reply exactly as the judge wrote it;
     - `short_of`: criteria below the rubric's minimum;
-    - `rule_pass`: the rubric's pass rule applied to the scores (None when invalid).
+    - `answer_empty`: the graded answer has no text;
+    - `rule_pass`: the rubric's pass rule applied to the scores (None when
+      invalid). An empty answer fails it whatever the scores: the rubric says
+      to score it 1, and the rule does not rely on the judge obeying that.
     """
 
     verdict: JudgeVerdict | None
@@ -391,6 +394,7 @@ class Judgement:
     raw: str
     call: CallResult
     short_of: tuple[str, ...] = ()
+    answer_empty: bool = False
 
     @property
     def valid(self) -> bool:
@@ -398,7 +402,9 @@ class Judgement:
 
     @property
     def rule_pass(self) -> bool | None:
-        return None if self.verdict is None else not self.short_of
+        if self.verdict is None:
+            return None
+        return not self.short_of and not self.answer_empty
 
     @property
     def agrees(self) -> bool | None:
@@ -513,10 +519,13 @@ class Judge:
             tag=grade_tag(case, version),
         )
         parsed = _parse(call, JudgeVerdict)
+        empty = not answer.strip()
         if isinstance(parsed, InvalidVerdict):
-            return Judgement(None, parsed.kind, parsed.detail, call.content, call)
+            return Judgement(
+                None, parsed.kind, parsed.detail, call.content, call, answer_empty=empty
+            )
         short_of = self.rubric.short_of(parsed.scores)
-        return Judgement(parsed, None, "", call.content, call, short_of)
+        return Judgement(parsed, None, "", call.content, call, short_of, answer_empty=empty)
 
     def compare(
         self,
@@ -572,7 +581,8 @@ class Judge:
 
         A valid verdict gives `verdict_valid` plus one check per criterion
         (score at least the rubric's minimum), so the layer passes exactly when
-        the rubric's pass rule does. An invalid verdict gives one failing
+        the rubric's pass rule does. For an empty answer every criterion
+        fails, whatever the judge scored. An invalid verdict gives one failing
         `verdict_valid`: the answer could not be graded, and the check name
         says the judge is why.
         """
@@ -590,9 +600,12 @@ class Judge:
         for criterion in self.rubric.criteria:
             score, minimum = verdict.scores[criterion], self.rubric.pass_rule[criterion]
             detail = f"{score}/5 (pass needs {minimum} or more)"
-            if score < minimum:
+            if judgement.answer_empty:
+                detail += "; the answer is empty, which fails every criterion whatever the score"
+            elif score < minimum:
                 detail += f"; judge: {_short(verdict.reasons)}"
-            results.append(CheckResult(criterion, score >= minimum, detail))
+            passed = score >= minimum and not judgement.answer_empty
+            results.append(CheckResult(criterion, passed, detail))
         return results
 
 
