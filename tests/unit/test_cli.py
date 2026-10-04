@@ -289,6 +289,18 @@ def test_eval_says_when_the_rubric_changed_since_the_recording(workspace):
     )
 
 
+def test_a_front_matter_edit_gives_no_rubric_notice(workspace):
+    write_manifest(workspace, {"rag": ["v1"], "triage": ["v1"]})
+    rubric = workspace / "judge.md"
+    text = RUBRIC.read_text(encoding="utf-8")
+    rubric.write_text(text.replace("---\n", "---\n# Synthetic comment.\n", 1), encoding="utf-8")
+    args = eval_args(workspace)
+    args[args.index("--rubric") + 1] = str(rubric)
+    result = runner.invoke(app, args)
+    assert result.exit_code == 1  # nothing is recorded in this workspace
+    assert "rubric changed" not in result.output
+
+
 def test_eval_refuses_a_broken_rubric(workspace):
     write_manifest(workspace, {"rag": ["v1"], "triage": ["v1"]})
     rubric = workspace / "judge.md"

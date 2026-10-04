@@ -78,7 +78,11 @@ class Rubric:
     - `text`: the body the judge reads (the front matter is left out);
     - `criteria`: the graded criteria, in order;
     - `pass_rule`: the minimum score per criterion for a pass;
-    - `sha256`: of the file's text, so results can name the rubric they used.
+    - `sha256`: of the body (`text`), so results and the manifest can name
+      the rubric they used. The judge never sees the front matter, so an edit
+      there (a comment, say) keeps the hash and prints no false "re-record"
+      notice. A changed minimum changes the body too: the loader keeps the
+      prose pass rule equal to the front matter.
     """
 
     text: str
@@ -178,7 +182,7 @@ def parse_rubric(source: str, *, name: str) -> Rubric:
         text=body,
         criteria=CRITERIA,
         pass_rule=rule,
-        sha256=hashlib.sha256(source.encode("utf-8")).hexdigest(),
+        sha256=hashlib.sha256(body.encode("utf-8")).hexdigest(),
     )
 
 

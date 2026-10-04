@@ -53,7 +53,26 @@ def test_a_valid_rubric_gives_criteria_rule_and_the_text_for_the_judge():
     # The judge reads the body only; the front matter is for the code.
     assert rubric.text.startswith("# Synthetic rubric")
     assert "pass_rule" not in rubric.text and "---" not in rubric.text
-    assert rubric.sha256 == hashlib.sha256(VALID.encode("utf-8")).hexdigest()
+    # The hash covers what the judge reads: the body.
+    assert rubric.sha256 == hashlib.sha256(rubric.text.encode("utf-8")).hexdigest()
+
+
+def test_a_front_matter_comment_keeps_the_rubric_hash():
+    # The judge never sees the front matter, so a comment there changes no
+    # judge request and must not print a false "re-record" notice.
+    commented = VALID.replace("criteria:", "# Synthetic comment for the code.\ncriteria:", 1)
+    assert commented != VALID
+    assert parse_rubric(commented, name="x.md").sha256 == parse_rubric(VALID, name="x.md").sha256
+
+
+def test_a_body_edit_changes_the_rubric_hash():
+    edited = VALID.replace("Do not reward length.", "Do not reward length or padding.")
+    assert parse_rubric(edited, name="x.md").sha256 != parse_rubric(VALID, name="x.md").sha256
+
+
+def test_line_endings_do_not_change_the_rubric_hash():
+    crlf = VALID.replace("\n", "\r\n")
+    assert parse_rubric(crlf, name="x.md").sha256 == parse_rubric(VALID, name="x.md").sha256
 
 
 def test_the_rule_says_which_criteria_fall_short():

@@ -251,10 +251,12 @@ class RunManifest(_Record):
       stability layer; every other case runs once. None means every case runs
       `repeats` times. A subset lets a first recording fit a small daily quota.
     - `rubric_sha256`: the judge rubric the judge layer was recorded with
-      (`Rubric.sha256` of `rubrics/judge.md`), next to the judge model in
-      `models`. None for a recording without the judge layer. The rubric is
-      part of every judge prompt, so an edited rubric needs a new recording of
-      the judge layer; `rubric_notice` says so before replay misses do.
+      (`Rubric.sha256`: the sha256 of the body of `rubrics/judge.md`, the part
+      the judge reads), next to the judge model in `models`. None for a
+      recording without the judge layer. The body is part of every judge
+      prompt, so an edited body needs a new recording of the judge layer;
+      `rubric_notice` says so before replay misses do. A front-matter edit
+      changes no prompt and gives no notice.
     """
 
     schema_version: Literal[1] = 1
