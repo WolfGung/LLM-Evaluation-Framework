@@ -5,6 +5,7 @@ httpx MockTransport, and the key is a made-up string. These tests write
 cassettes only into pytest's temporary directories, never into `cassettes/`.
 """
 
+import inspect
 import json
 import socket
 from datetime import UTC, datetime, timedelta
@@ -13,7 +14,7 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
-from llmeval.cassettes import CallTag, CassetteStore
+from llmeval.cassettes import CallTag, CassetteStore, request_key
 from llmeval.client import CallResult, MissingRecording, ModelClient, build_request
 from llmeval.config import Config, Mode, ModelsConfig, RoleConfig, Settings
 from llmeval.openrouter import MissingAPIKey, OpenRouterError
@@ -272,6 +273,45 @@ def test_request_body_omits_unset_options():
     body = build_request(MESSAGES, model=MODEL, temperature=0, seed=None, max_tokens=50)
 
     assert body == {"model": MODEL, "messages": MESSAGES, "temperature": 0, "max_tokens": 50}
+
+
+BASE_REQUEST = {
+    "messages": MESSAGES,
+    "model": MODEL,
+    "temperature": 0.2,
+    "seed": 7,
+    "max_tokens": 100,
+    "response_format": None,
+}
+CHANGED_REQUEST = {
+    "messages": [{"role": "user", "content": "Another synthetic question?"}],
+    "model": "vendor-b/other:free",
+    "temperature": 0.3,
+    "seed": 8,
+    "max_tokens": 101,
+    "response_format": {"type": "json_object"},
+}
+
+
+def test_every_build_request_keyword_is_covered_below():
+    keywords = set(inspect.signature(build_request).parameters)
+
+    assert keywords == set(BASE_REQUEST) == set(CHANGED_REQUEST)
+
+
+@pytest.mark.parametrize("keyword", sorted(CHANGED_REQUEST))
+def test_every_build_request_keyword_changes_the_key(keyword):
+    base = build_request(**BASE_REQUEST)
+    changed = build_request(**{**BASE_REQUEST, keyword: CHANGED_REQUEST[keyword]})
+
+    assert request_key(changed, repeat=0) != request_key(base, repeat=0)
+
+
+def test_integer_and_float_temperature_give_one_key():
+    as_int = build_request(**{**BASE_REQUEST, "temperature": 0})
+    as_float = build_request(**{**BASE_REQUEST, "temperature": 0.0})
+
+    assert request_key(as_int, repeat=0) == request_key(as_float, repeat=0)
 
 
 def test_latency_is_measured(tmp_path):

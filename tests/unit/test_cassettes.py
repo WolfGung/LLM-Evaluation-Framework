@@ -100,6 +100,28 @@ def test_key_changes_with_repeat():
     assert len(keys) == 3
 
 
+def test_key_covers_the_reasoning_option():
+    with_reasoning = {**BODY, "reasoning": {"effort": "low"}}
+
+    assert request_key(with_reasoning, repeat=0) != request_key(BODY, repeat=0)
+    assert request_key(with_reasoning, repeat=0) != request_key(
+        {**BODY, "reasoning": {"effort": "high"}}, repeat=0
+    )
+
+
+def test_key_rejects_an_unknown_request_field():
+    # A new request parameter must be added to the key on purpose; a field the
+    # key does not know would otherwise be sent but not recorded.
+    with pytest.raises(ValueError, match="stream"):
+        request_key({**BODY, "stream": True}, repeat=0)
+
+
+def test_key_ignores_none_values():
+    assert request_key({**BODY, "seed": None}, repeat=0) == request_key(
+        {k: v for k, v in BODY.items() if k != "seed"}, repeat=0
+    )
+
+
 def test_tag_label_and_file_name():
     tag = CallTag(function="rag", case="rag-001", version="v2")
 

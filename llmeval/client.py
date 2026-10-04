@@ -96,8 +96,9 @@ def build_request(
     body: dict[str, Any] = {
         "model": model,
         "messages": [dict(message) for message in messages],
-        "temperature": temperature,
-        "max_tokens": max_tokens,
+        # float() so that 0 and 0.0 are one request and one key.
+        "temperature": float(temperature),
+        "max_tokens": int(max_tokens),
     }
     if seed is not None:
         body["seed"] = seed

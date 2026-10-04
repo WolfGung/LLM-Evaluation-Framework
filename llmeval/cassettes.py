@@ -4,8 +4,8 @@ A cassette entry holds exactly what was sent (the request body) and what came
 back (answer, usage, cost, latency, timestamps). It has no field for headers,
 so the API key has nowhere to go.
 
-The key is a sha256 of the canonical JSON of the request plus the repeat
-index. Repeats are part of the key on purpose: three runs of one request are
+The key is a sha256 of the canonical JSON of the whole request body plus the
+repeat index. Repeats are part of the key on purpose: three runs of one request are
 three separate recordings, which is what the stability layer measures.
 """
 
@@ -22,8 +22,21 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-# Request fields besides model and messages that change the answer.
-KEY_PARAMS = ("temperature", "seed", "max_tokens", "response_format", "provider")
+# Every top-level field a request body may carry. The key hashes the whole
+# body, and a field outside this list is refused, so a new request parameter
+# has to be added here on purpose instead of being sent but not keyed.
+REQUEST_FIELDS = frozenset(
+    {
+        "model",
+        "messages",
+        "temperature",
+        "seed",
+        "max_tokens",
+        "response_format",
+        "provider",
+        "reasoning",
+    }
+)
 
 UNTAGGED_FILE_STEM = "untagged"
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
@@ -43,13 +56,21 @@ def canonical_json(value: Any) -> str:
 
 
 def request_key(body: Mapping[str, Any], repeat: int) -> str:
-    material = {
-        "model": body["model"],
-        "messages": body["messages"],
-        "params": {name: body.get(name) for name in KEY_PARAMS},
-        "repeat": repeat,
-    }
+    """sha256 of the whole request body plus the repeat index."""
+    unknown = sorted(set(body) - REQUEST_FIELDS)
+    if unknown:
+        raise ValueError(f"request field not covered by the cassette key: {', '.join(unknown)}")
+    material = {"body": _without_none(dict(body)), "repeat": repeat}
     return hashlib.sha256(canonical_json(material).encode("utf-8")).hexdigest()
+
+
+def _without_none(value: Any) -> Any:
+    """Drop None values from dicts at any depth: an unset option is not part of the request."""
+    if isinstance(value, dict):
+        return {k: _without_none(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [_without_none(item) for item in value]
+    return value
 
 
 class _Record(BaseModel):
