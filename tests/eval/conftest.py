@@ -1,50 +1,35 @@
-"""Replay evaluation: every case of every dataset, per prompt version.
+"""Replay evaluation: every case of every dataset, for each recorded prompt version.
 
-These tests read the recorded run in `cassettes/`. Without
-`cassettes/manifest.json` they skip with "pending first recorded run". With
-it, a call missing from the cassettes fails its test with the replay-miss
-message ("no recording for <case>/<version>/<repeat>: run make record").
+- No `cassettes/manifest.json`: every test skips with "pending first recorded run".
+- A manifest: each case is replayed; a call missing from the cassettes fails
+  its test with the replay-miss message. The prompt versions come from the
+  manifest, not from the prompt files.
+- No baseline (`results/baseline.json`), or no entry for the case: skipped
+  with "pending baseline" after the replay.
+- A baseline entry: compared with `llmeval.baseline.compare` (pass, xfail,
+  strict XPASS, or a failing regression).
 
 No model is called: the client is in replay mode and needs no key.
-
-LLMEVAL_CASSETTES_DIR points the suite at another cassette directory; the
-framework's own tests use it to run this suite on synthetic recordings.
 """
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
-import allure
 import pytest
 
-from llmeval.cassettes import PENDING_RECORDED_RUN, CassetteStore, load_manifest
-from llmeval.client import ModelClient
-from llmeval.config import Mode, load_config
-from llmeval.results import CaseRecord
-from llmeval.runner import run_rag, run_triage
-
-ROOT = Path(__file__).resolve().parents[2]
-CASSETTES = Path(os.environ.get("LLMEVAL_CASSETTES_DIR") or ROOT / "cassettes")
-CONFIG = ROOT / "config" / "models.yaml"
+from llmeval.baseline import load_baseline
+from llmeval.cassettes import PENDING_RECORDED_RUN, load_manifest
+from llmeval.datasets import file_sha256
+from tests.eval.support import BASELINE, CASSETTES, DATASETS, UNRECORDED, Replay
 
 
-class Replay:
-    """Runs one case at a time through the recorded calls."""
-
-    def __init__(self, repeats: int) -> None:
-        self.config = load_config(CONFIG, env={})
-        self.client = ModelClient(Mode.REPLAY, CassetteStore(CASSETTES), self.config)
-        self.repeats = repeats
-
-    def rag(self, case, version: str) -> CaseRecord:
-        role = self.config.models.system
-        return run_rag(self.client, role, [case], version, repeats=self.repeats)[0]
-
-    def triage(self, case, version: str) -> CaseRecord:
-        role = self.config.models.system
-        return run_triage(self.client, role, [case], version, repeats=self.repeats)[0]
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    if "case" not in metafunc.fixturenames:
+        return
+    cases = metafunc.module.CASES
+    metafunc.parametrize("case", cases, ids=[case.id for case in cases])
+    manifest = load_manifest(CASSETTES)
+    versions = manifest.prompt_versions.get(metafunc.module.FUNCTION, ()) if manifest else ()
+    metafunc.parametrize("version", versions if manifest else (UNRECORDED,))
 
 
 @pytest.fixture(scope="session")
@@ -52,28 +37,18 @@ def replay() -> Replay:
     manifest = load_manifest(CASSETTES)
     if manifest is None:
         pytest.skip(PENDING_RECORDED_RUN)
-    return Replay(manifest.repeats)
+    return Replay(manifest)
 
 
-def explain(record: CaseRecord) -> str:
-    """The failed checks of a case, by repeat and layer, for the failure message."""
-    lines = [f"{record.id}: {record.input}"]
-    for run in record.runs:
-        failed = [check for check in run.checks if not check.passed]
-        for check in failed:
-            lines.append(f"  repeat {run.repeat} [{check.layer}] {check.name}: {check.detail}")
-        if any(check.layer == "retrieval" for check in failed):
-            lines.append(
-                f"  repeat {run.repeat}: the search did not return an expected document, "
-                "so later failures may be retrieval misses, not generation failures"
-            )
-    return "\n".join(lines)
+@pytest.fixture(scope="session")
+def baseline():
+    return load_baseline(BASELINE)
 
 
-def assert_case_passes(record: CaseRecord) -> None:
-    allure.attach(
-        record.model_dump_json(indent=2),
-        name=f"{record.id} record",
-        attachment_type=allure.attachment_type.JSON,
-    )
-    assert all(run.passed for run in record.runs), explain(record)
+def pytest_terminal_summary(terminalreporter) -> None:
+    manifest = load_manifest(CASSETTES)
+    if manifest is None:
+        return
+    current = {path.name: file_sha256(path) for path in DATASETS.glob("*.jsonl")}
+    if notice := manifest.dataset_notice(current):
+        terminalreporter.write_line(notice)

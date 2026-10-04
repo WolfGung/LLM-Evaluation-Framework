@@ -178,10 +178,12 @@ def summarise(function: str, cases: Sequence[CaseRecord]) -> Summary:
     }
     if function == "rag":
         expected = [
-            case.expected["expected_docs"] for case in cases if case.expected["expected_docs"]
+            case.expected.get("expected_docs")
+            for case in cases
+            if case.expected.get("expected_docs")
         ]
         retrieved = [
-            case.runs[0].retrieved or [] for case in cases if case.expected["expected_docs"]
+            case.runs[0].retrieved or [] for case in cases if case.expected.get("expected_docs")
         ]
         total = sum(len(docs) for docs in expected)
         found = sum(

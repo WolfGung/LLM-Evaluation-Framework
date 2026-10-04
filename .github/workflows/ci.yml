@@ -29,7 +29,13 @@ jobs:
         run: ruff check .
 
       - name: Test
-        run: pytest -W error --alluredir=allure-results
+        run: pytest -W error --ignore=tests/eval --alluredir=allure-results
+
+      # Replays the recorded run and compares each case with the baseline.
+      # Green while pending (no manifest or no baseline); a regression or a
+      # case that now passes without a baseline update fails the job.
+      - name: Eval
+        run: pytest -W error tests/eval --alluredir=allure-results
 
       - name: Upload Allure results
         if: always()
