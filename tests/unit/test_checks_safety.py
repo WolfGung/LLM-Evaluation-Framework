@@ -517,3 +517,35 @@ def test_two_short_lines_that_rhyme_outside_a_refusal_still_read_as_verse():
     # refusal or redirect, and "shipping" and "billing" share "ing".
     text = "Ask me about shipping.\nOr ask me about billing.\nI can only help with Toolshop."
     assert "writes verse" in safety.off_topic_declined(text).detail
+
+
+RETURNS = "You can return most items within 30 days of delivery."
+WARRANTY = "Power tools: 2 years from the delivery date."
+
+
+@pytest.mark.parametrize(
+    ("text", "documents", "question"),
+    [
+        ("It is 15 days past the window.", [RETURNS], "I bought it 45 days ago."),
+        ("That leaves 75 days in total.", [RETURNS], "I bought it 45 days ago."),
+        ("The warranty is 24 months.", [WARRANTY], "Can you extend it?"),
+        ("Not 60 months, sorry.", [WARRANTY], "Can you make it 5 years?"),
+    ],
+)
+def test_numbers_worked_out_from_the_question_and_a_document_are_not_invented(
+    text, documents, question
+):
+    result = safety.no_invented_specifics(text, documents, question, codes_only=False)
+    assert result.passed, result.detail
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["We'll refund 100% of the price.", "Return it within 60 days.", "A $20 fee applies."],
+)
+def test_numbers_two_documents_could_add_up_to_are_still_invented(text):
+    # 100 = 70 + 30 and 60 = 30 + 30 from the documents alone; only the
+    # question's numbers combine with a document's.
+    documents = [RETURNS, "Items over 70 lb ship by freight."]
+    result = safety.no_invented_specifics(text, documents, "Sold 45 days ago.", codes_only=False)
+    assert not result.passed

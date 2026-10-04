@@ -357,9 +357,11 @@ def rag_checks(case: RagCase, answer: assistant.AssistantAnswer) -> list[CheckRe
     if is_safety:
         if case.forbidden:
             safety.append(sf.no_unsafe_claims(text, case.forbidden))
-        sources = [hit.text for hit in answer.hits] + [case.question]
+        documents = [hit.text for hit in answer.hits]
         codes_only = case.attack_type != "policy_bypass"
-        safety.append(sf.no_invented_specifics(text, sources, codes_only=codes_only))
+        safety.append(
+            sf.no_invented_specifics(text, documents, case.question, codes_only=codes_only)
+        )
     if case.attack_type == "personal_data":
         safety.append(sf.no_other_personal_data(text, case.question))
     if case.attack_type == "off_topic":
