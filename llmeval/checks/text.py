@@ -4,17 +4,28 @@
 answer however the model formats it:
 
 - case, curly quotes, dashes, apostrophes and punctuation;
+- contractions ("doesn't" -> "does not", "can't" and "can not" -> "cannot",
+  "we'll" -> "we will");
 - number words ("thirty days" -> "30 day", "twenty-five" -> "25");
 - currency ("6.95 dollars", "USD 6.95", "$ 6.95", "$6.95" -> "$6.95";
-  "$75.00" -> "$75"; "$1,200" -> "$1200");
-- ranges ("3-5", "3 – 5" -> "3 to 5") and percent ("%" -> " percent");
+  "$75.00" -> "$75"; "$1,200" -> "$1200") and rates ("$20/day", "$20 a
+  day" -> "$20 per day");
+- ranges ("3-5", "3 – 5", "between 3 and 5" -> "3 to 5"; "9 AM – 2 PM" ->
+  "9 am to 2 pm"; "Monday–Saturday" -> "monday to saturday";
+  "40%-60%", "between 40% and 60%" -> "40 to 60 percent");
 - phone numbers ("+1-555-0199", "1 (555) 0199" -> "15550199");
 - times ("2 p.m.", "2PM" -> "2 pm"; "8:00" keeps its colon);
+- units and ordinals written against the number ("18V" -> "18 v",
+  "2.0Ah" -> "2.0 ah", "3rd" -> "3");
+- a request to contact support, in any of its usual forms ("contact our
+  support team", "reach out to customer service") -> "contact support";
 - units in the singular ("days" -> "day", "30-day" -> "30 day").
 
-Limits: number words are converted up to ninety-nine; "a year" is not "1
-year"; 24-hour and 12-hour times are not converted into each other ("14:00"
-vs "2 pm"), so a fact lists both forms as alternatives when that matters.
+Limits: number words are converted up to ninety-nine; "a year" and "an
+hour" are not "1 year" and "1 hour" (facts list them as alternatives);
+24-hour and 12-hour times are not converted into each other ("14:00" vs
+"2 pm"), and "working days" is not "business days", so facts list both forms
+as alternatives.
 """
 
 from __future__ import annotations
@@ -40,14 +51,38 @@ _NUMBER_WORD = re.compile(
 )
 _DASHES = str.maketrans({"–": "-", "—": "-", "−": "-", "‑": "-", "‐": "-"})
 _QUOTES = str.maketrans({"’": "'", "‘": "'", "`": "'", "“": '"', "”": '"'})
+_CONTRACTIONS = (
+    (re.compile(r"\bcan'?t\b"), "cannot"),
+    (re.compile(r"\bcan not\b"), "cannot"),
+    (re.compile(r"\bwon'?t\b"), "will not"),
+    (re.compile(r"\bshan't\b"), "shall not"),
+    (re.compile(r"(\w)n't\b"), r"\1 not"),
+    (re.compile(r"\b(i|you|we|they|he|she|it|that|there)'ll\b"), r"\1 will"),
+    (re.compile(r"\b(you|we|they)'re\b"), r"\1 are"),
+    (re.compile(r"\b(i|you|we|they)'ve\b"), r"\1 have"),
+    (re.compile(r"\bi'm\b"), "i am"),
+    (re.compile(r"\b(i|you|we|they|he|she)'d\b"), r"\1 would"),
+)
+_ORDINAL = re.compile(r"(\d)(?:st|nd|rd|th)\b")
 _AM_PM = re.compile(r"(\d)\s*([ap])\.?\s?m\b\.?")
+# A unit written against its number, as in "18V" or "2.0Ah".
+_UNIT_SUFFIX = re.compile(r"(\d)(v|ah|mah|mm|cm|m|kg|g|lb|lbs|oz|w|kw|ft|h)\b")
 _THOUSANDS = re.compile(r"(?<=\d),(?=\d{3}\b)")
 _CURRENCY_BEFORE = re.compile(r"\b(?:usd|us\$)\s*(?=\d)")
 _CURRENCY_AFTER = re.compile(r"(\d+(?:\.\d+)?)\s*(?:usd|us dollars|dollars|dollar|bucks)\b")
 _DOLLAR_SPACE = re.compile(r"\$\s+(?=\d)")
 _ZERO_CENTS = re.compile(r"(\$\d+)\.00\b")
-_PHONE = re.compile(r"(?<![\w.$:])\+?\(?\d[\d\s().-]{5,}\d(?!\w|\.\d|:)")
-_RANGE = re.compile(r"(\d)\s*-\s*(?=\d)")
+_PER_UNIT = re.compile(r"(\d)\s*(?:/|\ba\b|\ban\b|\bper\b)\s*(day|week|month|hour|year)\b")
+# A phone number: optional country code, a 3-digit area or exchange group,
+# then 3-4 digits and an optional 4-digit group. Shaped, so it never runs on
+# into a neighbouring number ("TS-104233 (2 items)").
+_PHONE = re.compile(
+    r"(?<![\w.$:])\+?(?:\d{1,3}[ .-]?)?\(?\d{3}\)?[ .-]?\d{3,4}(?:[ .-]\d{4})?(?!\w|\.\d|:)"
+)
+_QUALIFIED = r"\$?\d+(?:[.:]\d+)?(?: (?:am|pm|percent))?"
+_BETWEEN = re.compile(rf"\bbetween ({_QUALIFIED}) and (?=\$?\d)")
+_RANGE = re.compile(rf"({_QUALIFIED}) ?- ?(?=\$?\d)")
+_PERCENT_RANGE = re.compile(r"(\d+(?:\.\d+)?) percent to (\d+(?:\.\d+)?) percent\b")
 _LOOSE_SEPARATOR = re.compile(r"(?<!\d)[.:]|[.:](?!\d)")
 _OTHER = re.compile(r"[^a-z0-9$.: ]+")
 _PLURAL_UNIT = re.compile(r"\b(day|year|hour|minute|week|month)s\b")
@@ -60,6 +95,17 @@ _MONTHS = (
     "august", "september", "october", "november", "december",
 )  # fmt: skip
 _CALENDAR = re.compile(rf"\b({'|'.join(_WEEKDAYS + _MONTHS)})s?\b")
+_WEEKDAY_RANGE = re.compile(rf"\b({'|'.join(_WEEKDAYS)}) ?- ?({'|'.join(_WEEKDAYS)})\b")
+# Every usual way to send a customer to support. Shared by the fact check
+# ("contact support") and the "I don't know" check, which treats a redirect
+# as a separate signal from a decline.
+SUPPORT_REDIRECT = re.compile(
+    r"\b(?:contact|contacting|reach out to|reaching out to|get in touch with|ask|call|"
+    r"email|write to|message|talk to|speak to|speak with)"
+    r"(?: (?:our|the|toolshop|toolshops|a|customer|friendly))*"
+    r" (?:support|customer service|customer care|help desk)"
+    r"(?: (?:team|staff|agent|agents|line|desk))?\b"
+)
 _NUMBER = re.compile(r"(?<![a-z0-9.:$])\$?\d+(?:[.:]\d+)*(?![a-z0-9])")
 # Letters and digits in one token: tracking numbers, discount codes ("save20").
 _CODE = re.compile(r"\b(?=[a-z0-9]*\d)(?=[a-z0-9]*[a-z])[a-z0-9]+\b")
@@ -90,21 +136,30 @@ def normalise(text: str, *, keep_words: frozenset[str] = frozenset()) -> str:
     keeps "one", which is usually a pronoun).
     """
     text = unicodedata.normalize("NFKC", text).lower().translate(_DASHES).translate(_QUOTES)
+    for pattern, replacement in _CONTRACTIONS:
+        text = pattern.sub(replacement, text)
     text = _words_to_digits(text, keep_words)
+    text = _ORDINAL.sub(r"\1", text)
     text = _AM_PM.sub(r"\1 \2m ", text)
+    text = _UNIT_SUFFIX.sub(r"\1 \2", text)
     text = _THOUSANDS.sub("", text)
     text = _CURRENCY_BEFORE.sub("$", text)
     text = _CURRENCY_AFTER.sub(r"$\1", text)
     text = _DOLLAR_SPACE.sub("$", text)
     text = _ZERO_CENTS.sub(r"\1", text)
-    text = text.replace("%", " percent ")
+    text = _PER_UNIT.sub(r"\1 per \2", text)
+    text = _SPACES.sub(" ", text.replace("%", " percent "))
     text = _PHONE.sub(_collapse_phone, text)
+    text = _BETWEEN.sub(r"\1 to ", text)
     text = _RANGE.sub(r"\1 to ", text)
+    text = _WEEKDAY_RANGE.sub(r"\1 to \2", text)
+    text = _PERCENT_RANGE.sub(r"\1 to \2 percent", text)
     text = text.replace("'", "")
     text = _LOOSE_SEPARATOR.sub(" ", text)
     text = _OTHER.sub(" ", text)
     text = _PLURAL_UNIT.sub(r"\1", text)
-    return _SPACES.sub(" ", text).strip()
+    text = _SPACES.sub(" ", text).strip()
+    return SUPPORT_REDIRECT.sub("contact support", text)
 
 
 def contains(haystack: str, needle: str) -> bool:

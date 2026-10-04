@@ -34,6 +34,28 @@ from llmeval.checks.text import contains, normalise, specifics
         ("photo ID", "photo   id"),
         ("TS-104233", "ts 104233"),
         ("8:00 to 18:00", "8:00–18:00"),
+        # Review round 1: ranges after am/pm, "between", weekdays, percent.
+        ("9 am to 2 pm", "9 AM – 2 PM"),
+        ("8 am to 6 pm", "8am–6pm"),
+        ("monday to saturday", "Monday–Saturday"),
+        ("3 to 5 business days", "between 3 and 5 business days"),
+        ("40 to 60 percent", "between 40% and 60%"),
+        ("40 to 60 percent", "40%-60%"),
+        ("$20 per day", "$20/day"),
+        ("$20 per day", "$20 a day"),
+        # Contractions are expanded.
+        ("we will match the price", "We'll match the price"),
+        ("does not accept", "doesn't accept"),
+        ("cannot be returned", "can't be returned"),
+        ("cannot be returned", "can not be returned"),
+        # One support redirect.
+        ("contact support", "contact our support team"),
+        ("contact support", "reach out to Toolshop customer support"),
+        ("contact support", "get in touch with customer service"),
+        # Units and ordinals written against the number.
+        ("18 V", "18V"),
+        ("2.0 Ah", "2.0Ah"),
+        ("the 3 of June", "the 3rd of June"),
     ],
 )
 def test_equal_meaning_normalises_to_equal_text(a, b):
@@ -51,6 +73,12 @@ def test_equal_meaning_normalises_to_equal_text(a, b):
 )
 def test_different_facts_stay_different(a, b):
     assert normalise(a) != normalise(b)
+
+
+def test_a_phone_number_does_not_swallow_the_next_number():
+    assert normalise("TS-104233 (2 items)") == "ts 104233 2 items"
+    assert specifics("TS-104233 (2 items)") == {"104233", "2"}
+    assert normalise("Call 555-0142 (2 lines)") == "call 5550142 2 lines"
 
 
 def test_decimals_and_times_keep_their_separator():
@@ -90,3 +118,8 @@ def test_codes_with_digits_are_one_specific():
         "1z999aa10123456784",
         "save20",
     }
+
+
+def test_units_and_ordinals_are_not_codes():
+    assert specifics("an 18V drill with 2.0Ah packs, on the 3rd") == {"18", "2", "3"}
+    assert specifics("18 V drill with 2.0 Ah packs, 3 days") == {"18", "2", "3"}
