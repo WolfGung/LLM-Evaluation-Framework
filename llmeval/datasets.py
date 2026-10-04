@@ -8,13 +8,23 @@ RAG cases (`datasets/rag.jsonl`):
 - `multi_doc`: the answer needs two or more documents; `expected: answer`.
 - `unanswerable`: no document answers it; `expected: dont_know`, no facts and
   no expected documents.
-- `safety`: attacks and traps, added in Task 5.
+- `safety`: an attack on the assistant (see below).
 
 `required_facts` are short facts the answer must state. A fact may list
 alternatives separated by `|` ("60 minutes|1 hour"); one of them is enough.
 `expected_docs` are the documents that hold the answer; the retrieval layer
 checks that the search returned them. `forbidden` are phrases the answer must
 not contain (wrong or invented claims).
+
+A safety case also says what it attacks: `attack_type` (one of
+`ATTACK_TYPES`), `attack` (what the attacker tries) and `expected_behaviour`
+(what a safe answer does). `trap_docs` names the trap documents of the
+knowledge base the attack relies on; the repository tests check that the
+search returns them for the question. For a safety case, `forbidden` lists
+the claims a successful attack would make (an invented exception, a
+disclosed instruction, the answer to an off-topic request). Most safety cases
+expect `refuse`; one whose question has a real answer in a trap document
+expects `answer`, with facts and documents as an answerable case.
 
 Triage labels follow `datasets/triage-guideline.md`; every triage case names
 the priority rule that decides it, and the loader refuses a case whose
@@ -27,7 +37,7 @@ import hashlib
 import json
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, get_args
 
 from pydantic import (
     BaseModel,
@@ -60,6 +70,15 @@ Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 DocId = Annotated[str, Field(pattern=r"^kb-[a-z0-9]+(?:-[a-z0-9]+)*$")]
 RagCategory = Literal["answerable", "multi_doc", "unanswerable", "safety"]
 Expected = Literal["answer", "dont_know", "refuse"]
+AttackType = Literal[
+    "direct_injection",
+    "indirect_injection",
+    "personal_data",
+    "internal_disclosure",
+    "off_topic",
+    "policy_bypass",
+]
+ATTACK_TYPES: tuple[str, ...] = get_args(AttackType)
 
 
 class DatasetError(ValueError):
@@ -80,12 +99,24 @@ class RagCase(_Case):
     required_facts: tuple[Text, ...] = ()
     expected_docs: tuple[DocId, ...] = ()
     forbidden: tuple[Text, ...] = ()
+    attack_type: AttackType | None = None
+    attack: Text | None = None
+    expected_behaviour: Text | None = None
+    trap_docs: tuple[DocId, ...] = ()
     note: str | None = None
 
     @model_validator(mode="after")
     def _expectation_fits_the_category(self) -> RagCase:
         if len(set(self.expected_docs)) != len(self.expected_docs):
             raise ValueError("expected_docs lists a document twice")
+        if len(set(self.trap_docs)) != len(self.trap_docs):
+            raise ValueError("trap_docs lists a document twice")
+        if self.category == "safety":
+            self._check_safety()
+        elif self.attack_type or self.attack or self.expected_behaviour or self.trap_docs:
+            raise ValueError(
+                "only safety cases have attack_type, attack, expected_behaviour or trap_docs"
+            )
         if self.category in ("answerable", "multi_doc"):
             least = 2 if self.category == "multi_doc" else 1
             if self.expected != "answer":
@@ -101,6 +132,27 @@ class RagCase(_Case):
             if self.required_facts or self.expected_docs:
                 raise ValueError("unanswerable cases have no required facts or expected documents")
         return self
+
+    def _check_safety(self) -> None:
+        missing = [
+            name
+            for name in ("attack_type", "attack", "expected_behaviour")
+            if getattr(self, name) is None
+        ]
+        if missing:
+            raise ValueError(f"safety cases need {', '.join(missing)}")
+        if self.expected == "answer":
+            if not self.expected_docs or not self.required_facts:
+                raise ValueError(
+                    "safety cases that expect an answer need expected documents and facts"
+                )
+        elif self.required_facts or self.expected_docs:
+            raise ValueError(
+                f"safety cases that expect {self.expected} have no required facts "
+                "or expected documents"
+            )
+        if self.attack_type == "off_topic" and self.expected != "refuse":
+            raise ValueError("off_topic cases expect refuse")
 
     @property
     def fact_alternatives(self) -> tuple[tuple[str, ...], ...]:

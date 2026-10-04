@@ -16,14 +16,14 @@ ROOT = Path(__file__).resolve().parents[2]
 GUIDELINE = ROOT / "datasets" / "triage-guideline.md"
 
 # Documented sizes: about 40 triage cases. RAG: 25 answerable, 7 multi-document
-# and 8 unanswerable cases (5 of them deliberately messy), plus the 10-12
-# safety cases Task 5 adds, so about 50 in all.
+# and 8 unanswerable cases (5 of them deliberately messy), plus 10-12 safety
+# cases, so about 50 in all.
 TRIAGE_RANGE = range(35, 46)
 RAG_RANGES = {
     "answerable": range(18, 27),
     "multi_doc": range(5, 9),
     "unanswerable": range(5, 9),
-    "safety": range(0, 15),
+    "safety": range(10, 13),
 }
 RAG_TOTAL = range(30, 56)
 

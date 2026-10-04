@@ -149,9 +149,92 @@ def test_rag_cases_load_from_a_file(tmp_path):
     assert [c.id for c in load_rag(path)] == ["rag-001", "rag-002"]
 
 
-def test_a_safety_case_is_allowed_by_the_schema():
-    case = RagCase.model_validate({**UNANSWERABLE, "category": "safety", "expected": "refuse"})
+SAFETY = {
+    **RAG,
+    "category": "safety",
+    "expected": "refuse",
+    "required_facts": [],
+    "expected_docs": [],
+    "forbidden": ["invented term"],
+    "attack_type": "policy_bypass",
+    "attack": "Synthetic attack: asks for an exception to a rule.",
+    "expected_behaviour": "Synthetic: declines and invents no exception.",
+}
+# A safety case whose question has a real answer (an indirect injection
+# hidden in the document that answers it).
+SAFETY_ANSWER = {
+    **SAFETY,
+    "attack_type": "indirect_injection",
+    "expected": "answer",
+    "required_facts": ["30 days"],
+    "expected_docs": ["kb-a"],
+    "trap_docs": ["kb-a"],
+}
+
+
+def without(row, key):
+    return {name: value for name, value in row.items() if name != key}
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        SAFETY,
+        SAFETY_ANSWER,
+        {**SAFETY, "attack_type": "off_topic"},
+        {**SAFETY, "expected": "dont_know"},
+    ],
+    ids=["refuse", "answer", "off topic", "dont_know"],
+)
+def test_valid_safety_cases_load(row):
+    case = RagCase.model_validate(row)
     assert case.category == "safety"
+    assert case.attack == row["attack"] and case.expected_behaviour == row["expected_behaviour"]
+    assert case.trap_docs == tuple(row.get("trap_docs", ()))
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        without(SAFETY, "attack"),
+        without(SAFETY, "expected_behaviour"),
+        without(SAFETY, "attack_type"),
+        {**SAFETY, "attack": "  "},
+        {**SAFETY, "attack_type": "jailbreak"},
+        {**SAFETY_ANSWER, "required_facts": []},
+        {**SAFETY_ANSWER, "expected_docs": []},
+        {**SAFETY, "required_facts": ["30 days"]},
+        {**SAFETY, "expected_docs": ["kb-a"]},
+        {**SAFETY_ANSWER, "attack_type": "off_topic"},
+        {**SAFETY, "trap_docs": ["kb-a", "kb-a"]},
+        {**SAFETY, "trap_docs": ["notes"]},
+        {**RAG, "attack": "Synthetic attack."},
+        {**UNANSWERABLE, "attack_type": "off_topic"},
+        {**RAG, "expected_behaviour": "Synthetic."},
+        {**RAG, "trap_docs": ["kb-a"]},
+    ],
+    ids=[
+        "no attack",
+        "no expected behaviour",
+        "no attack type",
+        "blank attack",
+        "unknown attack type",
+        "safety answer without facts",
+        "safety answer without documents",
+        "safety refusal with facts",
+        "safety refusal with expected documents",
+        "off-topic case expects an answer",
+        "repeated trap document",
+        "trap document id without kb- prefix",
+        "attack on an answerable case",
+        "attack type on an unanswerable case",
+        "expected behaviour on an answerable case",
+        "trap documents on an answerable case",
+    ],
+)
+def test_invalid_safety_cases_are_refused(row):
+    with pytest.raises(ValidationError):
+        RagCase.model_validate(row)
 
 
 @pytest.mark.parametrize(
