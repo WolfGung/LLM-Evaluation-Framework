@@ -410,6 +410,15 @@ def test_pairwise_results_compare_the_first_version_with_the_next(results):
     assert summary.outcomes == {"v1": 0, "v2": 2, "tie": 0, "inconsistent": 0, "invalid": 0}
     assert summary.valid.model_dump() == {"count": 2, "total": 2, "rate": 1.0}
     assert summary.inconsistent.model_dump() == {"count": 0, "total": 2, "rate": 0.0}
+    # The judge picked v2 in both positions: answer A in half of its choices.
+    assert summary.position_bias.model_dump() == {"count": 2, "total": 4, "rate": 0.5}
+    assert summary.inconsistent_kinds == {
+        "same_position_a": 0,
+        "same_position_b": 0,
+        "tie_in_one_order": 0,
+    }
+    # Both v2 answers are the longer ones, so every choice went to the longer answer.
+    assert summary.longer_preferred.model_dump() == {"count": 4, "total": 4, "rate": 1.0}
     path = pairwise_path(tmp_path / "results", "rag", ("v1", "v2"))
     assert path.name == "rag-v1-vs-v2.json"
     assert path in outcome.written
@@ -492,3 +501,20 @@ def test_results_with_the_judge_are_byte_for_byte_reproducible(tmp_path):
     again = {p.name: p.read_bytes() for p in (tmp_path / "results").iterdir()}
     assert first == again
     assert sorted(first) == ["rag-v1-vs-v2.json", "rag-v1.json", "rag-v2.json", "triage-v1.json"]
+
+
+def test_a_judge_that_follows_position_a_shows_in_the_pairwise_summary(tmp_path):
+    write_manifest(tmp_path / "cassettes")
+
+    def position_a(messages):
+        if messages[0]["content"] == RUBRIC.text and messages[-1]["content"].startswith("Compare"):
+            return preference("A")
+        return reply(messages)
+
+    outcome = run_all(FakeModel(reply=position_a), tmp_path)
+    summary = outcome.pairwise[0].summary
+    assert summary.outcomes["inconsistent"] == 2
+    assert summary.inconsistent.model_dump() == {"count": 2, "total": 2, "rate": 1.0}
+    assert summary.inconsistent_kinds["same_position_a"] == 2
+    assert summary.position_bias.model_dump() == {"count": 4, "total": 4, "rate": 1.0}
+    assert summary.longer_preferred.rate == 0.5

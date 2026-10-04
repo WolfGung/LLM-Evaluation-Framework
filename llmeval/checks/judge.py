@@ -25,8 +25,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -554,3 +555,85 @@ class Judge:
                 detail += f"; judge: {_short(verdict.reasons)}"
             results.append(CheckResult(criterion, score >= minimum, detail))
         return results
+
+
+# --- the judge's own biases ------------------------------------------------------
+#
+# Cheap checks, not proof: they show whether the judge leans on the position
+# of an answer or on its length. The agreement with human labels is measured
+# separately, once the owner has labelled answers.
+
+
+def _ranks(values: Sequence[float]) -> list[float]:
+    """Ranks from 1, ties sharing their average rank."""
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    ranks = [0.0] * len(values)
+    start = 0
+    while start < len(order):
+        end = start
+        while end + 1 < len(order) and values[order[end + 1]] == values[order[start]]:
+            end += 1
+        for i in order[start : end + 1]:
+            ranks[i] = (start + end) / 2 + 1
+        start = end + 1
+    return ranks
+
+
+def spearman(xs: Sequence[float], ys: Sequence[float]) -> float | None:
+    """Spearman's rank correlation, rounded to 4 places.
+
+    Ranks suit 1-5 scores, which are ordered but not evenly spaced. None with
+    fewer than 3 pairs, or when either series has no spread.
+    """
+    if len(xs) != len(ys):
+        raise ValueError("spearman needs two series of the same length")
+    if len(xs) < 3:
+        return None
+    rx, ry = _ranks(xs), _ranks(ys)
+    mx, my = sum(rx) / len(rx), sum(ry) / len(ry)
+    cov = sum((a - mx) * (b - my) for a, b in zip(rx, ry, strict=True))
+    vx = sum((a - mx) ** 2 for a in rx)
+    vy = sum((b - my) ** 2 for b in ry)
+    if vx == 0 or vy == 0:
+        return None
+    return round(cov / math.sqrt(vx * vy), 4)
+
+
+Pair = tuple[Preference | None, Preference | None]
+
+
+def position_bias(pairs: Iterable[Pair]) -> tuple[int, int]:
+    """How often the judge preferred answer A: (choices of A, choices of a side).
+
+    Counted over pairs where both orders chose a side. Each such pair shows
+    each version once as A, so answer quality cancels out: 0.5 of the choices
+    means no lean, 1.0 means the judge always picks A. Ties and invalid
+    verdicts are left out, because they would unbalance the positions.
+    """
+    chose_a = chose = 0
+    for first, second in pairs:
+        if first in ("A", "B") and second in ("A", "B"):
+            chose_a += (first == "A") + (second == "A")
+            chose += 2
+    return chose_a, chose
+
+
+Inconsistency = Literal["same_position_a", "same_position_b", "tie_in_one_order"]
+INCONSISTENCIES: tuple[Inconsistency, ...] = (
+    "same_position_a",
+    "same_position_b",
+    "tie_in_one_order",
+)
+
+
+def inconsistency(first: Preference | None, second: Preference | None) -> Inconsistency | None:
+    """How the two orders of a pair disagreed, or None when they agree or a
+    verdict is invalid. Picking the same position twice means the position,
+    not the answer, decided."""
+    if first is None or second is None:
+        return None
+    if first == second:
+        return {"A": "same_position_a", "B": "same_position_b"}.get(first)
+    if "tie" in (first, second):
+        return "tie_in_one_order"
+    return None

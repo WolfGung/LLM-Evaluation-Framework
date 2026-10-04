@@ -24,11 +24,15 @@ from app.triage import Category, Priority
 from llmeval.checks import reference as ref
 from llmeval.checks.judge import (
     CRITERIA,
+    INCONSISTENCIES,
     OUTCOMES,
     SCORES,
     Judgement,
     OrderJudgement,
     PairwiseResult,
+    inconsistency,
+    position_bias,
+    spearman,
 )
 from llmeval.checks.retrieval import retrieval_recall_value
 from llmeval.client import CallResult
@@ -173,6 +177,13 @@ class Share(_Record):
         )
 
 
+class LengthCorrelation(_Record):
+    """Spearman correlation between answer length (words) and one criterion's score."""
+
+    n: int
+    spearman: float | None
+
+
 class JudgeSummary(_Record):
     """The judge layer of one function and version.
 
@@ -182,7 +193,12 @@ class JudgeSummary(_Record):
     - `rule_pass`: the rubric's pass rule, over valid verdicts only;
     - `pass_disagreements`: valid verdicts whose own `pass` differs from the
       rule on their scores;
-    - `mean_scores` and `score_counts`: per criterion, over valid verdicts.
+    - `mean_scores` and `score_counts`: per criterion, over valid verdicts;
+    - `length_score_correlation`: per criterion, between the answer's length
+      in words and its score, over valid verdicts on non-empty answers. The
+      rubric says length earns nothing, so a strong positive value suggests
+      the judge rewards verbosity. It is a cheap check, not proof: longer
+      answers can also be more complete.
 
     `layers["judge"]` in the summary counts an invalid verdict as a failed
     run, because the answer could not be graded.
@@ -195,6 +211,7 @@ class JudgeSummary(_Record):
     pass_disagreements: int
     mean_scores: dict[str, float | None]
     score_counts: dict[str, dict[str, int]]
+    length_score_correlation: dict[str, LengthCorrelation]
 
 
 class Summary(_Record):
@@ -312,13 +329,23 @@ class PairwiseSummary(_Record):
     - `outcomes`: pairs per outcome (first version, second version, tie,
       inconsistent, invalid);
     - `valid`: pairs whose two verdicts are both valid (the judge's reliability);
-    - `inconsistent`: inconsistent pairs among the valid ones.
+    - `inconsistent`: inconsistent pairs among the valid ones, and
+      `inconsistent_kinds`: how they disagreed (the same position twice, or a
+      tie in one order);
+    - `position_bias`: choices of answer A among the choices of a side, over
+      pairs where both orders chose a side; 0.5 means no lean, 1.0 means the
+      judge always picks A;
+    - `longer_preferred`: over the same choices, how often the judge chose
+      the longer answer (pairs of equal length left out).
     """
 
     pairs: int
     outcomes: dict[str, int]
     valid: Share
     inconsistent: Share
+    inconsistent_kinds: dict[str, int]
+    position_bias: Share
+    longer_preferred: Share
 
 
 class PairwiseResults(_Record):
@@ -390,16 +417,23 @@ def summarise(function: str, cases: Sequence[CaseRecord]) -> Summary:
             )
             for label, labels in (("category", CATEGORY_LABELS), ("priority", PRIORITY_LABELS))
         }
-    graded = [run.judge for _, run in runs if run.judge is not None]
+    graded = [(run.output, run.judge) for _, run in runs if run.judge is not None]
     if graded:
         summary["judge"] = summarise_judge(graded)
     return Summary(**summary)
 
 
-def summarise_judge(graded: Sequence[JudgeRecord]) -> JudgeSummary:
-    valid = [record for record in graded if record.scores is not None]
+def summarise_judge(graded: Sequence[tuple[str, JudgeRecord]]) -> JudgeSummary:
+    """The judge layer over (answer, judge record) pairs."""
+    records = [record for _, record in graded]
+    valid = [record for record in records if record.scores is not None]
+    measured = [
+        (len(answer.split()), record.scores)
+        for answer, record in graded
+        if record.scores is not None and answer.strip()
+    ]
     invalid: dict[str, int] = {}
-    for record in graded:
+    for record in records:
         if record.error is not None:
             invalid[record.error] = invalid.get(record.error, 0) + 1
     mean_scores = {
@@ -412,14 +446,22 @@ def summarise_judge(graded: Sequence[JudgeRecord]) -> JudgeSummary:
         }
         for criterion in CRITERIA
     }
+    correlation = {
+        criterion: LengthCorrelation(
+            n=len(measured),
+            spearman=spearman([w for w, _ in measured], [s[criterion] for _, s in measured]),
+        )
+        for criterion in CRITERIA
+    }
     return JudgeSummary(
-        judged=len(graded),
-        valid=Share.of(record.scores is not None for record in graded),
+        judged=len(records),
+        valid=Share.of(record.scores is not None for record in records),
         invalid_by_kind=dict(sorted(invalid.items())),
         rule_pass=Rate.of(bool(r.rule_pass) for r in valid),
         pass_disagreements=sum(r.judge_pass != r.rule_pass for r in valid),
         mean_scores=mean_scores,
         score_counts=score_counts,
+        length_score_correlation=correlation,
     )
 
 
@@ -431,12 +473,38 @@ def summarise_pairwise(
     for case in cases:
         outcomes[case.outcome] += 1
     valid = [case for case in cases if case.outcome != "invalid"]
+    preferences = [(case.orders[0].preferred, case.orders[1].preferred) for case in cases]
+    kinds = {kind: 0 for kind in INCONSISTENCIES}
+    for first, second in preferences:
+        if kind := inconsistency(first, second):
+            kinds[kind] += 1
+    chose_a, chose = position_bias(preferences)
     return PairwiseSummary(
         pairs=len(cases),
         outcomes=outcomes,
         valid=Share.of(case.outcome != "invalid" for case in cases),
         inconsistent=Share.of(case.outcome == "inconsistent" for case in valid),
+        inconsistent_kinds=kinds,
+        position_bias=Share(
+            count=chose_a, total=chose, rate=round(chose_a / chose, 4) if chose else None
+        ),
+        longer_preferred=Share.of(_longer_preferred(cases, versions)),
     )
+
+
+def _longer_preferred(cases: Sequence[PairwiseCaseRecord], versions: tuple[str, str]) -> list[bool]:
+    """For each side choice in pairs where both orders chose a side: was it
+    the longer answer? Pairs of equal length are left out."""
+    flags = []
+    for case in cases:
+        if any(order.preferred not in ("A", "B") for order in case.orders):
+            continue
+        words = {version: len(case.answers[version].split()) for version in versions}
+        if words[versions[0]] == words[versions[1]]:
+            continue
+        longer = max(versions, key=lambda version: words[version])
+        flags += [order.winner == longer for order in case.orders]
+    return flags
 
 
 def results_path(results_dir: Path | str, function: str, version: str) -> Path:
