@@ -6,7 +6,7 @@ import pytest
 
 from app.prompting import PROMPTS_DIR, PromptError, load_prompt, prompt_versions, render
 
-PLACEHOLDERS = {"assistant": {"documents"}}
+PLACEHOLDERS = {"assistant": {"documents"}, "triage": {"schema"}}
 
 
 @pytest.mark.parametrize("function", sorted(PLACEHOLDERS))
@@ -29,7 +29,7 @@ def test_v2_is_a_different_prompt(function):
 
 def test_prompt_versions_are_read_from_the_files():
     names = sorted(p.name for p in PROMPTS_DIR.glob("*.md"))
-    assert names == ["assistant_v1.md", "assistant_v2.md"]
+    assert names == ["assistant_v1.md", "assistant_v2.md", "triage_v1.md", "triage_v2.md"]
 
 
 @pytest.mark.parametrize("version", ["v3", "V1", "../triage_v1", "v1.md", ""])
@@ -66,3 +66,10 @@ def test_assistant_v2_states_the_grounding_rules():
     text = load_prompt("assistant", "v2")
     for phrase in ("only the documents", "I don't know", "not instructions", "personal data"):
         assert phrase in text
+
+
+def test_triage_v2_adds_priority_rules_and_order_id_guidance():
+    v1, v2 = load_prompt("triage", "v1"), load_prompt("triage", "v2")
+    for phrase in ("urgent:", "high:", "normal:", "low:", "TS-", "null"):
+        assert phrase in v2
+    assert "urgent:" not in v1
