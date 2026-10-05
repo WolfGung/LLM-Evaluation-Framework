@@ -64,7 +64,6 @@ LABELS_PATH = Path("labels/human.jsonl")
 SAMPLE_SIZE = 30
 SAMPLE_SEED = 2026
 SAMPLE_SCHEMA_VERSION = 1
-RAG_FUNCTION = "rag"
 LABELER = "Pavel Zhukov Atum"
 # The one question the owner answers for each answer. It asks for the same
 # three things as the judge's rubric (rubrics/judge.md), in one decision:
@@ -112,11 +111,17 @@ class LabelError(ValueError):
     """The sample or the labels file is missing or broken, or cannot be built."""
 
 
-class _Record(BaseModel):
+Ref = tuple[str, str, int]  # (case, version, repeat)
+Answer = tuple[Ref, str]  # (ref, cassette key of the answer)
+
+
+class Record(BaseModel):
+    """A frozen record that refuses unknown fields; `llmeval.agreement` uses it too."""
+
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class SampleItem(_Record):
+class SampleItem(Record):
     """One answer to label: the case, the prompt version, the repeat, the
     cassette key of the answer and the case's category."""
 
@@ -127,11 +132,16 @@ class SampleItem(_Record):
     category: str
 
     @property
-    def ref(self) -> tuple[str, str, int]:
+    def ref(self) -> Ref:
         return (self.case, self.version, self.repeat)
 
+    @property
+    def answer(self) -> Answer:
+        """The answer itself: its case, version and repeat, and its cassette key."""
+        return (self.ref, self.answer_key)
 
-class Sample(_Record):
+
+class Sample(Record):
     """The content of `labels/sample.json`, items in labelling order."""
 
     schema_version: int = SAMPLE_SCHEMA_VERSION
@@ -164,12 +174,12 @@ class AnswerRun:
         return None if self.run.judge is None else self.run.judge.rule_pass
 
 
-def runs_by_answer(results: Iterable[FunctionResults]) -> dict[tuple[str, str, int], AnswerRun]:
+def runs_by_answer(results: Iterable[FunctionResults]) -> dict[Ref, AnswerRun]:
     """Every RAG run in `results`, by (case, version, repeat)."""
     return {
         (case.id, result.version, run.repeat): AnswerRun(case=case, run=run)
         for result in results
-        if result.function == RAG_FUNCTION
+        if result.function == assistant.RAG_FUNCTION
         for case in result.cases
         for run in case.runs
     }
@@ -208,7 +218,7 @@ def build_sample(
     passes: dict[tuple[str, str], list[SampleItem]] = {}
     versions: list[str] = []
     for result in results:
-        if result.function != RAG_FUNCTION:
+        if result.function != assistant.RAG_FUNCTION:
             continue
         versions.append(result.version)
         for case in result.cases:
@@ -286,7 +296,7 @@ def load_sample(path: Path | str = SAMPLE_PATH) -> Sample:
         raise LabelError(f"{path.name}: not a valid sample: {exc}") from None
 
 
-class HumanLabel(_Record):
+class HumanLabel(Record):
     """One line of `labels/human.jsonl`: the owner's label of one answer.
 
     `answer_key` is the cassette key of the answer when it was labelled. If
@@ -311,11 +321,16 @@ class HumanLabel(_Record):
         return value
 
     @property
-    def ref(self) -> tuple[str, str, int]:
+    def ref(self) -> Ref:
         return (self.case, self.version, self.repeat)
 
+    @property
+    def answer(self) -> Answer:
+        """The labelled answer: its case, version and repeat, and its cassette key."""
+        return (self.ref, self.answer_key)
 
-def describe(ref: tuple[str, str, int]) -> str:
+
+def describe(ref: Ref) -> str:
     case, version, repeat = ref
     return f"{case} {version} repeat {repeat}"
 
@@ -338,7 +353,7 @@ def load_labels(path: Path | str = LABELS_PATH) -> list[HumanLabel]:
             "check it, then end it with a newline or remove it"
         )
     labels: list[HumanLabel] = []
-    seen: dict[tuple[tuple[str, str, int], str], int] = {}
+    seen: dict[Answer, int] = {}
     for number, line in enumerate(lines[:-1], start=1):
         if not line.strip():
             raise LabelError(f"{path} line {number} is empty")
@@ -350,13 +365,12 @@ def load_labels(path: Path | str = LABELS_PATH) -> list[HumanLabel]:
             raise LabelError(
                 f"{path} line {number}: not a valid label: {where}: {problem['msg']}"
             ) from None
-        answer = (item.ref, item.answer_key)
-        if answer in seen:
+        if item.answer in seen:
             raise LabelError(
-                f"{path} lines {seen[answer]} and {number} label the same answer: "
+                f"{path} lines {seen[item.answer]} and {number} label the same answer: "
                 f"{describe(item.ref)}; keep one"
             )
-        seen[answer] = number
+        seen[item.answer] = number
         labels.append(item)
     return labels
 
@@ -486,16 +500,21 @@ def prepare_items(
     return items, problems
 
 
+def labelled_answers(labels: Iterable[HumanLabel]) -> set[Answer]:
+    """The answers these labels label (a label of an older answer is not one of them)."""
+    return {label.answer for label in labels}
+
+
 def unlabelled(items: Sequence[LabelItem], labels: Iterable[HumanLabel]) -> list[LabelItem]:
     """The items without a label of their current answer (same cassette key)."""
-    done = {(label.ref, label.answer_key) for label in labels}
-    return [item for item in items if (item.item.ref, item.item.answer_key) not in done]
+    done = labelled_answers(labels)
+    return [item for item in items if item.item.answer not in done]
 
 
 def labelled_count(sample: Sample, labels: Iterable[HumanLabel]) -> int:
     """Sample answers that have a label of their current answer."""
-    done = {(label.ref, label.answer_key) for label in labels}
-    return sum((item.ref, item.answer_key) in done for item in sample.items)
+    done = labelled_answers(labels)
+    return sum(item.answer in done for item in sample.items)
 
 
 _LIST_ITEM = re.compile(r"(?:[-*]|\d+[.)])\s+")

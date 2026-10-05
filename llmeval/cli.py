@@ -46,7 +46,7 @@ from typing import Annotated
 import httpx
 import typer
 
-from app.assistant import DEFAULT_K
+from app.assistant import DEFAULT_K, RAG_FUNCTION
 from app.prompting import PromptError
 from app.retrieval import search
 from llmeval.agreement import agreement_report, report_lines, write_agreement
@@ -661,6 +661,12 @@ def gate_command(
         raise typer.Exit(code=1)
 
 
+def _rag_results(results_dir: Path, manifest: RunManifest) -> tuple[FunctionResults, ...]:
+    """The RAG results of the manifest's prompt versions (BaselineError when missing)."""
+    versions = {RAG_FUNCTION: manifest.prompt_versions.get(RAG_FUNCTION, ())}
+    return load_run_results(results_dir, versions).functions
+
+
 @app.command("sample")
 def sample_command(
     results_dir: ResultsOption = RESULTS_DIR,
@@ -681,8 +687,7 @@ def sample_command(
         if manifest is None:
             typer.echo(PENDING_RECORDED_RUN)
             return
-        rag_versions = {"rag": manifest.prompt_versions.get("rag", ())}
-        results = load_run_results(results_dir, rag_versions).functions
+        results = _rag_results(results_dir, manifest)
         built = build_sample(results)
         path = write_sample(built, sample)
     except (BaselineError, CassetteError, LabelError, OSError) as exc:
@@ -832,8 +837,7 @@ def agreement_command(
             return
         chosen = load_sample(sample)
         owner_labels = load_labels(labels)
-        rag_versions = {"rag": manifest.prompt_versions.get("rag", ())}
-        results = load_run_results(results_dir, rag_versions).functions
+        results = _rag_results(results_dir, manifest)
         report = agreement_report(chosen, owner_labels, results, load_rubric(rubric))
         path = write_agreement(report, results_dir)
     except (BaselineError, CassetteError, LabelError, RubricError, OSError) as exc:

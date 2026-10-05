@@ -249,3 +249,13 @@ def test_the_report_file_is_the_same_whatever_the_label_order(tmp_path):
     assert first.name == AGREEMENT_FILE == "judge-agreement.json"
     assert first.read_bytes() == second.read_bytes()
     assert first.read_text(encoding="utf-8").endswith("}\n")
+
+
+def test_kappa_is_undefined_when_both_give_every_answer_the_same_single_label():
+    run_results = results()
+    sample = build_sample(run_results, size=12, seed=3)
+    judged = verdicts(sample, run_results)
+    passed = [item for item, verdict in zip(sample.items, judged, strict=True) if verdict]
+    report = agreement_report(sample, [label(item, "pass") for item in passed], run_results, RUBRIC)
+    assert (report.labelled, report.agreed, report.kappa) == (len(passed), len(passed), None)
+    assert report.kappa_note == "undefined: both gave every answer the same single label"

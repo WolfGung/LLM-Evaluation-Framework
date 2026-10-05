@@ -42,10 +42,16 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
-
 from llmeval.checks.judge import Rubric
-from llmeval.labels import LABEL_QUESTION, HumanLabel, Sample, describe, runs_by_answer
+from llmeval.labels import (
+    LABEL_QUESTION,
+    HumanLabel,
+    Record,
+    Ref,
+    Sample,
+    describe,
+    runs_by_answer,
+)
 from llmeval.results import FunctionResults
 
 AGREEMENT_FILE = "judge-agreement.json"
@@ -86,11 +92,7 @@ def cohen_kappa(pairs: Sequence[tuple[bool, bool]]) -> float | None:
     return (agreed * n - chance) / (n * n - chance)
 
 
-class _Record(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class SampleSummary(_Record):
+class SampleSummary(Record):
     """The sample: its size and seed, and the judge's verdicts on it."""
 
     size: int
@@ -99,7 +101,7 @@ class SampleSummary(_Record):
     judge_fail: int
 
 
-class Disagreement(_Record):
+class Disagreement(Record):
     case: str
     version: str
     repeat: int
@@ -111,7 +113,7 @@ class Disagreement(_Record):
     human_comment: str
 
 
-class UnusedLabel(_Record):
+class UnusedLabel(Record):
     """A label that is not compared, and why."""
 
     case: str
@@ -120,7 +122,7 @@ class UnusedLabel(_Record):
     reason: str
 
 
-class AgreementReport(_Record):
+class AgreementReport(Record):
     """The content of `results/judge-agreement.json` (see the module docstring).
 
     `status` is `pending human labels` (no usable label), `partial` or
@@ -175,7 +177,7 @@ def agreement_report(
     runs = runs_by_answer(results)
     items = {item.ref: item for item in sample.items}
 
-    def current(ref: tuple[str, str, int]):
+    def current(ref: Ref):
         """The results' run of a sample answer, when it is the sample's answer."""
         answer = runs.get(ref)
         return answer if answer and answer.run.call.key == items[ref].answer_key else None
@@ -228,7 +230,9 @@ def agreement_report(
         status, kappa_note = PENDING_HUMAN_LABELS, "no labelled answers"
     else:
         status = "complete" if len(pairs) == sample.size else "partial"
-        kappa_note = None if kappa is not None else "undefined: both gave every answer one label"
+        kappa_note = (
+            None if kappa is not None else "undefined: both gave every answer the same single label"
+        )
     graded = [result for result in results if result.judge_model is not None]
     return AgreementReport(
         status=status,
@@ -253,7 +257,7 @@ def agreement_report(
     )
 
 
-def _ref(ref: tuple[str, str, int]) -> dict[str, str | int]:
+def _ref(ref: Ref) -> dict[str, str | int]:
     case, version, repeat = ref
     return {"case": case, "version": version, "repeat": repeat}
 
