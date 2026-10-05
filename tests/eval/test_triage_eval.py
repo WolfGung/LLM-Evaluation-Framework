@@ -15,9 +15,9 @@ FUNCTION = "triage"
 CASES = load_triage(ROOT / TRIAGE_PATH)
 
 
-def test_triage_case(request, replay, baseline, case, version):
+def test_triage_case(replay, baseline, case, version):
     show_case(FUNCTION, case, version)
     record = replay.case(FUNCTION, case, version)
     show_record(FUNCTION, record)
     expected = baseline.case(FUNCTION, version, case.id) if baseline else None
-    apply_verdict(request, compare(record, expected))
+    apply_verdict(compare(record, expected))

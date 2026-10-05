@@ -19,9 +19,9 @@ FUNCTION = "rag"
 CASES = load_rag(ROOT / RAG_PATH)
 
 
-def test_rag_case(request, replay, baseline, case, version):
+def test_rag_case(replay, baseline, case, version):
     show_case(FUNCTION, case, version)
     record = replay.case(FUNCTION, case, version)
     show_record(FUNCTION, record)
     expected = baseline.case(FUNCTION, version, case.id) if baseline else None
-    apply_verdict(request, compare(record, expected))
+    apply_verdict(compare(record, expected))

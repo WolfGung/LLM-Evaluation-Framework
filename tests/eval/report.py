@@ -13,14 +13,26 @@ details, the judge's verdict and reasons (RAG) and the whole record.
 Attachments are text or JSON built from the replayed record. A record holds
 no request headers; the cassette key of each call (a sha256 of the request)
 is left out too, so nothing in the report looks like a key.
+
+With `--alluredir`, the suite also writes `categories.json` (a regression
+against the baseline, a known failure that now passes, a known failure, and
+pending: no recorded run or no baseline) and `environment.properties` (the
+models, the recording dates, repeats, judge_repeats, the call count and the
+prompt versions, from the run manifest).
 """
 
 from __future__ import annotations
 
+import json
+import re
+from datetime import UTC, datetime
+from pathlib import Path
+
 import allure
 
 from app.retrieval import default_index
-from llmeval.baseline import explain
+from llmeval.baseline import PENDING_BASELINE, explain
+from llmeval.cassettes import PENDING_RECORDED_RUN, CassetteError, RunManifest, load_manifest
 from llmeval.datasets import RagCase, TriageCase
 from llmeval.results import LAYERS, CaseRecord, JudgeRecord
 
@@ -149,3 +161,81 @@ def show_record(function: str, record: CaseRecord) -> None:
         name="record",
         attachment_type=allure.attachment_type.JSON,
     )
+
+
+# --- categories and environment ------------------------------------------------
+
+# How a failure or skip starts (see `tests.eval.support.apply_verdict` and the
+# skips of the suite); the categories below match on these words.
+REGRESSION = "regression"
+STRICT_XPASS = "[XPASS(strict)]"
+KNOWN_FAILURE = "known failure in the baseline"
+NOT_RECORDED = "is not in the recorded run"
+NOTHING_TO_COMPARE = "nothing to compare"
+
+
+def categories() -> list[dict[str, object]]:
+    """Allure categories: a result falls in one when its status is listed and
+    the regex matches its whole message (Allure uses Java regex with DOTALL)."""
+    pending = "|".join(
+        re.escape(reason)
+        for reason in (PENDING_RECORDED_RUN, PENDING_BASELINE, NOT_RECORDED, NOTHING_TO_COMPARE)
+    )
+    return [
+        {
+            "name": "Regression against the baseline",
+            "matchedStatuses": ["failed"],
+            "messageRegex": f"Failed: {REGRESSION}: .*",
+        },
+        {
+            "name": "Known failure that now passes: update the baseline",
+            "matchedStatuses": ["failed"],
+            "messageRegex": f"Failed: {re.escape(STRICT_XPASS)} .*",
+        },
+        {
+            "name": "Known failure in the baseline",
+            "matchedStatuses": ["skipped"],
+            "messageRegex": f"XFAIL {KNOWN_FAILURE}: .*",
+        },
+        {
+            "name": "Pending: no recorded run or no baseline",
+            "matchedStatuses": ["skipped"],
+            "messageRegex": f"Skipped: .*({pending}).*",
+        },
+    ]
+
+
+def _utc(moment: datetime) -> str:
+    return f"{moment.astimezone(UTC):%Y-%m-%d %H:%M} UTC"
+
+
+def environment(manifest: RunManifest | None) -> str:
+    """`environment.properties`: what the recorded run used, from its manifest."""
+    if manifest is None:
+        return f"recording={PENDING_RECORDED_RUN}\n"
+    versions = "; ".join(
+        f"{function} {', '.join(chosen)}" for function, chosen in manifest.prompt_versions.items()
+    )
+    lines = {
+        "system.model": manifest.models["system"],
+        "judge.model": manifest.models["judge"],
+        "recorded.from": _utc(manifest.recorded_from),
+        "recorded.to": _utc(manifest.recorded_to),
+        "repeats": manifest.repeats,
+        "judge_repeats": manifest.judge_repeats,
+        "calls": manifest.recorded_calls,
+        "prompt.versions": versions,
+    }
+    return "".join(f"{key}={value}\n" for key, value in lines.items())
+
+
+def write_report_files(directory: Path, cassettes: Path) -> None:
+    """Write `categories.json` and `environment.properties` into the Allure results."""
+    directory.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(categories(), indent=2) + "\n"
+    (directory / "categories.json").write_text(text, encoding="utf-8")
+    try:
+        props = environment(load_manifest(cassettes))
+    except CassetteError as exc:
+        props = f"recording=manifest error: {str(exc).splitlines()[0]}\n"
+    (directory / "environment.properties").write_text(props, encoding="utf-8")

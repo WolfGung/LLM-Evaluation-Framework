@@ -25,6 +25,7 @@ from tests.unit.test_eval_suite import (
     RAG_CASE,
     RIGHT,
     WRONG_PRIORITY,
+    WRONG_TWICE,
     record_rag_with_judge,
     record_reply,
     run_eval_suite,
@@ -159,9 +160,93 @@ def test_nothing_key_like_reaches_the_report(ws):
     assert code == 0, out
     result = only_result(out_dir)
     shown = " ".join(attachments(out_dir, result).values())
-    written = " ".join(
-        [result["name"], result["description"], json.dumps(result["labels"]), shown]
-    )
+    written = " ".join([result["name"], result["description"], json.dumps(result["labels"]), shown])
     assert not KEY_LIKE.findall(written)
     for path in out_dir.iterdir():
         assert "synthetic-key-123" not in path.read_text("utf-8")
+
+
+# --- categories and environment ------------------------------------------------
+
+REGRESSION = "Regression against the baseline"
+FIXED = "Known failure that now passes: update the baseline"
+KNOWN = "Known failure in the baseline"
+PENDING = "Pending: no recorded run or no baseline"
+
+
+def categories_of(out_dir: Path, result: dict) -> list[str]:
+    """The categories of categories.json a result falls in, by Allure's rule:
+    the status is one of `matchedStatuses`, and `messageRegex` matches the
+    whole message (Java's Pattern.matches with DOTALL)."""
+    categories = json.loads((out_dir / "categories.json").read_text("utf-8"))
+    message = (result.get("statusDetails") or {}).get("message")
+    found = []
+    for category in categories:
+        if result["status"] not in category["matchedStatuses"]:
+            continue
+        regex = category.get("messageRegex")
+        if regex is None or (message is not None and re.fullmatch(regex, message, re.DOTALL)):
+            found.append(category["name"])
+    return found
+
+
+
+@pytest.mark.parametrize(
+    ("baseline", "reply", "status", "expected"),
+    [
+        pytest.param(CaseBaseline(passed=True), RIGHT, "passed", [], id="pass"),
+        pytest.param(
+            CaseBaseline(passed=True), WRONG_PRIORITY, "failed", [REGRESSION], id="regression"
+        ),
+        pytest.param(KNOWN_PRIORITY_FAILURE, WRONG_TWICE, "failed", [REGRESSION], id="new-check"),
+        pytest.param(KNOWN_PRIORITY_FAILURE, WRONG_PRIORITY, "skipped", [KNOWN], id="known"),
+        pytest.param(KNOWN_PRIORITY_FAILURE, RIGHT, "failed", [FIXED], id="fixed"),
+        pytest.param(None, RIGHT, "skipped", [PENDING], id="pending-baseline"),
+    ],
+)
+def test_each_outcome_falls_in_exactly_its_category(ws, baseline, reply, status, expected):
+    write_manifest(ws)
+    record_reply(ws, reply)
+    if baseline is not None:
+        write_baseline(ws, baseline)
+    _, out, out_dir = run_with_allure(ws, "-k", CASE.id)
+    result = only_result(out_dir)
+    assert result["status"] == status, out
+    assert categories_of(out_dir, result) == expected
+
+
+def test_without_a_recorded_run_every_case_is_pending(ws):
+    _, out, out_dir = run_with_allure(ws, "-k", CASE.id)
+    result = only_result(out_dir)
+    assert categories_of(out_dir, result) == [PENDING], out
+
+
+def test_the_environment_names_the_recording(ws):
+    write_manifest(ws)
+    record_reply(ws, RIGHT)
+    _, out, out_dir = run_with_allure(ws, "-k", CASE.id)
+    assert (out_dir / "environment.properties").read_text("utf-8") == (
+        f"system.model={MODELS.system.model}\n"
+        f"judge.model={MODELS.judge.model}\n"
+        "recorded.from=2026-01-01 10:00 UTC\n"
+        "recorded.to=2026-01-01 10:01 UTC\n"
+        "repeats=1\n"
+        "judge_repeats=first\n"
+        "calls=1\n"
+        "prompt.versions=triage v1\n"
+    ), out
+
+
+def test_without_a_recorded_run_the_environment_says_pending(ws):
+    _, out, out_dir = run_with_allure(ws, "-k", CASE.id)
+    environment = (out_dir / "environment.properties").read_text("utf-8")
+    assert environment == "recording=pending first recorded run\n", out
+
+
+def test_report_files_are_written_only_with_an_alluredir(ws):
+    write_manifest(ws)
+    record_reply(ws, RIGHT)
+    code, out = run_eval_suite(ws, "-k", CASE.id)
+    assert code == 0, out
+    assert not list(ws.rglob("categories.json"))
+    assert not list(ws.rglob("environment.properties"))

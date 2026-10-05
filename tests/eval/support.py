@@ -19,6 +19,7 @@ from llmeval.client import ModelClient
 from llmeval.config import Mode, load_config
 from llmeval.results import CaseRecord
 from llmeval.runner import run_rag, run_triage
+from tests.eval.report import REGRESSION, STRICT_XPASS
 
 ROOT = Path(__file__).resolve().parents[2]
 CASSETTES = Path(os.environ.get("LLMEVAL_CASSETTES_DIR") or ROOT / "cassettes")
@@ -54,15 +55,19 @@ class Replay:
         return run_triage(self.client, self.config.models.system, [case], version, **options)[0]
 
 
-def apply_verdict(request: pytest.FixtureRequest, verdict: Verdict) -> None:
-    """Turn a baseline comparison into the pytest outcome."""
+def apply_verdict(verdict: Verdict) -> None:
+    """Turn a baseline comparison into the pytest outcome.
+
+    A regression fails with a message that starts with "regression:". A
+    known failure that now passes fails as a strict XPASS, in pytest's own
+    words: pytest's strict xfail marker would report it without a message,
+    and the Allure report could not tell it from a regression then.
+    """
     if verdict.outcome == "pending":
         pytest.skip(verdict.message)
     if verdict.outcome == "xfail":
         pytest.xfail(verdict.message)
     if verdict.outcome == "xpass":
-        # The case passes now; strict xfail turns that into a failing XPASS.
-        request.node.add_marker(pytest.mark.xfail(strict=True, reason=verdict.message))
-        return
+        pytest.fail(f"{STRICT_XPASS} {verdict.message}", pytrace=False)
     if verdict.outcome == "fail":
-        pytest.fail(verdict.message, pytrace=False)
+        pytest.fail(f"{REGRESSION}: {verdict.message}", pytrace=False)

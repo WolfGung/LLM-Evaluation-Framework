@@ -13,11 +13,15 @@
   with "pending baseline" after the replay.
 - A baseline entry: compared with `llmeval.baseline.compare` (pass, xfail,
   strict XPASS, or a failing regression).
+- With `--alluredir`, the Allure categories and environment are written
+  there at the end (see `tests.eval.report`).
 
 No model is called: the client is in replay mode and needs no key.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
 
@@ -25,6 +29,7 @@ from llmeval.baseline import load_baseline
 from llmeval.cassettes import PENDING_RECORDED_RUN, CassetteError, load_manifest
 from llmeval.checks.judge import RUBRIC_PATH, RubricError, load_rubric
 from llmeval.datasets import file_sha256
+from tests.eval.report import write_report_files
 from tests.eval.support import BASELINE, CASSETTES, DATASETS, ROOT, UNRECORDED, Replay
 
 
@@ -76,3 +81,9 @@ def pytest_terminal_summary(terminalreporter) -> None:
         return
     if notice := manifest.rubric_notice(rubric.sha256):
         terminalreporter.write_line(notice)
+
+
+def pytest_sessionfinish(session: pytest.Session) -> None:
+    directory = session.config.getoption("allure_report_dir", default=None)
+    if directory:
+        write_report_files(Path(directory), CASSETTES)
