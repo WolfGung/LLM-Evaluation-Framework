@@ -2,7 +2,7 @@
 
 Layered checks that show in CI what a prompt or model change made better or worse in two LLM features, a support assistant and ticket triage, replayed from real recorded calls so every run is free.
 
-[![CI](https://github.com/WolfGung/LLM-Evaluation-Framework/actions/workflows/ci.yml/badge.svg)](https://github.com/WolfGung/LLM-Evaluation-Framework/actions/workflows/ci.yml)
+[![CI](https://github.com/WolfGung/LLM-Evaluation-Framework/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/WolfGung/LLM-Evaluation-Framework/actions/workflows/ci.yml)
 [![live report](https://img.shields.io/badge/live%20report-GitHub%20Pages-brightgreen)](https://wolfgung.github.io/LLM-Evaluation-Framework/)
 [![Python 3.12](https://img.shields.io/badge/Python-3.12-blue)](pyproject.toml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)

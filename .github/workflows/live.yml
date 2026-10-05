@@ -16,7 +16,7 @@ jobs:
   key:
     # Without the secret, a notice says so and the live job below is skipped;
     # the workflow never fails for a missing key.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       present: ${{ steps.check.outputs.present }}
@@ -36,7 +36,7 @@ jobs:
   live:
     needs: key
     if: needs.key.outputs.present == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # A full run sends up to the whole call plan at the configured requests
     # per minute (config/models.yaml), one call at a time.
     timeout-minutes: 180

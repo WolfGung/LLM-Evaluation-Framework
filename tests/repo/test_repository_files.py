@@ -134,9 +134,21 @@ def test_the_built_page_and_report_are_not_committed():
     assert "allure-results/" in ignored
 
 
+def ci_workflow() -> dict:
+    return yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text("utf-8"))
+
+
 def workflow_jobs() -> dict:
-    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text("utf-8"))
-    return workflow["jobs"]
+    return ci_workflow()["jobs"]
+
+
+def test_ci_runs_on_push_to_main_and_pull_requests_only_on_the_pinned_runner_image():
+    workflow = ci_workflow()
+    # YAML 1.1 reads the bare key `on` as true. No schedule and nothing started by
+    # hand: the CI badge shows the push runs of ci.yml on main, which need no network.
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers == {"push": {"branches": ["main"]}, "pull_request": None}
+    assert {job["runs-on"] for job in workflow["jobs"].values()} == {"ubuntu-24.04"}
 
 
 def test_ci_publishes_the_page_and_the_allure_report_from_main_only():

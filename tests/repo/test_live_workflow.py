@@ -49,6 +49,10 @@ def test_live_runs_only_when_started_by_hand():
     assert "schedule:" not in text()
 
 
+def test_live_runs_on_the_pinned_runner_image():
+    assert {job["runs-on"] for job in workflow()["jobs"].values()} == {"ubuntu-24.04"}
+
+
 def test_live_can_read_the_repository_and_commits_nothing():
     data = workflow()
     assert data["permissions"] == {"contents": "read"}

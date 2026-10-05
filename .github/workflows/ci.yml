@@ -17,7 +17,7 @@ permissions:
 jobs:
   test:
     # Unit tests and replay only: no network, no API key, no secrets.
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -73,7 +73,7 @@ jobs:
     # and never gets here.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read

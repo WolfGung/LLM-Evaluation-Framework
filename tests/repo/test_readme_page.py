@@ -68,14 +68,15 @@ def test_the_first_screen_is_title_sentence_badges_then_the_main_table():
 def test_the_badges_are_ci_the_live_report_python_and_the_licence():
     badges = [line for line in lines() if line.startswith("[![")]
     assert badges == [
-        f"[![CI]({REPOSITORY}/actions/workflows/ci.yml/badge.svg)]"
+        f"[![CI]({REPOSITORY}/actions/workflows/ci.yml/badge.svg?branch=main&event=push)]"
         f"({REPOSITORY}/actions/workflows/ci.yml)",
         f"[![live report](https://img.shields.io/badge/live%20report-GitHub%20Pages-brightgreen)]"
         f"({PAGES})",
         "[![Python 3.12](https://img.shields.io/badge/Python-3.12-blue)](pyproject.toml)",
         "[![license: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)",
     ]
-    # The CI badge reflects ci.yml only: live.yml is started by hand.
+    # The CI badge reflects ci.yml only, and only its push runs on main: live.yml is
+    # started by hand, and a run of ci.yml by another event never colours the badge.
     assert "live.yml/badge" not in README.read_text(encoding="utf-8")
 
 
