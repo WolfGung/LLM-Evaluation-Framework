@@ -1,7 +1,11 @@
 """Repository files that keep the evaluation honest: ignores, make targets, CI steps."""
 
+import os
 import shutil
+import signal
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -165,24 +169,71 @@ def test_the_label_lock_is_ignored_but_the_owner_labels_are_not():
 
 def test_make_label_runs_the_labelling_tool():
     targets, phony = make_targets()
-    assert targets["label"] == ["$(BIN)/llmeval label || [ $$? -eq 130 ]"]
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8").splitlines()
+    # bash waits for llmeval on Ctrl-C and runs the || part; dash dies at once.
+    assert "label: SHELL := /bin/bash" in makefile
+    assert targets["label"] == ["@$(BIN)/llmeval label || [ $$? -eq 130 ]"]
     assert "label" in phony
 
 
+def make_label(bin_dir: Path, **popen) -> subprocess.Popen:
+    return subprocess.Popen(
+        ["make", "--no-print-directory", "label", f"BIN={bin_dir}"],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        **popen,
+    )
+
+
 @pytest.mark.skipif(shutil.which("make") is None, reason="make is not installed")
-@pytest.mark.parametrize(("code", "make_fails"), [(0, False), (130, False), (1, True)])
-def test_make_label_takes_ctrl_c_as_a_clean_stop(tmp_path, code, make_fails):
-    # A stand-in for llmeval that exits with `code`: Ctrl-C (130) is a clean
-    # stop after the tool's own message, so make adds no "Error 130".
+@pytest.mark.parametrize(("code", "make_fails"), [(0, False), (1, True)])
+def test_make_label_passes_on_other_exit_codes(tmp_path, code, make_fails):
+    # A stand-in for llmeval that exits with `code`: an error still fails make.
     fake = tmp_path / "llmeval"
     fake.write_text(f"#!/bin/sh\nexit {code}\n", encoding="utf-8")
     fake.chmod(0o755)
-    done = subprocess.run(
-        ["make", "--no-print-directory", "label", f"BIN={tmp_path}"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
+    process = make_label(tmp_path)
+    out, err = process.communicate(timeout=60)
+    assert (process.returncode != 0) == make_fails, out + err
+    assert ("Error" in err) == make_fails, err
+
+
+@pytest.mark.skipif(shutil.which("make") is None, reason="make is not installed")
+def test_a_real_ctrl_c_under_make_label_is_a_clean_stop(tmp_path):
+    """Ctrl-C reaches make, the recipe's shell and llmeval together (one
+    process group). llmeval says it stopped and exits 130; make must add no
+    "Interrupt" or "Error" line after it."""
+    ready = tmp_path / "ready"
+    fake = tmp_path / "llmeval"
+    fake.write_text(
+        f"#!{sys.executable}\n"
+        "import pathlib, sys, time\n"
+        f"pathlib.Path({str(ready)!r}).write_text('ready')\n"
+        "try:\n"
+        "    time.sleep(60)\n"
+        "except KeyboardInterrupt:\n"
+        "    print('Stopped. Saved 0 labels this time.')\n"
+        "    sys.exit(130)\n",
+        encoding="utf-8",
     )
-    assert (done.returncode != 0) == make_fails, done.stdout + done.stderr
-    assert ("Error" in done.stderr) == make_fails
+    fake.chmod(0o755)
+    process = make_label(tmp_path, start_new_session=True)
+    try:
+        deadline = time.monotonic() + 30
+        while not ready.exists():
+            assert process.poll() is None, process.communicate()
+            assert time.monotonic() < deadline, "the stand-in llmeval did not start"
+            time.sleep(0.05)
+        os.killpg(process.pid, signal.SIGINT)
+        out, err = process.communicate(timeout=30)
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+    assert "Stopped. Saved 0 labels this time." in out
+    assert "Interrupt" not in err and "Error" not in err, err
+    # make got the Ctrl-C too: it lets the recipe end cleanly, then stops on it.
+    assert process.returncode in (0, -signal.SIGINT), out + err
+    assert "llmeval label" not in out  # @: make does not echo the command

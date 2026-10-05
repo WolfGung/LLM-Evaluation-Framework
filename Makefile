@@ -70,8 +70,11 @@ prune:
 # labels/human.jsonl. Only the owner runs it. Ctrl-C keeps every saved label;
 # run it again to go on. Ctrl-C makes llmeval exit with 130 after its own
 # message; make takes that as a clean stop. Any other error still fails.
+# Ctrl-C reaches the recipe's shell too: bash waits for llmeval and runs the
+# || part, where dash would die first and make would print "Interrupt".
+label: SHELL := /bin/bash
 label:
-	$(BIN)/llmeval label || [ $$? -eq 130 ]
+	@$(BIN)/llmeval label || [ $$? -eq 130 ]
 
 lint:
 	$(BIN)/ruff check .
