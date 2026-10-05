@@ -21,6 +21,7 @@ from llmeval.baseline import (
     CurrentInputs,
     Metrics,
     PairwiseMetrics,
+    baseline_differences,
     build_baseline,
     case_baseline,
     compare,
@@ -499,3 +500,24 @@ def test_llmeval_baseline_refuses_a_recorded_version_without_a_prompt(tmp_path):
     result = cli_runner.invoke(app, baseline_args(ws))
     assert result.exit_code == 1
     assert "unknown triage prompt version 'v99'" in result.output
+
+
+# --- baseline_differences --------------------------------------------------------
+
+
+def test_equal_baselines_have_no_differences():
+    baseline = build_baseline([graded_rag()], syn.manifest())
+    assert baseline_differences(baseline, baseline.model_copy()) == []
+
+
+def test_differences_name_versions_and_cases_on_either_side():
+    both = build_baseline([graded_rag("v1"), graded_rag("v2")], syn.manifest())
+    only_v1 = build_baseline([graded_rag("v1")], syn.manifest())
+    assert baseline_differences(only_v1, both) == ["rag v2: not in the committed baseline"]
+    assert baseline_differences(both, only_v1) == ["rag v2: not in the results"]
+    fewer = build_baseline(
+        [syn.function_results("rag", "v1", graded_rag().cases[:3])], syn.manifest()
+    )
+    differences = baseline_differences(only_v1, fewer)
+    assert "rag v1 rag-004: not in the results" in differences
+    assert "rag v1 metric layers.safety: committed 0.75, rebuilt 1.0" in differences

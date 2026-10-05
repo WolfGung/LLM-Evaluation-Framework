@@ -23,11 +23,12 @@ The regression gate (`llmeval.gate`) compares the key metrics.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -218,6 +219,84 @@ def build_baseline(
         stability_cases=manifest.stability_cases,
     )
     return Baseline(provenance=provenance, functions=functions, pairwise=comparisons)
+
+
+def _flat(value: Any, prefix: str = "") -> dict[str, Any]:
+    """Nested dicts as one dict with dotted keys (`layers.safety`)."""
+    if not isinstance(value, dict):
+        return {prefix: value}
+    flat: dict[str, Any] = {}
+    for key, inner in value.items():
+        flat.update(_flat(inner, f"{prefix}.{key}" if prefix else str(key)))
+    return flat
+
+
+def _show(value: Any) -> str:
+    return value if isinstance(value, str) else json.dumps(value)
+
+
+def _value_differences(label: str, committed: BaseModel, rebuilt: BaseModel) -> list[str]:
+    first, second = _flat(committed.model_dump(mode="json")), _flat(rebuilt.model_dump(mode="json"))
+    keys = [*first, *(key for key in second if key not in first)]
+    return [
+        f"{label} {key}: committed {_show(first.get(key))}, rebuilt {_show(second.get(key))}"
+        for key in keys
+        if first.get(key) != second.get(key)
+    ]
+
+
+def _verdict_text(case: CaseBaseline) -> str:
+    return "passes" if case.passed else f"fails {format_checks(case.failed_checks)}"
+
+
+def _both_sides[T](
+    label: str, committed: Mapping[str, T], rebuilt: Mapping[str, T]
+) -> tuple[list[str], list[tuple[str, T, T]]]:
+    """Keys on one side only (as lines), and the keys on both with their values."""
+    lines: list[str] = []
+    pairs: list[tuple[str, T, T]] = []
+    for key in [*committed, *(key for key in rebuilt if key not in committed)]:
+        if key not in committed:
+            lines.append(f"{label}{key}: not in the committed baseline")
+        elif key not in rebuilt:
+            lines.append(f"{label}{key}: not in the results")
+        else:
+            pairs.append((key, committed[key], rebuilt[key]))
+    return lines, pairs
+
+
+def baseline_differences(committed: Baseline, rebuilt: Baseline) -> list[str]:
+    """What differs between a committed baseline and one rebuilt from the
+    results, one line each: provenance fields, metrics, cases (a known failure
+    added or removed, a case missing on either side) and pairwise metrics.
+    Empty when they are equal."""
+    lines = _value_differences("provenance", committed.provenance, rebuilt.provenance)
+    for function in [*committed.functions, *rebuilt.functions.keys() - committed.functions.keys()]:
+        missing, versions = _both_sides(
+            f"{function} ",
+            committed.functions.get(function, {}),
+            rebuilt.functions.get(function, {}),
+        )
+        lines += missing
+        for version, first, second in versions:
+            label = f"{function} {version}"
+            lines += _value_differences(f"{label} metric", first.metrics, second.metrics)
+            missing_cases, cases = _both_sides(f"{label} ", first.cases, second.cases)
+            lines += missing_cases
+            lines += [
+                f"{label} {case_id}: committed {_verdict_text(a)}; rebuilt {_verdict_text(b)}"
+                for case_id, a, b in cases
+                if a != b
+            ]
+    for function in [*committed.pairwise, *rebuilt.pairwise.keys() - committed.pairwise.keys()]:
+        missing, pairs = _both_sides(
+            f"{function} ", committed.pairwise.get(function, {}), rebuilt.pairwise.get(function, {})
+        )
+        lines += missing
+        for name, first, second in pairs:
+            label = f"{function} {name.replace('-vs-', ' vs ')} metric"
+            lines += _value_differences(label, first, second)
+    return lines
 
 
 def write_baseline(baseline: Baseline, path: Path | str = BASELINE_PATH) -> Path:
