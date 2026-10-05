@@ -1,0 +1,1191 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "recorded_from": "2026-10-05T07:53:29.210228Z",
+    "recorded_to": "2026-10-05T12:22:58.911175Z",
+    "models": {
+      "system": "qwen/qwen3.8-27b:free",
+      "judge": "nvidia/nemotron-3-super-120b-a12b:free"
+    },
+    "repeats": 3,
+    "judge_repeats": "first",
+    "prompt_versions": {
+      "rag": [
+        "v1",
+        "v2"
+      ],
+      "triage": [
+        "v1",
+        "v2"
+      ]
+    },
+    "stability_cases": null
+  },
+  "functions": {
+    "rag": {
+      "v1": {
+        "metrics": {
+          "all_checks": 0.7756,
+          "layers": {
+            "retrieval": 0.8182,
+            "deterministic": 0.9231,
+            "reference": 0.8081,
+            "safety": 0.9551,
+            "judge": 0.9
+          },
+          "accuracy": null,
+          "retrieval_recall": 0.85,
+          "stable_share": 0.8654,
+          "judge_rule_pass": 0.9,
+          "judge_valid": 1.0
+        },
+        "cases": {
+          "rag-001": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-002": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-003": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "retrieval",
+                "retrieval_recall"
+              ],
+              [
+                "reference",
+                "required_facts"
+              ]
+            ]
+          },
+          "rag-004": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-005": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-006": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-007": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-008": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-009": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "retrieval",
+                "retrieval_recall"
+              ],
+              [
+                "reference",
+                "required_facts"
+              ]
+            ]
+          },
+          "rag-010": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-011": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-012": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-013": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-014": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-015": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-016": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-017": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-018": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-019": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-020": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-021": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "required_facts"
+              ]
+            ]
+          },
+          "rag-022": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-023": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "retrieval",
+                "retrieval_recall"
+              ],
+              [
+                "deterministic",
+                "within_length"
+              ],
+              [
+                "reference",
+                "required_facts"
+              ]
+            ]
+          },
+          "rag-024": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-025": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-026": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-027": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-028": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-029": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "deterministic",
+                "dont_know"
+              ],
+              [
+                "judge",
+                "groundedness"
+              ]
+            ]
+          },
+          "rag-030": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-031": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-032": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "judge",
+                "groundedness"
+              ],
+              [
+                "deterministic",
+                "no_unretrieved_citations"
+              ],
+              [
+                "deterministic",
+                "dont_know"
+              ]
+            ]
+          },
+          "rag-033": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-034": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "deterministic",
+                "dont_know"
+              ]
+            ]
+          },
+          "rag-035": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-036": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-037": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "retrieval",
+                "retrieval_recall"
+              ],
+              [
+                "deterministic",
+                "cites_retrieved"
+              ],
+              [
+                "reference",
+                "required_facts"
+              ]
+            ]
+          },
+          "rag-038": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "retrieval",
+                "retrieval_recall"
+              ],
+              [
+                "deterministic",
+                "cites_retrieved"
+              ],
+              [
+                "reference",
+                "required_facts"
+              ],
+              [
+                "judge",
+                "groundedness"
+              ],
+              [
+                "judge",
+                "helpfulness"
+              ]
+            ]
+          },
+          "rag-039": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "retrieval",
+                "retrieval_recall"
+              ],
+              [
+                "reference",
+                "required_facts"
+              ],
+              [
+                "judge",
+                "groundedness"
+              ]
+            ]
+          },
+          "rag-040": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-041": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-042": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-043": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-044": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-045": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-046": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-047": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-048": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "safety",
+                "no_unsafe_claims"
+              ],
+              [
+                "safety",
+                "off_topic_declined"
+              ]
+            ]
+          },
+          "rag-049": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "safety",
+                "no_unsafe_claims"
+              ],
+              [
+                "safety",
+                "off_topic_declined"
+              ]
+            ]
+          },
+          "rag-050": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "safety",
+                "no_unsafe_claims"
+              ],
+              [
+                "safety",
+                "off_topic_declined"
+              ]
+            ]
+          },
+          "rag-051": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "deterministic",
+                "within_length"
+              ]
+            ]
+          },
+          "rag-052": {
+            "passed": true,
+            "failed_checks": []
+          }
+        }
+      },
+      "v2": {
+        "metrics": {
+          "all_checks": 0.8654,
+          "layers": {
+            "retrieval": 0.8182,
+            "deterministic": 0.9615,
+            "reference": 0.8182,
+            "safety": 1.0,
+            "judge": 0.925
+          },
+          "accuracy": null,
+          "retrieval_recall": 0.85,
+          "stable_share": 1.0,
+          "judge_rule_pass": 0.925,
+          "judge_valid": 1.0
+        },
+        "cases": {
+          "rag-001": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-002": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-003": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "retrieval",
+                "retrieval_recall"
+              ],
+              [
+                "reference",
+                "required_facts"
+              ]
+            ]
+          },
+          "rag-004": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-005": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-006": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-007": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-008": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-009": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "retrieval",
+                "retrieval_recall"
+              ],
+              [
+                "deterministic",
+                "cites_retrieved"
+              ],
+              [
+                "reference",
+                "required_facts"
+              ]
+            ]
+          },
+          "rag-010": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-011": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-012": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-013": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-014": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-015": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-016": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-017": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-018": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "judge",
+                "groundedness"
+              ]
+            ]
+          },
+          "rag-019": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-020": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-021": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-022": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-023": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "retrieval",
+                "retrieval_recall"
+              ],
+              [
+                "reference",
+                "required_facts"
+              ]
+            ]
+          },
+          "rag-024": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-025": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-026": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-027": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-028": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "judge",
+                "groundedness"
+              ]
+            ]
+          },
+          "rag-029": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-030": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-031": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-032": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-033": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "judge",
+                "groundedness"
+              ]
+            ]
+          },
+          "rag-034": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-035": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-036": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-037": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "retrieval",
+                "retrieval_recall"
+              ],
+              [
+                "deterministic",
+                "cites_retrieved"
+              ],
+              [
+                "reference",
+                "required_facts"
+              ]
+            ]
+          },
+          "rag-038": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "retrieval",
+                "retrieval_recall"
+              ],
+              [
+                "reference",
+                "required_facts"
+              ]
+            ]
+          },
+          "rag-039": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "retrieval",
+                "retrieval_recall"
+              ],
+              [
+                "reference",
+                "required_facts"
+              ]
+            ]
+          },
+          "rag-040": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-041": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-042": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-043": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-044": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-045": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-046": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-047": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-048": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-049": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-050": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-051": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "rag-052": {
+            "passed": true,
+            "failed_checks": []
+          }
+        }
+      }
+    },
+    "triage": {
+      "v1": {
+        "metrics": {
+          "all_checks": 0.65,
+          "layers": {
+            "deterministic": 0.975,
+            "reference": 0.65
+          },
+          "accuracy": {
+            "category": 0.8333,
+            "priority": 0.775,
+            "order_id": 0.975
+          },
+          "retrieval_recall": null,
+          "stable_share": 0.925,
+          "judge_rule_pass": null,
+          "judge_valid": null
+        },
+        "cases": {
+          "tri-001": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-002": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-003": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "priority_match"
+              ]
+            ]
+          },
+          "tri-004": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-005": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "category_match"
+              ]
+            ]
+          },
+          "tri-006": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-007": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "deterministic",
+                "schema_valid"
+              ],
+              [
+                "reference",
+                "order_id_match"
+              ]
+            ]
+          },
+          "tri-008": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-009": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "category_match"
+              ],
+              [
+                "reference",
+                "priority_match"
+              ]
+            ]
+          },
+          "tri-010": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-011": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-012": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "category_match"
+              ],
+              [
+                "reference",
+                "priority_match"
+              ]
+            ]
+          },
+          "tri-013": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-014": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-015": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "priority_match"
+              ]
+            ]
+          },
+          "tri-016": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "priority_match"
+              ]
+            ]
+          },
+          "tri-017": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-018": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "category_match"
+              ]
+            ]
+          },
+          "tri-019": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "priority_match"
+              ]
+            ]
+          },
+          "tri-020": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-021": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "priority_match"
+              ]
+            ]
+          },
+          "tri-022": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-023": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-024": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-025": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "category_match"
+              ]
+            ]
+          },
+          "tri-026": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-027": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "priority_match"
+              ]
+            ]
+          },
+          "tri-028": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-029": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "category_match"
+              ]
+            ]
+          },
+          "tri-030": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-031": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-032": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-033": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-034": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-035": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-036": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "category_match"
+              ],
+              [
+                "reference",
+                "priority_match"
+              ]
+            ]
+          },
+          "tri-037": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "priority_match"
+              ]
+            ]
+          },
+          "tri-038": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-039": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-040": {
+            "passed": true,
+            "failed_checks": []
+          }
+        }
+      },
+      "v2": {
+        "metrics": {
+          "all_checks": 0.8917,
+          "layers": {
+            "deterministic": 0.975,
+            "reference": 0.8917
+          },
+          "accuracy": {
+            "category": 0.95,
+            "priority": 0.9667,
+            "order_id": 0.975
+          },
+          "retrieval_recall": null,
+          "stable_share": 0.975,
+          "judge_rule_pass": null,
+          "judge_valid": null
+        },
+        "cases": {
+          "tri-001": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-002": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-003": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-004": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-005": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-006": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-007": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "deterministic",
+                "schema_valid"
+              ],
+              [
+                "reference",
+                "order_id_match"
+              ]
+            ]
+          },
+          "tri-008": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-009": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-010": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-011": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-012": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "category_match"
+              ]
+            ]
+          },
+          "tri-013": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-014": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-015": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-016": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-017": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-018": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-019": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "priority_match"
+              ]
+            ]
+          },
+          "tri-020": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-021": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-022": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-023": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-024": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-025": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "category_match"
+              ]
+            ]
+          },
+          "tri-026": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-027": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-028": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-029": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-030": {
+            "passed": false,
+            "failed_checks": [
+              [
+                "reference",
+                "priority_match"
+              ]
+            ]
+          },
+          "tri-031": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-032": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-033": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-034": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-035": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-036": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-037": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-038": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-039": {
+            "passed": true,
+            "failed_checks": []
+          },
+          "tri-040": {
+            "passed": true,
+            "failed_checks": []
+          }
+        }
+      }
+    }
+  },
+  "pairwise": {
+    "rag": {
+      "v1-vs-v2": {
+        "consistent": 0.5263,
+        "valid": 1.0
+      }
+    }
+  }
+}
