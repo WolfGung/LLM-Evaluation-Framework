@@ -24,7 +24,8 @@ The order of work:
    the cassettes. One call of each kind goes first (rag v1, rag v2, triage
    v1, triage v2), then the rest in plan order, so a broken prompt or config
    shows on the first day of a recording spread over many. Calls an earlier
-   run tried and could not record go after the fresh ones (`todays_order`).
+   run tried and could not record go after every fresh call of both passes
+   (`split_tried`), followed by the judge calls their answers make ready.
 5. Pass 2: the judge calls, planned again from the recorded answers, one
    grading and one pairwise question first. A judge key exists only once the
    answers it grades are recorded; identical answers share a grading and
@@ -246,16 +247,15 @@ def kinds_first(planned: Sequence[PlannedRequest]) -> list[PlannedRequest]:
     return leaders + [request for request in planned if id(request) not in chosen]
 
 
-def todays_order(
+def split_tried(
     left: Sequence[PlannedRequest], plan: Sequence[PlannedRequest], store: CassetteStore
-) -> list[PlannedRequest]:
-    """The calls to send in this run: fresh calls first, one of each kind
-    leading (`kinds_first`), then the calls an earlier run already tried.
+) -> tuple[list[PlannedRequest], list[PlannedRequest]]:
+    """Split the calls to record into fresh ones and those an earlier run tried.
 
     No state is stored: an unrecorded call that comes before a recorded call
-    of its kind in plan order was reached before and failed (earlier runs go
-    in plan order). Sending those last keeps a block of refused prompts from
-    using the day's quota before the fresh calls.
+    of its kind in plan order was reached before and could not be recorded
+    (earlier runs go in plan order). `record` sends those after every fresh
+    call, so a block of refused prompts does not use the day's quota first.
     """
     position = {id(request): index for index, request in enumerate(plan)}
     last_recorded: dict[Kind, int] = {}
@@ -268,8 +268,7 @@ def todays_order(
         if position[id(request)] < last_recorded.get(kind_of(request), -1)
     ]
     tried_ids = {id(request) for request in tried}
-    fresh = [request for request in left if id(request) not in tried_ids]
-    return kinds_first(fresh) + tried
+    return [request for request in left if id(request) not in tried_ids], tried
 
 
 @contextmanager
@@ -346,8 +345,10 @@ class _Session:
         self.sent = 0
         self.skipped: list[tuple[str, str]] = []
         self.not_sent: list[tuple[str, str]] = []
-        # Keys of the calls skipped or not sent in this run.
+        # Keys of the calls skipped or not sent in this run, and of every call
+        # this run sent, skipped or held back.
         self.missing: set[str] = set()
+        self.attempted: set[str] = set()
         self.failed: dict[str, str] = {}
         self.proven_kinds: set[Kind] = set()
         # Different requests failing in a row: of unproven kinds, and with no
@@ -413,6 +414,8 @@ class _Session:
 
     def send_all(self, planned: Sequence[PlannedRequest]) -> None:
         for request in planned:
+            if request.key is not None:
+                self.attempted.add(request.key)
             label = request.tag.label(request.repeat)
             role = self.config.models.role(request.role)
             body = body_id(request, role)
@@ -646,32 +649,48 @@ def _record(
         error: str | None = None
         hint = ""
         try:
-            system = todays_order(
+            fresh, retry_system = split_tried(
                 [p for p in to_record(plan, store) if p.role == "system"], plan, store
             )
-            if system:
+            if fresh:
                 echo(
-                    f"pass 1: {len(system)} system calls to record; until their answers exist, "
+                    f"pass 1: {len(fresh)} system calls to record; until their answers exist, "
                     "the total counts judge calls at their upper bound"
                 )
-            session.send_all(system)
+            session.send_all(kinds_first(fresh))
             plan = full_plan(inputs, store)
             counts = count_plan(plan, store, models)
             session.progress(counts.recorded, counts.total, counts.exact)
             session.prove(plan, store)
             # Judge calls whose answers were skipped have no key and wait; skipped
             # system calls are not asked twice in one run.
-            judge = todays_order(
+            fresh, retry_judge = split_tried(
                 [p for p in to_record(plan, store) if p.role == "judge" and p.key is not None],
                 plan,
                 store,
             )
-            if judge:
+            if fresh:
                 echo(
-                    f"pass 2: judge calls planned from the recorded answers: {len(judge)} to "
+                    f"pass 2: judge calls planned from the recorded answers: {len(fresh)} to "
                     f"record; total now {counts.total}"
                 )
-            session.send_all(judge)
+            session.send_all(kinds_first(fresh))
+            # Calls an earlier run tried go last, after every fresh call.
+            retries = retry_system + retry_judge
+            if retries:
+                echo(f"retrying {plural(len(retries), 'call')} an earlier run could not record")
+                session.send_all(retries)
+                plan = full_plan(inputs, store)
+                counts = count_plan(plan, store, models)
+                session.progress(counts.recorded, counts.total, counts.exact)
+                ready = [
+                    p
+                    for p in to_record(plan, store)
+                    if p.role == "judge" and p.key is not None and p.key not in session.attempted
+                ]
+                if ready:
+                    echo(f"judge calls for the answers recorded on retry: {len(ready)} to record")
+                    session.send_all(kinds_first(ready))
         except QuotaExhausted as exc:
             stopped = exc.with_progress(session.recorded, session.planned)
             echo(str(stopped))

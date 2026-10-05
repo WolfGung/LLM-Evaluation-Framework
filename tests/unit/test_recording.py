@@ -1007,9 +1007,10 @@ def test_calls_tried_on_an_earlier_day_go_after_the_fresh_ones(tmp_path, network
     # Day 2: rag-002/v1 sits before recorded calls of its kind, so it was tried
     # before; it goes last, and the day-1 probes are picked among fresh calls.
     network(SyntheticOpenRouter())
-    out = runner.invoke(app, args("record", ws)).output
+    result = runner.invoke(app, args("record", ws))
+    out = result.output
     progress = [line.split("  ")[1] for line in out.splitlines() if line.startswith("recorded ")]
-    assert progress[:8] == [
+    assert progress[:7] == [
         "rag-005/v1/0",
         "rag-002/v2/0",
         "rag-006/v1/0",
@@ -1017,8 +1018,16 @@ def test_calls_tried_on_an_earlier_day_go_after_the_fresh_ones(tmp_path, network
         "rag-004/v2/0",
         "rag-005/v2/0",
         "rag-006/v2/0",
-        "rag-002/v1/0",
     ]
+    # The retry comes after every fresh call, judge calls included; the judge
+    # calls that grade its answer follow it, and the run completes.
+    retry = progress.index("rag-002/v1/0")
+    judge = [label for label in progress if ":" in label]
+    graded_later = {"rag-002:judge/v1/0", "rag-002:A=v1/v1-v2/0", "rag-002:A=v2/v1-v2/0"}
+    assert all(progress.index(label) < retry for label in judge if label not in graded_later)
+    assert all(progress.index(label) > retry for label in graded_later)
+    assert "retrying 1 call an earlier run could not record" in out
+    assert result.exit_code == 0, out
 
 
 
