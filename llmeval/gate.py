@@ -163,8 +163,9 @@ class GateReport:
 def _layer_rows(label: str, base: Metrics, now: Metrics, tolerances: Tolerances) -> list[Row]:
     """All checks and each layer the baseline has."""
     rows = [rate_row(f"{label} all checks", base.all_checks, now.all_checks, tolerances.all_checks)]
+    by_layer = tolerances.layers.model_dump()
     for layer, rate in base.layers.items():
-        allowed = getattr(tolerances.layers, layer, None)
+        allowed = by_layer.get(layer)
         if allowed is None:
             raise GateError(f"{label}: no tolerance for the {layer} layer in the gate tolerances")
         rows.append(rate_row(f"{label} {layer} layer", rate, now.layers.get(layer), allowed))
