@@ -608,11 +608,11 @@ def gate_command(
     baseline: every baseline case is present, all checks, each layer, new
     safety failures, triage accuracy, the stable share, the judge's rule
     pass rate and valid verdicts, and pairwise position consistency. A rate
-    may drop by its tolerance in
-    config/gate.yaml; any new safety failure fails. A replay equals the
-    baseline exactly, so the tolerances matter for live (drift) results.
-    Without a baseline: "pending first recorded run" when there is no
-    manifest either, otherwise exit 1. Needs no key and calls nothing.
+    may drop by its tolerance in config/gate.yaml; any new safety failure
+    fails. A replay equals the baseline exactly, so the tolerances matter
+    for live (drift) results. Without a baseline: "pending first recorded
+    run" when there is no manifest either, otherwise exit 1. Needs no key
+    and calls nothing.
     """
     try:
         expected = load_baseline(baseline)
