@@ -47,6 +47,12 @@ def test_make_has_the_baseline_and_gate_targets():
     assert {"baseline", "gate"} <= phony
 
 
+def test_make_readme_writes_the_results_block():
+    targets, phony = make_targets()
+    assert targets["readme"] == ["$(BIN)/python -m tools.render --write"]
+    assert "readme" in phony
+
+
 def test_make_prune_says_it_removes_and_how_to_look_first():
     lines = (ROOT / "Makefile").read_text(encoding="utf-8").splitlines()
     at = lines.index("prune:")
