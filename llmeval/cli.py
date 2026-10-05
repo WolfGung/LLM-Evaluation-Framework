@@ -22,6 +22,8 @@
 - `gate`: compare the key rates of a results directory with the baseline,
   within the tolerances of `config/gate.yaml`; exit 1 on a regression. See
   `llmeval.gate`.
+- `sample`: write `labels/sample.json`, the judged answers the owner labels
+  by hand; see `llmeval.labels`.
 
 The API key comes only from the environment and is never printed.
 """
@@ -99,6 +101,13 @@ from llmeval.gate import (
     load_tolerances,
     results_outside,
 )
+from llmeval.labels import (
+    SAMPLE_PATH,
+    LabelError,
+    build_sample,
+    runs_by_answer,
+    write_sample,
+)
 from llmeval.openrouter import MissingAPIKey, OpenRouterError
 from llmeval.perf import Performance
 from llmeval.pricing import BudgetExceeded, PricingError, check_budget, format_usd
@@ -157,6 +166,7 @@ CassettesOption = Annotated[Path, typer.Option(help="Recorded calls.")]
 RubricOption = Annotated[Path, typer.Option(help="The judge rubric.")]
 ResultsOption = Annotated[Path, typer.Option(help="Directory with the replay results.")]
 BaselineOption = Annotated[Path, typer.Option(help="The baseline file.")]
+SampleOption = Annotated[Path, typer.Option("--sample", help="The label sample.")]
 
 
 def _echo_notices(store: CassetteStore) -> None:
@@ -632,6 +642,40 @@ def gate_command(
         typer.echo(line)
     if not report.passed:
         raise typer.Exit(code=1)
+
+
+@app.command("sample")
+def sample_command(
+    results_dir: ResultsOption = RESULTS_DIR,
+    cassettes_dir: CassettesOption = CASSETTES_DIR,
+    sample: SampleOption = SAMPLE_PATH,
+) -> None:
+    """Write labels/sample.json: the judged answers the owner labels by hand.
+
+    Takes every judged answer of repeat 0 the judge failed, plus judge-passed
+    answers drawn with a fixed seed in strata of prompt version and category,
+    30 in all (see llmeval.labels). Reads the RAG results of the manifest's
+    prompt versions. Without a manifest it prints "pending first recorded
+    run" and writes nothing. The same results always give the same sample.
+    Needs no key and calls nothing.
+    """
+    try:
+        manifest = load_manifest(cassettes_dir)
+        if manifest is None:
+            typer.echo(PENDING_RECORDED_RUN)
+            return
+        rag_versions = {"rag": manifest.prompt_versions.get("rag", ())}
+        results = load_run_results(results_dir, rag_versions).functions
+        built = build_sample(results)
+        path = write_sample(built, sample)
+    except (BaselineError, CassetteError, LabelError, OSError) as exc:
+        raise _fail(str(exc)) from None
+    runs = runs_by_answer(results)
+    failed = sum(runs[item.ref].verdict is False for item in built.items)
+    typer.echo(
+        f"wrote {path}: {built.size} answers of repeat 0, {failed} the judge failed and "
+        f"{built.size - failed} it passed, seed {built.seed}"
+    )
 
 
 @app.command("retrieval")
