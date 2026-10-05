@@ -5,6 +5,9 @@
 - `full_plan`: every call of the recording, from `config/models.yaml`
   (`repeats`, `stability_cases`, `judge_repeats`), the datasets, every prompt
   version and the judge rubric (see `llmeval.runner.plan_requests`).
+- `replay_plan`: the calls `llmeval eval` replays for a manifest. `status`
+  counts how many of them are missing, so a stale manifest does not read as
+  a complete recording.
 - `count_plan`: the counts by function, version and repeat, and how many are
   recorded. Counts are of distinct cassette keys: identical requests share
   one recording. A judge call has a key only once the answers it grades are
@@ -32,7 +35,7 @@ from typing import Literal
 import httpx
 
 from app.retrieval import BM25Index
-from llmeval.cassettes import CassetteStore, utc_now
+from llmeval.cassettes import CassetteStore, RunManifest, utc_now
 from llmeval.checks.judge import JUDGE_FUNCTION, PAIRWISE_FUNCTION, Rubric
 from llmeval.config import ModelsConfig, RoleConfig
 from llmeval.datasets import RagCase, TriageCase
@@ -79,6 +82,33 @@ def full_plan(inputs: PlanInputs, store: CassetteStore | None) -> list[PlannedRe
         rubric=inputs.rubric,
         answers=recorded_answers(store) if store is not None else None,
         judge_repeats=models.judge_repeats,
+    )
+
+
+def replay_plan(
+    inputs: PlanInputs, manifest: RunManifest, store: CassetteStore
+) -> list[PlannedRequest]:
+    """The calls `llmeval eval` replays for `manifest`.
+
+    Eval takes the prompt versions, repeats, stability cases and judge repeats
+    from the manifest, and everything else from the current config, datasets
+    and rubric. So a role parameter changed since the recording (a model, a
+    token budget) gives new keys that the cassettes do not hold, and replay
+    fails on them.
+    """
+    models = inputs.models
+    return plan_requests(
+        models.system,
+        rag_cases=inputs.rag_cases,
+        triage_cases=inputs.triage_cases,
+        versions={f: v for f, v in manifest.prompt_versions.items() if f in EVAL_FUNCTIONS},
+        repeats=manifest.repeats,
+        stability_cases=manifest.stability_cases,
+        index=inputs.index,
+        judge=models.judge,
+        rubric=inputs.rubric,
+        answers=recorded_answers(store),
+        judge_repeats=manifest.judge_repeats,
     )
 
 

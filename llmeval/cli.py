@@ -34,14 +34,22 @@ import typer
 from app.assistant import DEFAULT_K
 from app.retrieval import search
 from llmeval.callplan import (
+    PlanCounts,
     PlanInputs,
     count_plan,
     estimate_remaining_cost,
     full_plan,
     plan_lines,
     quota_lines,
+    replay_plan,
 )
-from llmeval.cassettes import PENDING_RECORDED_RUN, CassetteError, CassetteStore, load_manifest
+from llmeval.cassettes import (
+    PENDING_RECORDED_RUN,
+    CassetteError,
+    CassetteStore,
+    RunManifest,
+    load_manifest,
+)
 from llmeval.checks.judge import RUBRIC_PATH, RubricError, load_rubric
 from llmeval.checks.retrieval import retrieval_recall
 from llmeval.client import MissingRecording, ModelClient
@@ -347,15 +355,9 @@ def status_command(
     if manifest is None:
         typer.echo(f"manifest: absent, so the evaluation is {PENDING_RECORDED_RUN}")
     else:
-        start, end = (t.astimezone(UTC) for t in (manifest.recorded_from, manifest.recorded_to))
-        typer.echo(
-            f"manifest: present: a complete recording of {manifest.planned_calls} calls, "
-            f"{start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} UTC"
-        )
-        if counts.to_record:
-            typer.echo(
-                "  the current plan is not fully recorded; make eval replays the manifest's plan"
-            )
+        replay = count_plan(replay_plan(inputs, manifest, store), store, loaded.models)
+        for line in _manifest_lines(manifest, replay, counts):
+            typer.echo(line)
     for line in plan_lines(counts, loaded.models):
         typer.echo(line)
     if outside := len(store) - counts.recorded:
@@ -363,6 +365,37 @@ def status_command(
     typer.echo(_quota_today(loaded))
     for line in quota_lines(counts, loaded.models):
         typer.echo(line)
+
+
+def _manifest_lines(manifest: RunManifest, replay: PlanCounts, current: PlanCounts) -> list[str]:
+    """What the manifest declares, and whether make eval can still replay it.
+
+    `replay` counts the calls make eval would replay (`replay_plan`), and
+    `current` the current plan. A manifest is stale when some of the replay
+    calls are not in the cassettes: a config change gave them new keys, or
+    `prune` removed them. Only `record` rewrites the manifest.
+    """
+    start, end = (t.astimezone(UTC) for t in (manifest.recorded_from, manifest.recorded_to))
+    span = f"{start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} UTC"
+    if replay.to_record:
+        return [
+            f"manifest: present but stale: written for a complete recording of "
+            f"{manifest.planned_calls} calls, {span}",
+            f"  make eval would replay {replay.total} calls, and {replay.to_record} of them are "
+            "not in the cassettes: it fails until make record completes the current plan and "
+            "rewrites the manifest",
+        ]
+    lines = [f"manifest: present: a complete recording of {manifest.planned_calls} calls, {span}"]
+    if replay.total != manifest.planned_calls:
+        lines.append(
+            f"  the manifest counts {manifest.planned_calls} calls; make eval now replays "
+            f"{replay.total}, all recorded"
+        )
+    if current.to_record:
+        lines.append(
+            "  the current plan is not fully recorded; make eval replays the manifest's plan"
+        )
+    return lines
 
 
 def _quota_today(loaded: Config) -> str:

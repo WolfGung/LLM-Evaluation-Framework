@@ -223,14 +223,17 @@ def test_status_reports_a_manifest(tmp_path, network):
     (ws / "cassettes" / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
     result = runner.invoke(app, args("status", ws))
     assert result.exit_code == 0, result.output
+    # The cassettes hold none of the calls make eval would replay (rag v1 with
+    # its two gradings, triage in both versions), so the manifest is stale and
+    # must not read as a complete recording.
     assert (
-        "manifest: present: a complete recording of 7 calls, "
+        "manifest: present but stale: written for a complete recording of 7 calls, "
         "2026-01-01 10:00 to 2026-01-02 18:30 UTC"
     ) in result.output
-    # The current config plans more than that recording covers.
-    assert "the current plan is not fully recorded; make eval replays the manifest's plan" in (
+    assert "make eval would replay 6 calls, and 6 of them are not in the cassettes" in (
         result.output
     )
+    assert "make eval replays the manifest's plan" not in result.output
 
 
 def test_status_fails_on_a_broken_manifest(tmp_path, network):
