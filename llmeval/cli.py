@@ -390,8 +390,10 @@ def record_command(
     The budget guard runs first: nothing is sent above MAX_RUN_COST_USD.
     Recorded calls are skipped, so a rerun continues. System calls come
     first, then the judge calls planned from the recorded answers. The run
-    keeps to the configured rpm and stops cleanly on the free daily quota; a
-    429 without a reset time stops it at once. A request the API refuses is
+    keeps to the configured rpm and stops cleanly on the free daily quota.
+    After a 429 without a reset time on a free model it waits 30 s, 60 s,
+    120 s and 240 s, sending the call again after each wait, while the key
+    has free requests left; then it stops. A request the API refuses is
     skipped (its other repeats are not sent) and listed at the end. The run
     stops on three different failures in a row of kinds not yet proven (a
     wrong model id or config), on twenty in a row with no response or a 5xx

@@ -60,12 +60,19 @@ Three stops guard against a broken setup:
 Every call is appended and flushed as soon as it returns, so a stopped run
 loses nothing and a rerun continues where it stopped. The client keeps to the
 configured requests per minute (`rpm`). A 429 with a short reset waits and
-retries (at most three times); a 429 with a later reset, or without a reset
-time, stops the run at once: a wait is never guessed. Every stop prints
-`recorded X/Y` and how to continue; after a 429 without a reset time the key
-endpoint is read once more to say whether the daily quota is the cause. Exit
-codes of the command: 0 complete, 75 stopped on the free quota or a rate
-limit (rerun later), 1 an error.
+retries (at most three times); a 429 with a later reset stops the run at once.
+A 429 without a reset time on a free-model call is often the upstream
+capacity the free models share ("Provider returned error"), not the daily
+quota: the run reads the key endpoint, and while it reports free requests
+left, the run waits 30 s, 60 s, 120 s and 240 s (`UPSTREAM_BACKOFF_S`, 7.5
+minutes in all) and sends the same call again. A recorded call starts the
+next 429 at the first wait. The run stops at once when the key has no free
+requests left (the daily quota), when the endpoint does not say, and for a
+paid model; it stops when the last wait did not help. Every try keeps the
+rpm limit and the spending cap. Every stop prints how many calls are
+recorded and how to continue, and after a 429 without a reset time it says
+whether the daily quota is the cause. Exit codes of the command: 0 complete,
+75 stopped on the free quota or a rate limit (rerun later), 1 an error.
 """
 
 from __future__ import annotations
@@ -92,7 +99,7 @@ from llmeval.callplan import (
     up_to,
 )
 from llmeval.cassettes import CassetteStore, RunManifest, request_key, utc_now, write_manifest
-from llmeval.client import ModelClient, build_role_request
+from llmeval.client import CallResult, ModelClient, build_role_request
 from llmeval.config import Config, Mode, RoleConfig
 from llmeval.datasets import file_sha256
 from llmeval.openrouter import OpenRouterError, require_key
@@ -122,6 +129,32 @@ MAX_CONSECUTIVE_FAILURES = 3
 # Different requests failing in a row with no response or a 5xx that stop the
 # run: the API or the network is likely down.
 MAX_FAILURES_IN_A_ROW = 20
+# Seconds to wait before sending a free-model call again after HTTP 429
+# without a reset time, while the key endpoint still reports free requests
+# left. Free models share upstream capacity, and such a 429 ("Provider
+# returned error") usually clears within minutes. 7.5 minutes in all; a
+# recorded call starts the next 429 at the first wait again.
+UPSTREAM_BACKOFF_S = (30, 60, 120, 240)
+NO_RESET_STOPPED = (
+    "HTTP 429 came without a reset time, so the run stopped at once instead of guessing a wait"
+)
+NO_RESET_UNKNOWN = (
+    "HTTP 429 came without a reset time and the key endpoint did not say how many free "
+    "requests are left, so the run stopped at once instead of guessing a wait"
+)
+
+
+def _backoff_text() -> str:
+    """The waits as one phrase: "30 s, 60 s, 120 s and 240 s; 7.5 minutes in all"."""
+    seconds = [f"{wait} s" for wait in UPSTREAM_BACKOFF_S]
+    waits = f"{', '.join(seconds[:-1])} and {seconds[-1]}" if len(seconds) > 1 else seconds[0]
+    return f"{waits}; {sum(UPSTREAM_BACKOFF_S) / 60:g} minutes in all"
+
+
+NO_RESET_GAVE_UP = (
+    f"HTTP 429 without a reset time came back after {len(UPSTREAM_BACKOFF_S)} waits "
+    f"({_backoff_text()}), so the run stopped"
+)
 
 
 class PlanMismatch(RuntimeError):
@@ -332,6 +365,9 @@ class _Session:
         free_left: int | None,
         refresh: Callable[[], int | None],
         cap: SpendCap,
+        *,
+        read_key: Callable[[], KeyReading],
+        sleep: Callable[[float], None],
     ) -> None:
         self.client = client
         self.config = config
@@ -339,6 +375,12 @@ class _Session:
         self.free_left = free_left
         self.refresh = refresh
         self.cap = cap
+        self.read_key = read_key
+        self.sleep = sleep
+        # Waits after a 429 without a reset time since the last recorded call,
+        # and why such a 429 stopped the run: (the reason, the key's hint).
+        self.busy_waits = 0
+        self.no_reset_stop: tuple[str, str] | None = None
         self.recorded = 0
         self.planned = 0
         self.exact = False
@@ -412,6 +454,59 @@ class _Session:
                 f"network may be down; rerun later (last: {reason})"
             )
 
+    def _complete(self, request: PlannedRequest, role: RoleConfig, bound: float) -> CallResult:
+        """Send one call; after HTTP 429 without a reset time, maybe send it again.
+
+        Every try passes the spending cap, the free-request count and (in
+        the client) the rpm limiter.
+        """
+        while True:
+            self.cap.check(bound)
+            if is_free(role.model):
+                self._spend_free_request()
+            try:
+                return self.client.complete(
+                    list(request.messages),
+                    role=role,
+                    response_format=request.response_format,
+                    repeat=request.repeat,
+                    tag=request.tag,
+                )
+            except RateLimitedNoReset as exc:
+                self._wait_or_stop(exc, role)
+
+    def _wait_or_stop(self, error: RateLimitedNoReset, role: RoleConfig) -> None:
+        """Wait before the next try of a free-model call, or re-raise `error`.
+
+        The run waits only while the key endpoint reports free requests left
+        (then the 429 is upstream capacity, not the daily quota), and at most
+        `UPSTREAM_BACKOFF_S` times since the last recorded call. A paid model
+        stops at once: the free-request count says nothing about it.
+        """
+        if not is_free(role.model):
+            raise error
+        reading = self.read_key()
+        if reading.remaining is not None:
+            self.free_left = reading.remaining
+        if reading.remaining is None:
+            self.no_reset_stop = (NO_RESET_UNKNOWN, reading.hint)
+        elif reading.remaining <= 0:
+            self.no_reset_stop = (NO_RESET_STOPPED, reading.hint)
+        elif self.busy_waits >= len(UPSTREAM_BACKOFF_S):
+            self.no_reset_stop = (NO_RESET_GAVE_UP, reading.hint)
+        else:
+            wait = UPSTREAM_BACKOFF_S[self.busy_waits]
+            self.busy_waits += 1
+            # The detail is already scrubbed of the key, collapsed and cut (llmeval.client).
+            api = f", API: {error.detail}" if error.detail else ""
+            self.echo(
+                f"upstream provider busy (HTTP 429{api}); waiting {wait} s, then retrying "
+                f"({self.busy_waits} of {len(UPSTREAM_BACKOFF_S)})"
+            )
+            self.sleep(wait)
+            return
+        raise error
+
     def send_all(self, planned: Sequence[PlannedRequest]) -> None:
         for request in planned:
             if request.key is not None:
@@ -428,23 +523,14 @@ class _Session:
                 self.echo(f"not sent {label}: {reason}")
                 continue
             bound = self.cap.bound(role, request)
-            self.cap.check(bound)
-            if is_free(role.model):
-                self._spend_free_request()
             try:
-                result = self.client.complete(
-                    list(request.messages),
-                    role=role,
-                    response_format=request.response_format,
-                    repeat=request.repeat,
-                    tag=request.tag,
-                )
+                result = self._complete(request, role, bound)
             except OpenRouterError as exc:
                 # The message is already scrubbed of the key (llmeval.openrouter).
                 self._fail(request, body, label, exc)
                 continue
             self.proven_kinds.add(kind_of(request))
-            self.unproven_failures = self.outage_failures = 0
+            self.unproven_failures = self.outage_failures = self.busy_waits = 0
             if result.key != request.key:
                 raise PlanMismatch(
                     f"{request.tag.label(request.repeat)}: the request sent does not match "
@@ -494,29 +580,46 @@ def _free_requests_left(
     return quota.remaining
 
 
-def _daily_quota_hint(config: Config, transport: httpx.BaseTransport | None) -> str:
-    """After a 429 without a reset time: read the key once more to say whether
-    the daily free quota is the cause."""
+@dataclass(frozen=True)
+class KeyReading:
+    """One read of `GET /api/v1/key` after a 429 without a reset time.
+
+    `remaining` is the free requests left today, or None when the endpoint
+    could not be read or does not report them; `hint` says what that means
+    for the 429, for the stop message.
+    """
+
+    remaining: int | None
+    hint: str
+
+
+def _read_key(config: Config, transport: httpx.BaseTransport | None) -> KeyReading:
+    """After a 429 without a reset time: read the key to say whether the daily
+    free quota is the cause."""
     try:
         quota = free_daily_quota(config.settings.api_key, transport=transport)
     except OpenRouterError as exc:
-        return (
+        return KeyReading(
+            None,
             f"the key endpoint could not be read ({exc}), so it is unknown whether the daily "
-            "quota is used up: rerun later"
+            "quota is used up: rerun later",
         )
     if quota is None or quota.remaining is None:
-        return (
+        return KeyReading(
+            None,
             "the key endpoint does not report free requests, so it is unknown whether the "
-            "daily quota is used up: rerun later"
+            "daily quota is used up: rerun later",
         )
     if quota.remaining > 0:
-        return (
+        return KeyReading(
+            quota.remaining,
             f"the key still has {quota.remaining} free requests today, so this is not the "
-            "daily quota: rerun in a few minutes"
+            "daily quota: rerun in a few minutes",
         )
-    return (
+    return KeyReading(
+        quota.remaining,
         "the key has no free requests left today, so this is the daily quota: "
-        "rerun after the daily reset"
+        "rerun after the daily reset",
     )
 
 
@@ -620,7 +723,8 @@ def _record(
     echo(
         f"to record: {up_to(counts.to_record, not counts.exact)} of "
         f"{up_to(counts.total, not counts.exact)} calls, at most {models.rpm} per minute; "
-        "a 429 without a reset time stops the run at once"
+        f"after a 429 without a reset time a free-model call waits ({_backoff_text()}) "
+        "and is sent again while the key has free requests left"
     )
     free_left = None
     calls_free_models = counts.free_to_record > 0
@@ -642,7 +746,16 @@ def _record(
     with ModelClient(
         Mode.RECORD, store, config, transport, limiter=limiter, now=now, sleep=sleep
     ) as client:
-        session = _Session(client, config, echo, free_left, refresh, cap)
+        session = _Session(
+            client,
+            config,
+            echo,
+            free_left,
+            refresh,
+            cap,
+            read_key=lambda: _read_key(config, transport),
+            sleep=sleep,
+        )
         session.progress(counts.recorded, counts.total, counts.exact)
         session.prove(plan, store)
         stopped: QuotaExhausted | None = None
@@ -697,12 +810,14 @@ def _record(
             if not session.exact:
                 echo(UPPER_BOUND_NOTE)
             if isinstance(exc, RateLimitedNoReset):
-                echo(
-                    "HTTP 429 came without a reset time, so the run stopped at once "
-                    "instead of guessing a wait"
-                )
-                if calls_free_models:
-                    echo(_daily_quota_hint(config, transport))
+                if session.no_reset_stop is not None:
+                    for line in session.no_reset_stop:
+                        echo(line)
+                else:
+                    # A paid model: stopped at once, without reading the key first.
+                    echo(NO_RESET_STOPPED)
+                    if calls_free_models:
+                        echo(_read_key(config, transport).hint)
             hint = CONTINUE_HINT.format(n=session.recorded)
         except SpendCapReached as exc:
             echo(str(exc))

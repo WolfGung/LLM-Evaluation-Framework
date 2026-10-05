@@ -51,11 +51,24 @@ def ws(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def network(monkeypatch):
-    """Send the CLI's API calls to a synthetic OpenRouter, with no rpm waits."""
+def sleeps():
+    """The seconds of every wait the run asked for, in order (nothing really waits)."""
+    return []
 
-    def use(router):
-        net = cli.Network(httpx.MockTransport(router), limiter=NoWait(), sleep=lambda s: None)
+
+@pytest.fixture
+def network(monkeypatch, sleeps):
+    """Send the CLI's API calls to a synthetic OpenRouter, with no rpm waits.
+
+    Waits go to `sleep` when one is given, else they are only noted in `sleeps`.
+    """
+
+    def use(router, *, sleep=None, limiter=None):
+        net = cli.Network(
+            httpx.MockTransport(router),
+            limiter=limiter or NoWait(),
+            sleep=sleep or sleeps.append,
+        )
         monkeypatch.setattr(cli, "_network", lambda: net)
         return router
 
@@ -205,13 +218,16 @@ def rate_limited(after, reset):
     return override, state
 
 
-def test_a_daily_429_stops_cleanly_and_a_rerun_continues(ws, network):
+def test_a_daily_429_stops_cleanly_and_a_rerun_continues(ws, network, sleeps):
     tomorrow = datetime.now(UTC) + timedelta(hours=10)
     reset = {"X-RateLimit-Reset": str(int(tomorrow.timestamp() * 1000))}
-    override, _ = rate_limited(5, reset)
+    override, state = rate_limited(5, reset)
     router = network(SyntheticOpenRouter(chat_override=override))
     result = runner.invoke(app, args("record", ws))
     assert result.exit_code == EXIT_STOPPED == 75
+    # A 429 with a reset time is handled as before: no upstream backoff.
+    assert sleeps == [] and state["limited"] == 1
+    assert "upstream provider busy" not in result.output
     assert f"free daily quota reached; 5 of {ALL_CALLS} calls recorded; rerun after" in (
         result.output
     )
@@ -252,50 +268,137 @@ def upstream_limited(after):
     return override, state
 
 
-def test_a_429_without_a_reset_time_stops_at_once_and_is_not_the_daily_quota(ws, network):
+BUSY = (
+    "upstream provider busy (HTTP 429, API: qwen is temporarily rate-limited upstream "
+    "(Bearer [redacted]). Please retry shortly.)"
+)
+
+
+def test_an_upstream_429_waits_and_retries_the_same_call(ws, network, sleeps):
+    override, state = upstream_limited(3)
+    limited = []
+
+    def once(request, body):
+        if state["limited"] == 0:
+            response = override(request, body)
+            if response is not None:
+                limited.append(body)
+            return response
+        return None
+
+    router = network(SyntheticOpenRouter(remaining=47, chat_override=once))
+    result = runner.invoke(app, args("record", ws))
+    out = result.output
+    assert result.exit_code == 0, out
+    assert sleeps == [30]
+    assert f"{BUSY}; waiting 30 s, then retrying (1 of 4)" in out
+    assert out.count("upstream provider busy") == 1
+    # The call that got the 429 is sent again, and it is recorded.
+    assert router.chat_bodies[3] == limited[0]
+    assert len(router.chat_bodies) == len(CassetteStore(ws / "cassettes")) == ALL_CALLS
+    assert FAKE_KEY not in out
+
+
+def test_a_success_resets_the_backoff_for_the_next_429(ws, network, sleeps):
+    calls = {"n": 0}
+
+    def busy_twice(request, body):
+        calls["n"] += 1
+        if calls["n"] in (4, 9):  # two different calls, each answered on its retry
+            return httpx.Response(429, json={"error": {"message": "Provider returned error"}})
+        return None
+
+    network(SyntheticOpenRouter(chat_override=busy_twice))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 0, result.output
+    assert sleeps == [30, 30]
+    line = (
+        "upstream provider busy (HTTP 429, API: Provider returned error); "
+        "waiting 30 s, then retrying (1 of 4)"
+    )
+    assert result.output.count(line) == 2
+
+
+def test_the_retry_after_a_wait_keeps_the_rpm_limit(ws, network):
+    class CountingLimiter:
+        calls = 0
+
+        def acquire(self):
+            CountingLimiter.calls += 1
+            return 0.0
+
+    override, state = upstream_limited(3)
+
+    def once(request, body):
+        return override(request, body) if state["limited"] == 0 else None
+
+    router = network(SyntheticOpenRouter(chat_override=once), limiter=CountingLimiter())
+    assert runner.invoke(app, args("record", ws)).exit_code == 0
+    # Every request, the one answered with 429 included, waited for the limiter.
+    assert CountingLimiter.calls == len(router.chat_bodies) + 1 == ALL_CALLS + 1
+
+
+def test_an_upstream_429_that_persists_stops_after_four_waits(ws, network, sleeps):
     override, state = upstream_limited(3)
     network(SyntheticOpenRouter(remaining=47, chat_override=override))
     result = runner.invoke(app, args("record", ws))
     out = result.output
     assert result.exit_code == EXIT_STOPPED
-    assert state["limited"] == 1  # no retry, no guessed wait
+    assert sleeps == [30, 60, 120, 240]
+    assert state["limited"] == 5  # the first try and one retry after each wait
+    for n, wait in enumerate((30, 60, 120, 240), start=1):
+        assert f"{BUSY}; waiting {wait} s, then retrying ({n} of 4)" in out
     assert "daily quota reached" not in out
     assert (
         "rate limited: HTTP 429 without a reset time (API: qwen is temporarily rate-limited "
         "upstream (Bearer [redacted]). Please retry shortly.); 3 of 20 calls recorded; rerun later"
     ) in out
-    assert "HTTP 429 came without a reset time, so the run stopped at once" in out
-    # The key endpoint is read again: 47 at the start, 3 used since.
+    assert (
+        "HTTP 429 without a reset time came back after 4 waits (30 s, 60 s, 120 s and 240 s; "
+        "7.5 minutes in all), so the run stopped"
+    ) in out
+    assert "stopped at once" not in out
+    # The key endpoint is read on each 429: 47 at the start, 3 used since.
     assert (
         "the key still has 44 free requests today, so this is not the daily quota: "
         "rerun in a few minutes"
     ) in out
+    assert "rerun make record to continue: the 3 recorded calls are kept and skipped" in out
     assert FAKE_KEY not in out
     assert len(CassetteStore(ws / "cassettes")) == 3
 
 
-def test_after_a_429_without_reset_a_zero_key_count_points_at_the_daily_reset(ws, network):
+def test_after_a_429_without_reset_a_zero_key_count_stops_at_once(ws, network, sleeps):
     router = SyntheticOpenRouter(remaining=10)
+    limited = []
 
     def override(request, body):
         if len(router.chat_bodies) < 2:
             return None
+        limited.append(1)
         router.remaining = 0  # the quota ran out elsewhere meanwhile
         return httpx.Response(429, json={"error": {"message": "rate limited"}})
 
     router.chat_override = override
     network(router)
     result = runner.invoke(app, args("record", ws))
+    out = result.output
     assert result.exit_code == EXIT_STOPPED
+    assert sleeps == [] and len(limited) == 1  # no wait, no retry
+    assert "upstream provider busy" not in out
+    assert "HTTP 429 came without a reset time, so the run stopped at once" in out
     assert (
         "the key has no free requests left today, so this is the daily quota: "
         "rerun after the daily reset"
-    ) in result.output
+    ) in out
 
 
-def test_after_a_429_without_reset_an_unreadable_key_endpoint_is_said_plainly(ws, network):
+def test_after_a_429_without_reset_an_unreadable_key_endpoint_stops_at_once(
+    ws, network, sleeps
+):
     router = SyntheticOpenRouter(remaining=10)
     reads = {"key": 0}
+    limited = []
 
     def handler(request):
         if request.url.path.endswith("/key"):
@@ -307,16 +410,57 @@ def test_after_a_429_without_reset_an_unreadable_key_endpoint_is_said_plainly(ws
     def override(request, body):
         if len(router.chat_bodies) < 2:
             return None
+        limited.append(1)
         return httpx.Response(429, json={"error": {"message": "rate limited"}})
 
     router.chat_override = override
     network(handler)
     result = runner.invoke(app, args("record", ws))
+    out = result.output
     assert result.exit_code == EXIT_STOPPED
+    assert sleeps == [] and len(limited) == 1
+    assert (
+        "HTTP 429 came without a reset time and the key endpoint did not say how many free "
+        "requests are left, so the run stopped at once instead of guessing a wait"
+    ) in out
     assert (
         "the key endpoint could not be read (/api/v1/key returned HTTP 503: key service down), "
         "so it is unknown whether the daily quota is used up: rerun later"
-    ) in result.output
+    ) in out
+
+
+def test_after_a_429_without_reset_a_key_without_the_count_stops_at_once(ws, network, sleeps):
+    router = SyntheticOpenRouter(remaining=None)  # the key endpoint leaves the field out
+
+    def override(request, body):
+        if len(router.chat_bodies) < 2:
+            return None
+        return httpx.Response(429, json={"error": {"message": "rate limited"}})
+
+    router.chat_override = override
+    network(router)
+    result = runner.invoke(app, args("record", ws))
+    out = result.output
+    assert result.exit_code == EXIT_STOPPED
+    assert sleeps == []
+    assert "the key endpoint did not say how many free requests are left" in out
+    assert (
+        "the key endpoint does not report free requests, so it is unknown whether the "
+        "daily quota is used up: rerun later"
+    ) in out
+
+
+def test_a_429_without_reset_on_a_paid_model_stops_at_once(ws, network, sleeps, monkeypatch):
+    paid_system(ws)
+    monkeypatch.setenv("MAX_RUN_COST_USD", "100")
+    prices = {"synthetic/system-paid": ("0.0001", "0.0001")}
+    override, state = upstream_limited(1)
+    network(SyntheticOpenRouter(remaining=47, cost=0.0, prices=prices, chat_override=override))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == EXIT_STOPPED
+    # The free-request count says nothing about a paid model: no wait, as before.
+    assert sleeps == [] and state["limited"] == 1
+    assert "HTTP 429 came without a reset time, so the run stopped at once" in result.output
 
 
 def test_a_used_up_key_stops_before_the_first_call(ws, network):
@@ -584,9 +728,12 @@ def test_record_writes_only_into_the_given_cassettes_directory(ws, network):
     assert sorted(p.name for p in ws.iterdir()) == ["cassettes", "config.yaml", "datasets"]
 
 
-def test_the_record_docstring_says_a_429_without_a_reset_stops_at_once():
+def test_the_record_docstrings_say_a_429_without_a_reset_waits_and_retries():
     for text in (recording.__doc__, cli.record_command.__doc__):
-        assert "without a reset time" in " ".join(text.split())
+        flat = " ".join(text.split())
+        assert "without a reset time" in flat
+        waits = [f"{wait} s" for wait in recording.UPSTREAM_BACKOFF_S]
+        assert f"{', '.join(waits[:-1])} and {waits[-1]}" in flat
 
 
 # --- the running spending cap ----------------------------------------------------------

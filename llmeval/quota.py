@@ -5,7 +5,9 @@ Free model variants allow about 20 requests per minute and 50 per day (see
 out a short per-minute 429, and stop cleanly with a clear message when the
 daily quota is gone (`QuotaExhausted`), or before that when the key endpoint
 says no free request is left (`FreeQuotaUsed`). A 429 without a reset time
-stops the run at once instead of guessing a wait. Every finished call is
+raises at once (`RateLimitedNoReset`) instead of guessing a wait; `llmeval
+record` then waits a fixed backoff and retries only while the key endpoint
+reports free requests left (see `llmeval.recording`). Every finished call is
 already on disk, so the owner simply reruns `make record` after the reset.
 """
 
@@ -161,7 +163,7 @@ class RateLimitRetriesExhausted(QuotaExhausted):
 
 
 class RateLimitedNoReset(QuotaExhausted):
-    """HTTP 429 without a reset time: the run stops at once instead of guessing a wait.
+    """HTTP 429 without a reset time: raised at once instead of guessing a wait.
 
     This is not necessarily the daily quota (a provider can be rate-limited
     upstream for a few minutes), so the message says only what is known and
