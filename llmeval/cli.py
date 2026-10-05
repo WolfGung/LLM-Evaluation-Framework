@@ -704,11 +704,11 @@ MAX_LABEL_WIDTH = 100
 
 
 def _ask(prompt: str) -> str:
-    """One line of input; Ctrl-C or the end of the input stops the session."""
-    try:
-        return typer.prompt(prompt, default="", show_default=False)
-    except typer.Abort:
-        raise KeyboardInterrupt from None
+    """One line of input. `input` gets the whole prompt, so line editing
+    (readline) knows where the typed text starts and redraws an edit in the
+    right place. Ctrl-C (KeyboardInterrupt) or the end of the input
+    (EOFError) stops the session."""
+    return input(f"{prompt}: ")
 
 
 @app.command("label")

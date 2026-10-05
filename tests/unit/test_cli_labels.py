@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from llmeval import cli
 from llmeval.agreement import SAMPLE_NOTE
 from llmeval.cassettes import write_manifest
 from llmeval.checks.judge import RUBRIC_PATH
@@ -338,3 +339,12 @@ def test_a_second_label_session_is_refused_in_one_line(recording):
         "finish it first"
     ]
     assert not (recording.root / "labels" / "human.jsonl").exists()
+
+
+def test_input_gets_the_whole_prompt_so_line_editing_redraws_in_place(monkeypatch):
+    # readline knows only the prompt given to input(); a prompt printed before
+    # it makes an arrow-key edit redraw over the prompt text.
+    asked = []
+    monkeypatch.setattr("builtins.input", lambda prompt="": asked.append(prompt) or "p")
+    assert cli._ask("[1/3] Label (p pass, f fail, s skip, q quit)") == "p"
+    assert asked == ["[1/3] Label (p pass, f fail, s skip, q quit): "]
