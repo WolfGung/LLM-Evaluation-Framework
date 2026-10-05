@@ -23,6 +23,7 @@ import json
 import os
 import re
 from collections.abc import Collection, Iterator, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -177,6 +178,51 @@ class CassetteEntry(_Record):
         return UNTAGGED_FILE_STEM if self.tag is None else self.tag.file_stem
 
 
+@dataclass(frozen=True)
+class _File:
+    """One cassette file as read: its bytes, its entries with the byte span of
+    each line (newline included), and how it ends."""
+
+    data: bytes
+    entries: tuple[tuple[CassetteEntry, int, int], ...]
+    # Where an unfinished last line starts, or None.
+    torn_at: int | None
+    # The last line is a complete entry without a newline after it.
+    no_newline: bool
+
+
+def _parse(path: Path) -> _File:
+    """Read one cassette file (see `CassetteStore` for the torn-line rule)."""
+    data = path.read_bytes()
+    lines = data.split(b"\n")
+    # The last piece has no newline after it: empty for a complete file.
+    tail = lines.pop()
+    entries: list[tuple[CassetteEntry, int, int]] = []
+    start = 0
+    for number, line in enumerate(lines, start=1):
+        end = start + len(line) + 1
+        if line.strip():
+            try:
+                entries.append((CassetteEntry.model_validate_json(line), start, end))
+            except ValidationError as exc:
+                raise CassetteError(f"{path.name}:{number}: not a valid entry: {exc}") from None
+        start = end
+    if not tail.strip():
+        return _File(data, tuple(entries), None, False)
+    try:
+        json.loads(tail)
+    except ValueError:
+        # Not even JSON: a write cut short (or one still in progress).
+        return _File(data, tuple(entries), start, False)
+    try:
+        entry = CassetteEntry.model_validate_json(tail)
+    except ValidationError as exc:
+        # Finished JSON that is not an entry is broken, not torn.
+        raise CassetteError(f"{path.name}:{len(lines) + 1}: not a valid entry: {exc}") from None
+    entries.append((entry, start, len(data)))
+    return _File(data, tuple(entries), None, True)
+
+
 class CassetteStore:
     """All cassette files in one directory, indexed by request key.
 
@@ -190,10 +236,16 @@ class CassetteStore:
     so the call is simply recorded again; nothing is guessed or repaired. Any
     other broken line, including a last line that is valid JSON but not an
     entry, still raises `CassetteError`.
+
+    `record` appends; `prune` removes entries the current plan no longer has
+    (`remove`). Nothing else writes cassette files.
     """
 
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root)
+        self._load()
+
+    def _load(self) -> None:
         self._entries: dict[str, CassetteEntry] = {}
         self.notices: list[str] = []
         # Per file: where an unfinished last line starts (cut before appending),
@@ -201,10 +253,19 @@ class CassetteStore:
         self._torn_at: dict[Path, int] = {}
         self._no_newline: set[Path] = set()
         for path in sorted(self.root.glob("*.jsonl")):
-            for entry in self._read(path):
+            parsed = _parse(path)
+            for entry, _, _ in parsed.entries:
                 if entry.key in self._entries:
                     raise CassetteError(f"{path.name}: key {entry.key} is recorded twice")
                 self._entries[entry.key] = entry
+            if parsed.torn_at is not None:
+                self._torn_at[path] = parsed.torn_at
+                self.notices.append(
+                    f"ignored an unfinished last line in {path.name} (or a record run is writing "
+                    "it now); that call will be recorded again"
+                )
+            if parsed.no_newline:
+                self._no_newline.add(path)
 
     def __len__(self) -> int:
         return len(self._entries)
@@ -248,38 +309,49 @@ class CassetteStore:
         self._entries[entry.key] = entry
         return path
 
-    def _read(self, path: Path) -> Iterator[CassetteEntry]:
-        data = path.read_bytes()
-        lines = data.split(b"\n")
-        # The last piece has no newline after it: empty for a complete file.
-        tail = lines.pop()
-        for number, line in enumerate(lines, start=1):
-            if not line.strip():
-                continue
-            try:
-                yield CassetteEntry.model_validate_json(line)
-            except ValidationError as exc:
-                raise CassetteError(f"{path.name}:{number}: not a valid entry: {exc}") from None
-        if not tail.strip():
-            return
-        try:
-            json.loads(tail)
-        except ValueError:
-            # Not even JSON: a write cut short (or one still in progress).
-            self._torn_at[path] = len(data) - len(tail)
-            self.notices.append(
-                f"ignored an unfinished last line in {path.name} (or a record run is writing "
-                "it now); that call will be recorded again"
+    def remove(self, keys: Collection[str]) -> dict[str, int]:
+        """Remove the entries with these keys; return how many per file name.
+
+        Only `llmeval prune` calls this, under the record lock. Each file is
+        read again first, and nothing is touched unless every key is found
+        there exactly once. Then each affected file is written beside itself
+        and renamed over the original, so a crash leaves the old file or the
+        new one, never a mix. Every other line stays byte for byte and in
+        order, an unfinished last line included (the torn-line rule still
+        applies to it). A file left with no entries is deleted.
+        """
+        wanted = set(keys)
+        if unknown := sorted(wanted - set(self._entries)):
+            raise CassetteError(f"key {unknown[0]} is not recorded; nothing was removed")
+        changes: list[tuple[Path, _File, list[tuple[int, int]]]] = []
+        found: list[str] = []
+        for path in sorted(self.root.glob("*.jsonl")):
+            parsed = _parse(path)
+            spans = []
+            for entry, start, end in parsed.entries:
+                if entry.key in wanted:
+                    spans.append((start, end))
+                    found.append(entry.key)
+            if spans:
+                changes.append((path, parsed, spans))
+        if len(found) != len(wanted) or set(found) != wanted:
+            raise CassetteError(
+                f"the cassettes in {self.root} changed since they were read; nothing was removed"
             )
-            return
-        try:
-            entry = CassetteEntry.model_validate_json(tail)
-        except ValidationError as exc:
-            # Finished JSON that is not an entry is broken, not torn.
-            number = len(lines) + 1
-            raise CassetteError(f"{path.name}:{number}: not a valid entry: {exc}") from None
-        self._no_newline.add(path)
-        yield entry
+        removed: dict[str, int] = {}
+        for path, parsed, spans in changes:
+            if len(spans) == len(parsed.entries):
+                path.unlink()
+            else:
+                kept, position = [], 0
+                for start, end in spans:
+                    kept.append(parsed.data[position:start])
+                    position = end
+                kept.append(parsed.data[position:])
+                _replace_atomically(path, b"".join(kept))
+            removed[path.name] = len(spans)
+        self._load()
+        return removed
 
 
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
@@ -393,13 +465,18 @@ def write_manifest(root: Path | str, manifest: RunManifest) -> Path:
     """
     path = Path(root) / MANIFEST_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
-    partial = path.with_name(f".{MANIFEST_FILE}.partial")
-    with partial.open("w", encoding="utf-8") as fh:
-        fh.write(manifest.model_dump_json(indent=2) + "\n")
+    _replace_atomically(path, (manifest.model_dump_json(indent=2) + "\n").encode("utf-8"))
+    return path
+
+
+def _replace_atomically(path: Path, data: bytes) -> None:
+    """Write `data` to `.<name>.partial` beside `path`, then rename it over `path`."""
+    partial = path.with_name(f".{path.name}.partial")
+    with partial.open("wb") as fh:
+        fh.write(data)
         fh.flush()
         os.fsync(fh.fileno())
     os.replace(partial, path)
-    return path
 
 
 def load_manifest(root: Path | str) -> RunManifest | None:

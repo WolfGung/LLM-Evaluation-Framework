@@ -276,3 +276,101 @@ def test_a_last_line_that_is_json_but_not_an_entry_still_fails(tmp_path):
     path.write_text(complete + "\n" + '{"key": "b"}', encoding="utf-8")
     with pytest.raises(CassetteError, match=r"untagged\.jsonl:2"):
         CassetteStore(tmp_path)
+
+
+# --- removing entries (llmeval prune) ----------------------------------------------
+
+
+RAG_V1 = CallTag(function="rag", case="rag-001", version="v1")
+JUDGE_V1 = CallTag(function="judge", case="rag-001:judge", version="v1")
+
+
+def three_and_one(tmp_path):
+    """Three entries in judge-v1.jsonl and one in rag-v1.jsonl; returns both paths."""
+    store = CassetteStore(tmp_path)
+    for key in ("a", "b", "c"):
+        store.append(make_entry(key=key * 64, tag=JUDGE_V1))
+    store.append(make_entry(key="r" * 64, tag=RAG_V1))
+    return tmp_path / "judge-v1.jsonl", tmp_path / "rag-v1.jsonl"
+
+
+def test_remove_takes_out_only_the_given_entries_and_keeps_the_rest_byte_for_byte(tmp_path):
+    judge, rag = three_and_one(tmp_path)
+    lines = judge.read_bytes().splitlines(keepends=True)
+    rag_bytes = rag.read_bytes()
+    store = CassetteStore(tmp_path)
+
+    removed = store.remove({"b" * 64})
+
+    assert removed == {"judge-v1.jsonl": 1}
+    assert judge.read_bytes() == lines[0] + lines[2]
+    assert rag.read_bytes() == rag_bytes
+    assert "b" * 64 not in store and len(store) == 3
+    assert sorted(entry.key for entry in CassetteStore(tmp_path)) == ["a" * 64, "c" * 64, "r" * 64]
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["judge-v1.jsonl", "rag-v1.jsonl"]
+
+
+def test_a_file_left_with_no_entries_is_removed(tmp_path):
+    judge, rag = three_and_one(tmp_path)
+    store = CassetteStore(tmp_path)
+
+    removed = store.remove({"a" * 64, "b" * 64, "c" * 64})
+
+    assert removed == {"judge-v1.jsonl": 3}
+    assert not judge.exists() and rag.exists()
+    assert [entry.key for entry in store] == ["r" * 64]
+
+
+def test_remove_counts_per_file_in_file_name_order(tmp_path):
+    three_and_one(tmp_path)
+
+    removed = CassetteStore(tmp_path).remove({"r" * 64, "a" * 64})
+
+    assert list(removed.items()) == [("judge-v1.jsonl", 1), ("rag-v1.jsonl", 1)]
+
+
+def test_remove_keeps_an_unfinished_last_line_for_the_store_rule(tmp_path):
+    judge, _ = three_and_one(tmp_path)
+    fragment = make_entry(key="d" * 64).model_dump_json()[:40]
+    with judge.open("a", encoding="utf-8") as fh:
+        fh.write(fragment)
+    lines = judge.read_bytes().splitlines(keepends=True)
+    store = CassetteStore(tmp_path)
+
+    store.remove({"b" * 64})
+
+    assert judge.read_bytes() == lines[0] + lines[2] + fragment.encode("utf-8")
+    assert len(store.notices) == 1 and "unfinished last line in judge-v1.jsonl" in store.notices[0]
+
+
+def test_remove_keeps_a_last_entry_without_a_newline_as_it_is(tmp_path):
+    path = tmp_path / "untagged.jsonl"
+    first = make_entry(key="a" * 64).model_dump_json()
+    last = make_entry(key="b" * 64).model_dump_json()
+    path.write_text(first + "\n" + last, encoding="utf-8")
+
+    CassetteStore(tmp_path).remove({"a" * 64})
+
+    assert path.read_text(encoding="utf-8") == last
+
+
+def test_remove_refuses_a_key_that_is_not_recorded_and_changes_nothing(tmp_path):
+    judge, _ = three_and_one(tmp_path)
+    before = judge.read_bytes()
+
+    with pytest.raises(CassetteError, match="not recorded"):
+        CassetteStore(tmp_path).remove({"a" * 64, "x" * 64})
+
+    assert judge.read_bytes() == before
+
+
+def test_remove_refuses_when_the_files_changed_since_the_store_read_them(tmp_path):
+    judge, _ = three_and_one(tmp_path)
+    first, second = CassetteStore(tmp_path), CassetteStore(tmp_path)
+    first.remove({"b" * 64})
+    after_first = judge.read_bytes()
+
+    with pytest.raises(CassetteError, match="changed since they were read"):
+        second.remove({"a" * 64, "b" * 64})
+
+    assert judge.read_bytes() == after_first
