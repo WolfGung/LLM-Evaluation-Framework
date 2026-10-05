@@ -26,6 +26,8 @@
   by hand; see `llmeval.labels`.
 - `label`: the owner's labelling tool (`make label`): shows each sample
   answer blind and appends the owner's label to `labels/human.jsonl`.
+- `agreement`: the judge's agreement with the owner's labels on the sample,
+  written to `results/judge-agreement.json`; see `llmeval.agreement`.
 
 The API key comes only from the environment and is never printed.
 """
@@ -46,6 +48,7 @@ import typer
 from app.assistant import DEFAULT_K
 from app.prompting import PromptError
 from app.retrieval import search
+from llmeval.agreement import agreement_report, report_lines, write_agreement
 from llmeval.baseline import (
     BASELINE_PATH,
     BaselineError,
@@ -775,6 +778,46 @@ def label_command(
         typer.echo(f"{summary} Every sample answer is labelled.")
     else:
         typer.echo(f"{summary} Run make label to go on.")
+
+
+@app.command("agreement")
+def agreement_command(
+    sample: SampleOption = SAMPLE_PATH,
+    labels: LabelsOption = LABELS_PATH,
+    results_dir: ResultsOption = RESULTS_DIR,
+    cassettes_dir: CassettesOption = CASSETTES_DIR,
+    rubric: RubricOption = RUBRIC_PATH,
+) -> None:
+    """Compare the judge's verdicts with the owner's labels; write judge-agreement.json.
+
+    On the labelled answers of labels/sample.json: percent agreement and
+    Cohen's kappa between the judge's verdict by the rubric's pass rule and
+    the owner's label, a 2x2 confusion, and every disagreement with the
+    judge's scores and reasons and the owner's comment. Writes
+    judge-agreement.json into the results directory. Agreement is measured
+    on this sample, which oversamples judge failures so both classes are
+    present; it is not the population rate. A label of an answer that is no
+    longer the sample's is reported stale and never used. With no labels the
+    file and the output say "pending human labels" with the sample size.
+    Without a manifest it prints "pending first recorded run" and writes
+    nothing. make eval runs it. Needs no key and calls nothing.
+    """
+    try:
+        manifest = load_manifest(cassettes_dir)
+        if manifest is None:
+            typer.echo(PENDING_RECORDED_RUN)
+            return
+        chosen = load_sample(sample)
+        owner_labels = load_labels(labels)
+        rag_versions = {"rag": manifest.prompt_versions.get("rag", ())}
+        results = load_run_results(results_dir, rag_versions).functions
+        report = agreement_report(chosen, owner_labels, results, load_rubric(rubric))
+        path = write_agreement(report, results_dir)
+    except (BaselineError, CassetteError, LabelError, RubricError, OSError) as exc:
+        raise _fail(str(exc)) from None
+    for line in report_lines(report):
+        typer.echo(line)
+    typer.echo(f"  wrote {path}")
 
 
 @app.command("retrieval")

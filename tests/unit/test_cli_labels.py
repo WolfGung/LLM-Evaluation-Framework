@@ -6,18 +6,32 @@ nothing is written to the repository's `labels/`, `results/` or `cassettes/`.
 """
 
 import json
+from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
+from llmeval.agreement import SAMPLE_NOTE
 from llmeval.cassettes import write_manifest
+from llmeval.checks.judge import RUBRIC_PATH
 from llmeval.cli import app
-from llmeval.labels import LABEL_QUESTION, load_labels, load_sample, write_sample
-from llmeval.results import write_results
+from llmeval.labels import (
+    LABEL_QUESTION,
+    LABELER,
+    HumanLabel,
+    append_label,
+    load_labels,
+    load_sample,
+    runs_by_answer,
+    write_sample,
+)
+from llmeval.results import FunctionResults, write_results
 from tests.unit import synthetic_results as syn
 from tests.unit.synthetic_labels import population, record_answers
 
 runner = CliRunner()
+RUBRIC = Path(__file__).resolve().parents[2] / RUBRIC_PATH
 
 
 @pytest.fixture(autouse=True)
@@ -207,3 +221,100 @@ def test_label_without_a_sample_or_with_a_broken_labels_file_fails(recording):
     result = runner.invoke(app, label_args(recording), input="")
     assert result.exit_code == 1
     assert "no sample in " in result.output and "run llmeval sample" in result.output
+
+
+# --- llmeval agreement --------------------------------------------------------
+
+
+def agreement_args(ws):
+    return [
+        "agreement",
+        "--sample",
+        str(ws / "labels" / "sample.json"),
+        "--labels",
+        str(ws / "labels" / "human.jsonl"),
+        "--results-dir",
+        str(ws / "results"),
+        "--cassettes-dir",
+        str(ws / "cassettes"),
+        "--rubric",
+        str(RUBRIC),
+    ]
+
+
+def test_agreement_without_a_recorded_run_is_pending_and_writes_nothing(tmp_path):
+    (tmp_path / "cassettes").mkdir()
+    result = runner.invoke(app, agreement_args(tmp_path))
+    assert result.exit_code == 0, result.output
+    assert result.output.strip() == "pending first recorded run"
+    assert not (tmp_path / "results").exists()
+
+
+def test_agreement_without_labels_says_pending_human_labels(tmp_path):
+    recorded_run(tmp_path)
+    runner.invoke(app, sample_args(tmp_path))
+    result = runner.invoke(app, agreement_args(tmp_path))
+    assert result.exit_code == 0, result.output
+    path = tmp_path / "results" / "judge-agreement.json"
+    assert result.output.splitlines() == [
+        "judge agreement: pending human labels: 0 of 30 sample answers labelled "
+        "(5 the judge failed, 25 it passed)",
+        f"  {SAMPLE_NOTE}",
+        f"  wrote {path}",
+    ]
+    report = json.loads(path.read_text(encoding="utf-8"))
+    assert report["status"] == "pending human labels"
+    assert report["sample"]["size"] == 30
+
+
+def test_agreement_with_labels_prints_the_rate_kappa_confusion_and_disagreements(tmp_path):
+    recorded_run(tmp_path)
+    runner.invoke(app, sample_args(tmp_path))
+    sample = load_sample(tmp_path / "labels" / "sample.json")
+    runs = runs_by_answer(
+        [
+            FunctionResults.model_validate_json(
+                (tmp_path / "results" / f"rag-{v}.json").read_text()
+            )
+            for v in ("v1", "v2")
+        ]
+    )
+    first = sample.items[0]
+    judged = runs[first.ref].verdict
+    for at, item in enumerate(sample.items[:4]):
+        passed = runs[item.ref].verdict if at else not judged
+        append_label(
+            tmp_path / "labels" / "human.jsonl",
+            HumanLabel(
+                case=item.case,
+                version=item.version,
+                repeat=0,
+                answer_key=item.answer_key,
+                label="pass" if passed else "fail",
+                comment="Synthetic comment." if not at else "",
+                labeler=LABELER,
+                labeled_at=datetime(2026, 1, 2, 9, 30, tzinfo=UTC),
+            ),
+        )
+    result = runner.invoke(app, agreement_args(tmp_path))
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+    assert lines[0] == "judge agreement (partial): 4 of 30 sample answers labelled"
+    assert lines[1].startswith("  percent agreement 75.0% (3 of 4), Cohen's kappa ")
+    assert lines[2].startswith("  confusion (judge by human): judge pass: human pass ")
+    assert lines[3].startswith(f"  disagreement {first.case} {first.version} repeat 0: judge ")
+    assert lines[3].endswith(": Synthetic comment.")
+    assert "groundedness" in lines[3]
+
+
+def test_agreement_refuses_a_missing_sample_or_broken_labels(tmp_path):
+    recorded_run(tmp_path)
+    result = runner.invoke(app, agreement_args(tmp_path))
+    assert result.exit_code == 1
+    assert "no sample in " in result.output
+    runner.invoke(app, sample_args(tmp_path))
+    (tmp_path / "labels" / "human.jsonl").write_text("{}\n", encoding="utf-8")
+    result = runner.invoke(app, agreement_args(tmp_path))
+    assert result.exit_code == 1
+    assert "human.jsonl line 1: not a valid label" in result.output
+    assert not (tmp_path / "results" / "judge-agreement.json").exists()
