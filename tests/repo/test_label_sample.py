@@ -14,8 +14,10 @@ touched here.
 from pathlib import Path
 
 from llmeval.baseline import load_run_results
-from llmeval.cassettes import load_manifest
-from llmeval.labels import build_sample, runs_by_answer
+from llmeval.cassettes import CassetteStore, load_manifest
+from llmeval.config import load_config
+from llmeval.datasets import load_rag
+from llmeval.labels import build_sample, load_sample, prepare_items, runs_by_answer
 
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLE = ROOT / "labels" / "sample.json"
@@ -44,3 +46,17 @@ def test_the_sample_holds_both_judge_verdicts():
     assert True in verdicts and False in verdicts
     failed = [ref for ref, answer in runs.items() if ref[2] == 0 and answer.verdict is False]
     assert {item.ref for item in drawn.items} >= set(failed)
+
+
+def test_every_sample_answer_can_be_shown_with_the_documents_of_its_prompt():
+    """The tool recomputes each answer's cassette key from today's prompt and
+    retrieval; equal keys mean the documents it shows are the ones the answer
+    was written from."""
+    if not SAMPLE.exists():
+        return
+    sample = load_sample(SAMPLE)
+    role = load_config(ROOT / "config" / "models.yaml", env={}).models.system
+    questions = {case.id: case.question for case in load_rag(ROOT / "datasets" / "rag.jsonl")}
+    items, problems = prepare_items(sample, questions, CassetteStore(ROOT / "cassettes"), role)
+    assert problems == []
+    assert len(items) == sample.size

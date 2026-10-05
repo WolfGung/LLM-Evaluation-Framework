@@ -136,3 +136,9 @@ def test_ci_publishes_the_page_and_the_allure_report_from_main_only():
     for name, job in jobs.items():
         if name != "pages":
             assert "permissions" not in job, name
+
+
+def test_make_label_runs_the_labelling_tool():
+    targets, phony = make_targets()
+    assert targets["label"] == ["$(BIN)/llmeval label"]
+    assert "label" in phony

@@ -12,10 +12,10 @@ from typer.testing import CliRunner
 
 from llmeval.cassettes import write_manifest
 from llmeval.cli import app
-from llmeval.labels import load_sample
+from llmeval.labels import LABEL_QUESTION, load_labels, load_sample, write_sample
 from llmeval.results import write_results
 from tests.unit import synthetic_results as syn
-from tests.unit.synthetic_labels import population
+from tests.unit.synthetic_labels import population, record_answers
 
 runner = CliRunner()
 
@@ -100,3 +100,110 @@ def test_sample_file_is_plain_json(tmp_path):
     runner.invoke(app, sample_args(tmp_path))
     data = json.loads((tmp_path / "labels" / "sample.json").read_text(encoding="utf-8"))
     assert data["size"] == len(data["items"]) == 30
+
+
+# --- llmeval label ------------------------------------------------------------
+
+
+@pytest.fixture
+def recording(tmp_path):
+    rec = record_answers(tmp_path)
+    write_sample(rec.sample(), tmp_path / "labels" / "sample.json")
+    return rec
+
+
+def label_args(rec, *extra):
+    return [
+        "label",
+        "--sample",
+        str(rec.root / "labels" / "sample.json"),
+        "--labels",
+        str(rec.root / "labels" / "human.jsonl"),
+        "--config",
+        str(rec.config),
+        "--datasets-dir",
+        str(rec.datasets),
+        "--cassettes-dir",
+        str(rec.cassettes),
+        "--width",
+        "80",
+        *extra,
+    ]
+
+
+def test_label_shows_the_question_first_then_each_item_and_saves_labels(recording):
+    result = runner.invoke(app, label_args(recording), input="p\nGrounded.\nf\n\nq\n")
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert " ".join(LABEL_QUESTION.split()) in " ".join(out.split())
+    assert out.index("Would you send") < out.index("Item 1 of 3")
+    assert "Item 2 of 3" in out and "Item 3 of 3" in out
+    assert out.rstrip().endswith(
+        "Saved 2 labels this time. Labelled so far: 2 of 3. Run make label to go on."
+    )
+    labels = load_labels(recording.root / "labels" / "human.jsonl")
+    assert [(label.case, label.version, label.label, label.comment) for label in labels] == [
+        ("rag-001", "v1", "pass", "Grounded."),
+        ("rag-001", "v2", "fail", ""),
+    ]
+    assert all(label.labeler == "Pavel Zhukov Atum" for label in labels)
+
+
+def test_label_goes_on_where_it_stopped(recording):
+    runner.invoke(app, label_args(recording), input="p\n\nq\n")
+    result = runner.invoke(app, label_args(recording), input="f\nNo source.\np\n\n")
+    assert result.exit_code == 0, result.output
+    assert "Labelled so far: 1 of 3. To label now: 2." in " ".join(result.output.split())
+    assert "Item 1 of 3" not in result.output
+    assert "Item 2 of 3" in result.output and "Item 3 of 3" in result.output
+    assert result.output.rstrip().endswith(
+        "Saved 2 labels this time. Labelled so far: 3 of 3. Every sample answer is labelled."
+    )
+    again = runner.invoke(app, label_args(recording), input="")
+    assert again.exit_code == 0
+    assert "Item" not in again.output
+    assert "Labelled so far: 3 of 3. Nothing to label now." in again.output
+
+
+def test_label_stops_at_the_end_of_the_input_and_keeps_the_saved_labels(recording):
+    result = runner.invoke(app, label_args(recording), input="p\nGood.\nf\n")
+    assert result.exit_code == 130
+    assert result.output.rstrip().endswith(
+        "Stopped. Saved 1 label this time. Labelled so far: 1 of 3. Run make label to go on."
+    )
+    path = recording.root / "labels" / "human.jsonl"
+    assert path.read_text(encoding="utf-8").count("\n") == 1
+
+
+def test_label_never_shows_what_the_judge_said(recording):
+    result = runner.invoke(app, label_args(recording), input="s\ns\ns\n")
+    assert result.exit_code == 0, result.output
+    lowered = result.output.lower()
+    for word in ("judge", "groundedness", "helpfulness", "verdict", "rule_pass", "reasons"):
+        assert word not in lowered
+    assert not (recording.root / "labels" / "human.jsonl").exists()  # skips write nothing
+
+
+def test_label_names_stale_answers_and_labels_the_rest(recording):
+    sample = recording.sample()
+    stale = sample.items[0].model_copy(update={"answer_key": "f" * 64})
+    write_sample(
+        sample.model_copy(update={"items": [stale, *sample.items[1:]]}),
+        recording.root / "labels" / "sample.json",
+    )
+    result = runner.invoke(app, label_args(recording), input="q\n")
+    assert result.exit_code == 0, result.output
+    text = " ".join(result.output.split())
+    assert "1 sample answer cannot be shown: rag-001 v1 repeat 0: the prompt now differs" in text
+    assert "Item 1 of 3" not in result.output and "Item 2 of 3" in result.output
+
+
+def test_label_without_a_sample_or_with_a_broken_labels_file_fails(recording):
+    (recording.root / "labels" / "human.jsonl").write_text("{broken\n", encoding="utf-8")
+    result = runner.invoke(app, label_args(recording), input="")
+    assert result.exit_code == 1
+    assert "human.jsonl line 1: not a valid label" in result.output
+    (recording.root / "labels" / "sample.json").unlink()
+    result = runner.invoke(app, label_args(recording), input="")
+    assert result.exit_code == 1
+    assert "no sample in " in result.output and "run llmeval sample" in result.output

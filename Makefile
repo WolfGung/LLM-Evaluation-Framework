@@ -2,7 +2,7 @@ PYTHON ?= python3.12
 VENV ?= .venv
 BIN := $(VENV)/bin
 
-.PHONY: install test eval baseline gate readme estimate status record prune lint
+.PHONY: install test eval baseline gate readme estimate status record prune label lint
 
 install:
 	$(PYTHON) -m venv $(VENV)
@@ -60,6 +60,14 @@ record:
 # manifest; make record rewrites it once the current plan is fully recorded.
 prune:
 	$(BIN)/llmeval prune --yes
+
+# The owner's labelling tool: shows each answer of labels/sample.json (the
+# question, the documents the assistant was given, the answer; never the
+# judge's verdict) and appends the owner's pass or fail, with a comment, to
+# labels/human.jsonl. Only the owner runs it. Ctrl-C keeps every saved label;
+# run it again to go on.
+label:
+	$(BIN)/llmeval label
 
 lint:
 	$(BIN)/ruff check .

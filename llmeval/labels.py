@@ -15,6 +15,15 @@ of the answers it graded, and `llmeval.agreement` compares the two.
   (`make label`) writes it, and only the owner runs it. Tests use their own
   temporary files. Each label is appended as one complete line, or not at
   all (`append_label`), so Ctrl-C never leaves half a line.
+
+The tool (`prepare_items`, `label_session`) is blind: for each answer it
+shows the customer's question, the documents the assistant was given and the
+answer, and nothing else. No judge verdict, score or reason, no check result,
+no prompt version, category or case id. The documents come from the same
+retrieval the runner uses (`app.assistant.prepare`), and the tool recomputes
+the answer's cassette key from that prompt: a key that differs from the
+sample means the prompt changed since the recording, so the answer is not
+shown with documents it was not written from.
 """
 
 from __future__ import annotations
@@ -22,9 +31,11 @@ from __future__ import annotations
 import math
 import os
 import random
-from collections.abc import Callable, Hashable, Iterable, Mapping
+import re
+import textwrap
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from fractions import Fraction
 from pathlib import Path
 from typing import Literal
@@ -38,6 +49,12 @@ from pydantic import (
     model_validator,
 )
 
+from app import assistant
+from app.prompting import PromptError
+from app.retrieval import Hit
+from llmeval.cassettes import CassetteStore, request_key
+from llmeval.client import build_role_request
+from llmeval.config import RoleConfig
 from llmeval.results import CaseRecord, FunctionResults, RunRecord
 
 SAMPLE_PATH = Path("labels/sample.json")
@@ -47,6 +64,17 @@ SAMPLE_SEED = 2026
 SAMPLE_SCHEMA_VERSION = 1
 RAG_FUNCTION = "rag"
 LABELER = "Pavel Zhukov Atum"
+# The one question the owner answers for each answer. It asks for the same
+# three things as the judge's rubric (rubrics/judge.md), in one decision:
+# grounded (groundedness), answers or says honestly that the documents do
+# not cover it (helpfulness), polite (tone).
+LABEL_QUESTION = (
+    "Would you send this answer to the customer as is? Pass if it is grounded in the "
+    "shown documents, answers the question (or says honestly that the documents do not "
+    "cover it), and is polite. Fail otherwise."
+)
+LABEL_PROMPT = "Label (p pass, f fail, s skip, q quit)"
+COMMENT_PROMPT = "Comment (optional, Enter for none)"
 
 SAMPLE_RULE = (
     "Every judged answer of repeat 0 whose valid verdict fails the rubric's pass rule. "
@@ -315,3 +343,244 @@ def append_label(path: Path | str, label: HumanLabel, *, write: Writer = os.writ
         os.fsync(fd)
     finally:
         os.close(fd)
+
+
+# --- the labelling tool -------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LabelItem:
+    """One sample answer as the tool shows it. `position` is its place in
+    the sample (1-based)."""
+
+    item: SampleItem
+    position: int
+    question: str
+    documents: tuple[Hit, ...]
+    answer: str
+
+
+def prepare_items(
+    sample: Sample,
+    questions: Mapping[str, str],
+    store: CassetteStore,
+    role: RoleConfig,
+) -> tuple[list[LabelItem], list[str]]:
+    """The sample answers the tool can show, and why the others cannot be shown.
+
+    For each item: the question from the dataset (`questions`, by case id),
+    the prompt and documents from `app.assistant.prepare` (the runner's own
+    path), and the answer from the cassettes. The cassette key is computed
+    again from that prompt and the system `role`; when it differs from the
+    sample's key, the answer was written from another prompt and is left out.
+    """
+    items: list[LabelItem] = []
+    problems: list[str] = []
+    for position, item in enumerate(sample.items, start=1):
+        where = describe(item.ref)
+        question = questions.get(item.case)
+        if question is None:
+            problems.append(f"{where}: the case is not in the dataset")
+            continue
+        try:
+            messages, hits = assistant.prepare(question, item.version)
+        except PromptError as exc:
+            problems.append(f"{where}: {exc}")
+            continue
+        if request_key(build_role_request(messages, role), item.repeat) != item.answer_key:
+            problems.append(
+                f"{where}: the prompt now differs from the one that wrote the answer "
+                "(prompt, documents, question or model config changed); the sample is stale"
+            )
+            continue
+        entry = store.get(item.answer_key)
+        if entry is None:
+            problems.append(f"{where}: the answer is not in the cassettes")
+            continue
+        items.append(
+            LabelItem(
+                item=item,
+                position=position,
+                question=question,
+                documents=hits,
+                answer=entry.response.content,
+            )
+        )
+    return items, problems
+
+
+def unlabelled(items: Sequence[LabelItem], labels: Iterable[HumanLabel]) -> list[LabelItem]:
+    """The items without a label of their current answer (same cassette key)."""
+    done = {(label.ref, label.answer_key) for label in labels}
+    return [item for item in items if (item.item.ref, item.item.answer_key) not in done]
+
+
+def labelled_count(sample: Sample, labels: Iterable[HumanLabel]) -> int:
+    """Sample answers that have a label of their current answer."""
+    done = {(label.ref, label.answer_key) for label in labels}
+    return sum((item.ref, item.answer_key) in done for item in sample.items)
+
+
+_LIST_ITEM = re.compile(r"(?:[-*]|\d+[.)])\s+")
+MIN_WIDTH = 40
+
+
+def wrap(text: str, width: int, indent: str = "") -> list[str]:
+    """`text` wrapped to `width` columns, line by line, with `indent` before
+    each line. Blank lines stay; a list item keeps a hanging indent; long
+    words such as links are never broken."""
+    width = max(width, MIN_WIDTH)
+    lines: list[str] = []
+    for line in text.splitlines() or [""]:
+        stripped = line.strip()
+        if not stripped:
+            lines.append("")
+            continue
+        lead = indent + line[: len(line) - len(line.lstrip())]
+        bullet = _LIST_ITEM.match(stripped)
+        hang = " " * len(bullet.group(0)) if bullet else ""
+        lines += textwrap.wrap(
+            stripped,
+            width=width,
+            initial_indent=lead,
+            subsequent_indent=lead + hang,
+            break_long_words=False,
+            break_on_hyphens=False,
+        )
+    return lines
+
+
+def render_intro(
+    *,
+    total: int,
+    labelled: int,
+    todo: int,
+    labels_path: Path,
+    problems: Sequence[str],
+    width: int,
+) -> str:
+    """The first screen: the labelling question, the keys and how to stop."""
+    lines = [
+        f"Label {total} answers of the Toolshop support assistant.",
+        "",
+        "For each answer, decide:",
+        "",
+        *wrap(LABEL_QUESTION, width, "    "),
+        "",
+        *wrap(
+            "You see the customer's question, the documents the assistant was given, and "
+            "its answer. Some questions come twice, answered by two versions of the "
+            "assistant: label each answer on its own.",
+            width,
+        ),
+        "",
+        *wrap(
+            "Keys: p pass, f fail, s skip for now, q quit. After p or f, type a comment "
+            "if you like and press Enter.",
+            width,
+        ),
+        "",
+        *wrap(
+            f"Labelled so far: {labelled} of {total}. To label now: {todo}. Each label is "
+            f"saved at once to {labels_path}. Stop any time with q or Ctrl-C: saved labels "
+            "are kept, and make label goes on where you stopped.",
+            width,
+        ),
+    ]
+    if problems:
+        count = len(problems)
+        lines += [
+            "",
+            f"{count} sample {'answer cannot' if count == 1 else 'answers cannot'} be shown:",
+        ]
+        for problem in problems:
+            lines += wrap(problem, width, "  ")
+    return "\n".join(lines)
+
+
+def render_item(item: LabelItem, *, total: int, width: int) -> str:
+    """One answer to label: the counter, the question, the documents and the answer."""
+    lines = ["-" * max(width, MIN_WIDTH), f"Item {item.position} of {total}", ""]
+    lines += ["Question", *wrap(item.question, width, "    "), ""]
+    if item.documents:
+        lines += [f"Documents the assistant was given ({len(item.documents)})", ""]
+        for number, hit in enumerate(item.documents, start=1):
+            title, _, body = hit.text.partition("\n\n")
+            lines += [f"  [{number}] {hit.doc_id}: {title}", *wrap(body, width, "      "), ""]
+    else:
+        lines += ["Documents the assistant was given: none matched the question", ""]
+    answer = wrap(item.answer, width, "    ") if item.answer.strip() else ["    (empty answer)"]
+    lines += ["Answer", *answer, ""]
+    return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class SessionOutcome:
+    """How a labelling session ended: `done` (no items left), `quit` (q) or
+    `interrupted` (Ctrl-C or the end of the input); `saved` labels this time."""
+
+    saved: int
+    reason: Literal["done", "quit", "interrupted"]
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(microsecond=0)
+
+
+def _ask_label(ask: Callable[[str], str], echo: Callable[[str], None]) -> str:
+    while True:
+        choice = ask(LABEL_PROMPT).strip().lower()
+        if choice in ("p", "f", "s", "q"):
+            return choice
+        echo("Type p, f, s or q.")
+
+
+def label_session(
+    items: Sequence[LabelItem],
+    path: Path | str,
+    *,
+    total: int,
+    ask: Callable[[str], str],
+    echo: Callable[[str], None],
+    now: Callable[[], datetime] = utc_now,
+    width: int = 88,
+) -> SessionOutcome:
+    """Show each item, ask for its label and comment, and append the label.
+
+    A label is written only after its comment is given, as one complete
+    line (`append_label`). `s` moves on without writing, so the item comes
+    back next time; `q` stops. Ctrl-C (KeyboardInterrupt) or the end of the
+    input (EOFError) stops at once: every label saved before is kept, and
+    the item on screen is not saved.
+    """
+    saved = 0
+    try:
+        for item in items:
+            echo(render_item(item, total=total, width=width))
+            choice = _ask_label(ask, echo)
+            if choice == "q":
+                return SessionOutcome(saved=saved, reason="quit")
+            if choice == "s":
+                echo("Skipped: make label shows it again next time.")
+                continue
+            comment = ask(COMMENT_PROMPT).strip()
+            value: Literal["pass", "fail"] = "pass" if choice == "p" else "fail"
+            append_label(
+                path,
+                HumanLabel(
+                    case=item.item.case,
+                    version=item.item.version,
+                    repeat=item.item.repeat,
+                    answer_key=item.item.answer_key,
+                    label=value,
+                    comment=comment,
+                    labeler=LABELER,
+                    labeled_at=now(),
+                ),
+            )
+            saved += 1
+            echo(f"Saved: {value}.")
+    except (KeyboardInterrupt, EOFError):
+        echo("")
+        return SessionOutcome(saved=saved, reason="interrupted")
+    return SessionOutcome(saved=saved, reason="done")

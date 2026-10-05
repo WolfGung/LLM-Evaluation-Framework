@@ -24,12 +24,15 @@
   `llmeval.gate`.
 - `sample`: write `labels/sample.json`, the judged answers the owner labels
   by hand; see `llmeval.labels`.
+- `label`: the owner's labelling tool (`make label`): shows each sample
+  answer blind and appends the owner's label to `labels/human.jsonl`.
 
 The API key comes only from the environment and is never printed.
 """
 
 from __future__ import annotations
 
+import shutil
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -102,10 +105,18 @@ from llmeval.gate import (
     results_outside,
 )
 from llmeval.labels import (
+    LABELS_PATH,
     SAMPLE_PATH,
     LabelError,
     build_sample,
+    label_session,
+    labelled_count,
+    load_labels,
+    load_sample,
+    prepare_items,
+    render_intro,
     runs_by_answer,
+    unlabelled,
     write_sample,
 )
 from llmeval.openrouter import MissingAPIKey, OpenRouterError
@@ -167,6 +178,7 @@ RubricOption = Annotated[Path, typer.Option(help="The judge rubric.")]
 ResultsOption = Annotated[Path, typer.Option(help="Directory with the replay results.")]
 BaselineOption = Annotated[Path, typer.Option(help="The baseline file.")]
 SampleOption = Annotated[Path, typer.Option("--sample", help="The label sample.")]
+LabelsOption = Annotated[Path, typer.Option("--labels", help="The owner's labels file.")]
 
 
 def _echo_notices(store: CassetteStore) -> None:
@@ -676,6 +688,93 @@ def sample_command(
         f"wrote {path}: {built.size} answers of repeat 0, {failed} the judge failed and "
         f"{built.size - failed} it passed, seed {built.seed}"
     )
+
+
+MAX_LABEL_WIDTH = 100
+
+
+def _ask(prompt: str) -> str:
+    """One line of input; Ctrl-C or the end of the input stops the session."""
+    try:
+        return typer.prompt(prompt, default="", show_default=False)
+    except typer.Abort:
+        raise KeyboardInterrupt from None
+
+
+@app.command("label")
+def label_command(
+    sample: SampleOption = SAMPLE_PATH,
+    labels: LabelsOption = LABELS_PATH,
+    config: ConfigOption = DEFAULT_MODELS_PATH,
+    datasets_dir: DatasetsOption = DATASETS_DIR,
+    cassettes_dir: CassettesOption = CASSETTES_DIR,
+    width: Annotated[
+        int,
+        typer.Option(min=0, help="Wrap at this many columns (0: the terminal width, at most 100)."),
+    ] = 0,
+) -> None:
+    """The owner's labelling tool: label each sample answer pass or fail.
+
+    Shows the labelling question, then each unlabelled answer of
+    labels/sample.json: the customer's question, the documents the assistant
+    was given and its answer. Nothing else is shown: no judge verdict, score
+    or reason, no check result, no prompt version or category. Keys: p pass,
+    f fail, s skip for now, q quit; after p or f an optional comment. Each
+    label is appended to labels/human.jsonl at once, as one complete line,
+    with the labeler and the time in UTC. Run it again to go on: labelled
+    answers are not shown again. An answer whose prompt changed since the
+    recording is named and not shown. Ctrl-C stops it (exit code 130) and
+    keeps every saved label. Needs no key and calls nothing.
+    """
+    columns = width or min(shutil.get_terminal_size((88, 24)).columns, MAX_LABEL_WIDTH)
+    try:
+        chosen = load_sample(sample)
+        existing = load_labels(labels)
+        role = load_config(config, env={}).models.system
+        rag_cases = load_rag(_dataset_paths(datasets_dir)["rag"])
+        store = CassetteStore(cassettes_dir)
+        _echo_notices(store)
+        items, problems = prepare_items(
+            chosen, {case.id: case.question for case in rag_cases}, store, role
+        )
+    except (LabelError, ConfigError, DatasetError, CassetteError, OSError) as exc:
+        raise _fail(str(exc)) from None
+    todo = unlabelled(items, existing)
+    done = labelled_count(chosen, existing)
+    typer.echo(
+        render_intro(
+            total=chosen.size,
+            labelled=done,
+            todo=len(todo),
+            labels_path=labels,
+            problems=problems,
+            width=columns,
+        )
+    )
+    if not items:
+        raise _fail("no sample answer can be shown: see above")
+    if not todo:
+        typer.echo(f"Labelled so far: {done} of {chosen.size}. Nothing to label now.")
+        return
+    typer.echo("")
+    outcome = label_session(
+        todo, labels, total=chosen.size, ask=_ask, echo=typer.echo, width=columns
+    )
+    try:
+        done = labelled_count(chosen, load_labels(labels))
+    except LabelError as exc:
+        raise _fail(str(exc)) from None
+    summary = (
+        f"Saved {plural(outcome.saved, 'label')} this time. "
+        f"Labelled so far: {done} of {chosen.size}."
+    )
+    if outcome.reason == "interrupted":
+        typer.echo(f"Stopped. {summary} Run make label to go on.")
+        raise typer.Exit(code=EXIT_INTERRUPTED)
+    if done == chosen.size:
+        typer.echo(f"{summary} Every sample answer is labelled.")
+    else:
+        typer.echo(f"{summary} Run make label to go on.")
 
 
 @app.command("retrieval")
