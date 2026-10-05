@@ -787,12 +787,35 @@ def test_three_failures_of_a_kind_that_never_succeeded_stop_the_run(
     assert "skipped 4 calls" in result.output
 
 
-def test_twenty_different_requests_failing_in_a_row_stop_the_run(tmp_path, network, monkeypatch):
+def outage_after(answered, failure):
+    """A transport handler: the synthetic API answers `answered` chat calls,
+    then every chat call gets `failure(request)` (a response, or it raises)."""
+    router = SyntheticOpenRouter()
+
+    def handler(request):
+        if request.url.path.endswith("/chat/completions") and len(router.chat_bodies) >= answered:
+            return failure(request)
+        return router(request)
+
+    return handler
+
+
+def connection_refused(request):
+    raise httpx.ConnectError("connection refused", request=request)
+
+
+def bad_gateway(request):
+    return httpx.Response(502, json={"error": {"message": "bad gateway"}})
+
+
+@pytest.mark.parametrize("failure", [connection_refused, bad_gateway], ids=["no response", "5xx"])
+def test_an_outage_stops_the_run_after_twenty_different_requests(
+    tmp_path, network, monkeypatch, failure
+):
     monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
-    rows = unanswerable_rows(25)
-    ws = make_workspace(tmp_path, repeats=1, rag_rows=rows)
-    blocked = [row["question"] for row in rows[1:]]  # all but rag-001
-    network(SyntheticOpenRouter(chat_override=refuse_questions(*blocked)))
+    ws = make_workspace(tmp_path, repeats=1, rag_rows=unanswerable_rows(25))
+    # The four day-1 probes succeed, so every kind is proven before the outage.
+    network(outage_after(4, failure))
     result = runner.invoke(app, args("record", ws))
     assert result.exit_code == 1
     assert (
@@ -800,6 +823,117 @@ def test_twenty_different_requests_failing_in_a_row_stop_the_run(tmp_path, netwo
         "rerun later"
     ) in result.output
     assert "skipped 20 calls (rerun make record to retry them):" in result.output
+
+
+def test_refusals_on_a_proven_kind_never_stop_the_run(tmp_path, network, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
+    rows = unanswerable_rows(25)
+    ws = make_workspace(tmp_path, repeats=1, rag_rows=rows)
+    blocked = [row["question"] for row in rows[1:]]  # 24 prompts, both versions
+    network(SyntheticOpenRouter(chat_override=refuse_questions(*blocked)))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 1
+    assert "stopped:" not in result.output
+    assert "skipped 48 calls (rerun make record to retry them):" in result.output
+
+
+def test_a_refused_block_on_a_rerun_does_not_stop_the_run(tmp_path, network, monkeypatch):
+    # The reviewer's second gap: on a rerun only the 12 refused prompts are left,
+    # 24 refusals back to back (both versions), and nothing succeeds in the run.
+    monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
+    rows = unanswerable_rows(14)
+    ws = make_workspace(tmp_path, repeats=1, rag_rows=rows)
+    blocked = [row["question"] for row in rows[1:13]]
+    network(SyntheticOpenRouter(chat_override=refuse_questions(*blocked)))
+    assert runner.invoke(app, args("record", ws)).exit_code == 1
+    router = network(SyntheticOpenRouter(chat_override=refuse_questions(*blocked)))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 1
+    assert "stopped:" not in result.output
+    assert "skipped 24 calls (rerun make record to retry them):" in result.output
+    assert router.chat_bodies == []  # every call left was refused again
+
+
+def daily_quota(per_day, *, refused=()):
+    """A chat override for one day: 403 for `refused` questions, and HTTP 429
+    with tomorrow's reset once `per_day` requests (refused ones too) were made."""
+    state = {"requests": 0}
+    tomorrow = datetime.now(UTC) + timedelta(hours=10)
+    reset = {"X-RateLimit-Reset": str(int(tomorrow.timestamp() * 1000))}
+    refuse = refuse_questions(*refused)
+
+    def override(request, body):
+        state["requests"] += 1
+        if state["requests"] > per_day:
+            return httpx.Response(429, headers=reset, json={"error": {"message": "daily"}})
+        return refuse(request, body)
+
+    return override
+
+
+def test_a_later_day_records_fresh_calls_after_a_refused_block(tmp_path, network, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
+    rows = unanswerable_rows(8)
+    ws = make_workspace(tmp_path, repeats=1, rag_rows=rows)
+    blocked = [row["question"] for row in rows[1:6]]  # rag-002..rag-006
+    # Day 1: the probes, the five refusals in v1, rag-007/v1, then the quota.
+    network(SyntheticOpenRouter(chat_override=daily_quota(10, refused=blocked)))
+    day1 = runner.invoke(app, args("record", ws))
+    assert day1.exit_code == EXIT_STOPPED and "free daily quota reached" in day1.output
+    # Day 2: the kinds are proven by yesterday's recordings, so the refusals
+    # do not read as a broken config, and fresh calls are recorded.
+    router = network(SyntheticOpenRouter(chat_override=daily_quota(10, refused=blocked)))
+    day2 = runner.invoke(app, args("record", ws))
+    assert day2.exit_code == EXIT_STOPPED
+    assert "stopped:" not in day2.output  # before: "3 different requests ... check the config"
+    assert "free daily quota reached" in day2.output
+    assert len(router.chat_bodies) >= 1  # a fresh call was recorded
+
+
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [
+        (401, "stopped: the API key was not accepted (/api/v1/chat/completions returned HTTP 401"),
+        (402, "stopped: the account has no credit for this request (/api/v1/chat/completions "),
+    ],
+)
+def test_401_and_402_stop_at_once(ws, network, status, message):
+    attempts = []
+
+    def refused(request, body):
+        attempts.append(1)
+        detail = f"rejected {request.headers['authorization']}"
+        return httpx.Response(status, json={"error": {"message": detail}})
+
+    network(SyntheticOpenRouter(chat_override=refused))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 1
+    assert message in result.output
+    assert len(attempts) == 1
+    assert FAKE_KEY not in result.output
+
+
+def test_a_changed_judge_model_is_unproven_and_stops_after_three(ws, network):
+    network(SyntheticOpenRouter())
+    assert runner.invoke(app, args("record", ws)).exit_code == 0
+    config = (ws / "config.yaml").read_text(encoding="utf-8")
+    (ws / "config.yaml").write_text(
+        config.replace("synthetic/judge:free", "synthetic/judge-renamed:free"), encoding="utf-8"
+    )
+
+    def unknown_model(request, body):
+        if body["model"] == "synthetic/judge-renamed:free":
+            return httpx.Response(404, json={"error": {"message": "model not found"}})
+        return None
+
+    network(SyntheticOpenRouter(chat_override=unknown_model))
+    result = runner.invoke(app, args("record", ws))
+    # The system calls are recorded, but no key of the renamed judge's kinds is.
+    assert result.exit_code == 1
+    assert (
+        "stopped: 3 different requests in a row failed, and none of their kinds has succeeded "
+        "in this run: check the model id and config"
+    ) in result.output
 
 
 def test_the_skip_summary_is_printed_when_a_stop_ends_the_run(ws, network):

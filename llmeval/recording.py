@@ -38,15 +38,22 @@ per distinct request (its cassette tag: case, version, function): the other
 repeats of a failed request are not sent in this run, so one refused prompt
 costs one request, not `repeats`. Skipped and not-sent calls are listed at the
 end of every run, also when a stop ends it, and the next run asks them again.
-Two stops guard against a broken setup:
+Three stops guard against a broken setup:
 
-- `MAX_CONSECUTIVE_FAILURES` (3) different requests failing in a row, when
-  none of their kinds (function, version and role) has succeeded in this run:
-  a wrong model id or config fails the first call of its kind, and the day-1
-  ordering probes every kind first. A failure of a kind that has succeeded
-  (a refused prompt, even a block of them) does not count toward this stop.
-- `MAX_FAILURES_IN_A_ROW` (20) different requests failing in a row, whatever
-  their kind: the API or the network may be down.
+- `MAX_CONSECUTIVE_FAILURES` (3) different requests failing in a row whose
+  kinds (function, version and role) are not proven. A kind is proven when
+  one of its calls succeeded in this run, or when one of its planned keys is
+  already recorded: a key hashes the whole request (model, parameters,
+  prompt), so a recorded key of the current plan proves the current config
+  for that kind, while a changed model id leaves its kind unproven. A wrong
+  model id or config fails the first call of its kind, and the day-1
+  ordering probes every kind first. A refusal on a proven kind (one refused
+  prompt, a block of them, on any day) never counts toward this stop.
+- `MAX_FAILURES_IN_A_ROW` (20) different requests failing in a row with no
+  HTTP response or a 5xx: the API or the network may be down. A 4xx is an
+  answer about that one request and does not count.
+- HTTP 401 or 402 stops at once: the key is not accepted, or the account has
+  no credit for the request.
 
 Every call is appended and flushed as soon as it returns, so a stopped run
 loses nothing and a rerun continues where it stopped. The client keeps to the
@@ -107,11 +114,11 @@ UPPER_BOUND_NOTE = "the total counts judge calls at their upper bound until the 
 
 
 LOCK_FILE = ".record.lock"
-# Different requests failing in a row, none of whose kinds has succeeded in
-# this run, that stop the run: a wrong model id or config fails every call.
+# Different requests of unproven kinds failing in a row that stop the run: a
+# wrong model id or config fails every call.
 MAX_CONSECUTIVE_FAILURES = 3
-# Different requests failing in a row, whatever their kind, that stop the run:
-# the API or the network is likely down.
+# Different requests failing in a row with no response or a 5xx that stop the
+# run: the API or the network is likely down.
 MAX_FAILURES_IN_A_ROW = 20
 
 
@@ -124,8 +131,16 @@ class RecordLocked(RuntimeError):
     or the platform has no file locks (`fcntl`)."""
 
 
-class TooManyFailures(RuntimeError):
-    """`MAX_CONSECUTIVE_FAILURES` requests failed in a row."""
+class RecordStop(RuntimeError):
+    """Failures that stop the run (the message says why)."""
+
+
+class TooManyFailures(RecordStop):
+    """Too many different requests failed in a row (see the module docstring)."""
+
+
+class AccessDenied(RecordStop):
+    """HTTP 401 or 402: the key is not accepted, or the account has no credit."""
 
 
 class SpendCapReached(RuntimeError):
@@ -295,14 +310,20 @@ class _Session:
         self.skipped: list[tuple[str, str]] = []
         self.not_sent: list[tuple[str, str]] = []
         self.failed: dict[CallTag, str] = {}
-        self.succeeded_kinds: set[Kind] = set()
-        # Different requests failing in a row: of kinds that have not succeeded
-        # in this run, and of any kind.
+        self.proven_kinds: set[Kind] = set()
+        # Different requests failing in a row: of unproven kinds, and with no
+        # response or a 5xx (an outage).
         self.unproven_failures = 0
-        self.failures_in_a_row = 0
+        self.outage_failures = 0
 
     def progress(self, recorded: int, planned: int, exact: bool) -> None:
         self.recorded, self.planned, self.exact = recorded, planned, exact
+
+    def prove(self, plan: Sequence[PlannedRequest], store: CassetteStore) -> None:
+        """Mark the kinds with a planned key already recorded as proven."""
+        for request in plan:
+            if request.key is not None and request.key in store:
+                self.proven_kinds.add(kind_of(request))
 
     def _spend_free_request(self) -> None:
         if self.free_left is None:
@@ -316,23 +337,34 @@ class _Session:
                 return
         self.free_left -= 1
 
-    def _fail(self, request: PlannedRequest, label: str, reason: str) -> None:
+    def _fail(self, request: PlannedRequest, label: str, error: OpenRouterError) -> None:
         """Skip a failed request and stop the run when failures look like a broken setup."""
+        reason = str(error)
         self.failed[request.tag] = reason
         self.skipped.append((label, reason))
         self.echo(f"skipped {label}: {reason}")
-        self.failures_in_a_row += 1
-        if kind_of(request) not in self.succeeded_kinds:
+        if error.status == 401:
+            raise AccessDenied(
+                f"the API key was not accepted ({reason}): check OPENROUTER_API_KEY"
+            )
+        if error.status == 402:
+            raise AccessDenied(
+                f"the account has no credit for this request ({reason}): add credit, "
+                "or use :free model ids"
+            )
+        if kind_of(request) not in self.proven_kinds:
             self.unproven_failures += 1
+        if error.status is None or error.status >= 500:
+            self.outage_failures += 1
         if self.unproven_failures >= MAX_CONSECUTIVE_FAILURES:
             raise TooManyFailures(
                 f"{self.unproven_failures} different requests in a row failed, and none of "
                 f"their kinds has succeeded in this run: check the model id and config "
                 f"(last: {reason})"
             )
-        if self.failures_in_a_row >= MAX_FAILURES_IN_A_ROW:
+        if self.outage_failures >= MAX_FAILURES_IN_A_ROW:
             raise TooManyFailures(
-                f"{self.failures_in_a_row} different requests in a row failed: the API or "
+                f"{self.outage_failures} different requests in a row failed: the API or "
                 f"network may be down; rerun later (last: {reason})"
             )
 
@@ -360,10 +392,10 @@ class _Session:
                 )
             except OpenRouterError as exc:
                 # The message is already scrubbed of the key (llmeval.openrouter).
-                self._fail(request, label, str(exc))
+                self._fail(request, label, exc)
                 continue
-            self.succeeded_kinds.add(kind_of(request))
-            self.unproven_failures = self.failures_in_a_row = 0
+            self.proven_kinds.add(kind_of(request))
+            self.unproven_failures = self.outage_failures = 0
             if result.key != request.key:
                 raise PlanMismatch(
                     f"{request.tag.label(request.repeat)}: the request sent does not match "
@@ -563,6 +595,7 @@ def _record(
     ) as client:
         session = _Session(client, config, echo, free_left, refresh, cap)
         session.progress(counts.recorded, counts.total, counts.exact)
+        session.prove(plan, store)
         stopped: QuotaExhausted | None = None
         error: str | None = None
         hint = ""
@@ -577,6 +610,7 @@ def _record(
             plan = full_plan(inputs, store)
             counts = count_plan(plan, store, models)
             session.progress(counts.recorded, counts.total, counts.exact)
+            session.prove(plan, store)
             # Judge calls whose answers were skipped have no key and wait; skipped
             # system calls are not asked twice in one run.
             judge = kinds_first(
@@ -609,7 +643,7 @@ def _record(
                 "or rerun make record later to continue: each run may spend up to the limit, "
                 "and recorded calls are kept and skipped"
             )
-        except TooManyFailures as exc:
+        except RecordStop as exc:
             echo(f"stopped: {exc}")
             if not session.exact:
                 echo(UPPER_BOUND_NOTE)
