@@ -365,6 +365,42 @@ def test_an_api_error_stops_with_progress_and_the_key_scrubbed(ws, network):
     assert load_manifest(ws / "cassettes") is None
 
 
+def test_a_torn_last_line_is_recorded_again(ws, network):
+    tomorrow = datetime.now(UTC) + timedelta(hours=10)
+    override, _ = rate_limited(5, {"X-RateLimit-Reset": str(int(tomorrow.timestamp() * 1000))})
+    network(SyntheticOpenRouter(chat_override=override))
+    assert runner.invoke(app, args("record", ws)).exit_code == EXIT_STOPPED
+    # As if the last call's write had been cut short: keep a third of its line.
+    path = ws / "cassettes" / "rag-v1.jsonl"
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    path.write_text("".join(lines[:-1]) + lines[-1][: len(lines[-1]) // 3], encoding="utf-8")
+
+    status = runner.invoke(app, args("status", ws))
+    notice = "ignored an unfinished last line in rag-v1.jsonl; that call will be recorded again"
+    assert status.exit_code == 0 and notice in status.output
+    router = network(SyntheticOpenRouter())
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 0, result.output
+    assert notice in result.output
+    assert len(router.chat_bodies) == ALL_CALLS - 4  # the torn call is asked again
+    assert all(line.startswith("{") for line in path.read_text(encoding="utf-8").splitlines())
+    assert CassetteStore(ws / "cassettes").notices == []
+
+
+def test_record_cuts_a_torn_tail_even_when_nothing_more_goes_to_that_file(ws, network):
+    network(SyntheticOpenRouter())
+    assert runner.invoke(app, args("record", ws)).exit_code == 0
+    (ws / "cassettes" / MANIFEST_FILE).unlink()
+    path = ws / "cassettes" / "triage-v2.jsonl"
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write('{"key": "unfinished')  # a fragment of no planned call
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 0, result.output
+    assert "ignored an unfinished last line in triage-v2.jsonl" in result.output
+    assert path.read_text(encoding="utf-8").endswith("\n")
+    assert CassetteStore(ws / "cassettes").notices == []
+
+
 # --- one record run at a time ----------------------------------------------------------
 
 

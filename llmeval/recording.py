@@ -316,6 +316,8 @@ def _record(
 ) -> RecordOutcome:
     models = config.models
     store = CassetteStore(cassettes_dir)
+    for notice in store.notices:
+        echo(f"notice: {notice}")
     plan = full_plan(inputs, store)
     counts = count_plan(plan, store, models)
     estimate = estimate_remaining_cost(plan, store, models, transport=transport, now=now)
@@ -341,6 +343,7 @@ def _record(
     def refresh() -> int | None:
         return _free_requests_left(config, transport, echo)
 
+    store.cut_unfinished_lines()
     with ModelClient(
         Mode.RECORD, store, config, transport, limiter=limiter, now=now, sleep=sleep
     ) as client:

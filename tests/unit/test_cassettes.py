@@ -197,3 +197,69 @@ def test_entries_have_no_room_for_headers():
 
     with pytest.raises(ValidationError):
         CassetteEntry.model_validate(data)
+
+
+# --- a torn last line (a write interrupted by a crash or a full disk) ----------
+
+
+def torn_store(tmp_path):
+    """One complete entry, then the first half of a second one with no newline."""
+    store = CassetteStore(tmp_path)
+    store.append(make_entry(key="a" * 64))
+    second = make_entry(key="b" * 64).model_dump_json()
+    with (tmp_path / "untagged.jsonl").open("a", encoding="utf-8") as fh:
+        fh.write(second[: len(second) // 2])
+    return tmp_path / "untagged.jsonl"
+
+
+def test_a_torn_last_line_is_ignored_with_a_notice(tmp_path):
+    torn_store(tmp_path)
+    store = CassetteStore(tmp_path)
+    assert len(store) == 1 and "a" * 64 in store and "b" * 64 not in store
+    assert store.notices == [
+        "ignored an unfinished last line in untagged.jsonl; that call will be recorded again"
+    ]
+
+
+def test_the_next_append_replaces_the_torn_tail(tmp_path):
+    path = torn_store(tmp_path)
+    store = CassetteStore(tmp_path)
+    store.append(make_entry(key="b" * 64))
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["key"] for line in lines] == ["a" * 64, "b" * 64]
+    reloaded = CassetteStore(tmp_path)
+    assert len(reloaded) == 2 and reloaded.notices == []
+
+
+def test_a_complete_last_line_without_a_newline_is_kept_and_the_next_starts_fresh(tmp_path):
+    path = tmp_path / "untagged.jsonl"
+    path.write_text(make_entry(key="a" * 64).model_dump_json(), encoding="utf-8")
+    store = CassetteStore(tmp_path)
+    assert len(store) == 1 and store.notices == []
+    store.append(make_entry(key="b" * 64))
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["key"] for line in lines] == ["a" * 64, "b" * 64]
+
+
+def test_a_broken_last_line_that_ends_with_a_newline_still_fails(tmp_path):
+    path = torn_store(tmp_path)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write("\n")
+    with pytest.raises(CassetteError, match=r"untagged\.jsonl:2"):
+        CassetteStore(tmp_path)
+
+
+def test_a_broken_line_before_the_last_still_fails(tmp_path):
+    path = tmp_path / "untagged.jsonl"
+    complete = make_entry(key="a" * 64).model_dump_json()
+    path.write_text("{not json\n" + complete, encoding="utf-8")
+    with pytest.raises(CassetteError, match=r"untagged\.jsonl:1"):
+        CassetteStore(tmp_path)
+
+
+def test_unfinished_lines_can_be_cut_at_once(tmp_path):
+    path = torn_store(tmp_path)
+    CassetteStore(tmp_path).cut_unfinished_lines()
+    assert path.read_text(encoding="utf-8").endswith("\n")
+    reloaded = CassetteStore(tmp_path)
+    assert len(reloaded) == 1 and reloaded.notices == []

@@ -183,11 +183,22 @@ class CassetteStore:
     Files are loaded once when the store is created. Appends write one line
     and flush it to disk, so an interrupted recording keeps every call that
     finished and a rerun continues from there.
+
+    A write cut short (a crash, a full disk) can leave an unfinished last line
+    with no newline. That line is ignored with a notice in `notices`, and the
+    next append to the file first cuts it off, so the call is simply recorded
+    again; nothing is guessed or repaired. Any other broken line still raises
+    `CassetteError`.
     """
 
     def __init__(self, root: Path | str) -> None:
         self.root = Path(root)
         self._entries: dict[str, CassetteEntry] = {}
+        self.notices: list[str] = []
+        # Per file: where an unfinished last line starts (cut before appending),
+        # or that a complete last line lacks its newline.
+        self._torn_at: dict[Path, int] = {}
+        self._no_newline: set[Path] = set()
         for path in sorted(self.root.glob("*.jsonl")):
             for entry in self._read(path):
                 if entry.key in self._entries:
@@ -206,28 +217,61 @@ class CassetteStore:
     def get(self, key: str) -> CassetteEntry | None:
         return self._entries.get(key)
 
+    def cut_unfinished_lines(self) -> None:
+        """Cut every ignored unfinished last line off its file now.
+
+        `record` calls this under its lock, so a leftover fragment does not
+        stay behind when no further call goes to that file.
+        """
+        for path, offset in list(self._torn_at.items()):
+            with path.open("r+b") as fh:
+                fh.truncate(offset)
+            del self._torn_at[path]
+
     def append(self, entry: CassetteEntry) -> Path:
         if entry.key in self._entries:
             raise CassetteError(f"key {entry.key} is already recorded")
         self.root.mkdir(parents=True, exist_ok=True)
         path = self.root / f"{entry.file_stem}.jsonl"
+        if path in self._torn_at:
+            with path.open("r+b") as fh:
+                fh.truncate(self._torn_at.pop(path))
+        line = entry.model_dump_json() + "\n"
+        if path in self._no_newline:
+            self._no_newline.discard(path)
+            line = "\n" + line
         with path.open("a", encoding="utf-8") as fh:
-            fh.write(entry.model_dump_json() + "\n")
+            fh.write(line)
             fh.flush()
             os.fsync(fh.fileno())
         self._entries[entry.key] = entry
         return path
 
-    @staticmethod
-    def _read(path: Path) -> Iterator[CassetteEntry]:
-        with path.open(encoding="utf-8") as fh:
-            for number, line in enumerate(fh, start=1):
-                if not line.strip():
-                    continue
-                try:
-                    yield CassetteEntry.model_validate_json(line)
-                except ValidationError as exc:
-                    raise CassetteError(f"{path.name}:{number}: not a valid entry: {exc}") from None
+    def _read(self, path: Path) -> Iterator[CassetteEntry]:
+        data = path.read_bytes()
+        lines = data.split(b"\n")
+        # The last piece has no newline after it: empty for a complete file.
+        tail = lines.pop()
+        for number, line in enumerate(lines, start=1):
+            if not line.strip():
+                continue
+            try:
+                yield CassetteEntry.model_validate_json(line)
+            except ValidationError as exc:
+                raise CassetteError(f"{path.name}:{number}: not a valid entry: {exc}") from None
+        if not tail.strip():
+            return
+        try:
+            entry = CassetteEntry.model_validate_json(tail)
+        except ValidationError:
+            self._torn_at[path] = len(data) - len(tail)
+            self.notices.append(
+                f"ignored an unfinished last line in {path.name}; "
+                "that call will be recorded again"
+            )
+            return
+        self._no_newline.add(path)
+        yield entry
 
 
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]

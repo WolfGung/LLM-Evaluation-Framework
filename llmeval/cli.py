@@ -111,6 +111,11 @@ CassettesOption = Annotated[Path, typer.Option(help="Recorded calls.")]
 RubricOption = Annotated[Path, typer.Option(help="The judge rubric.")]
 
 
+def _echo_notices(store: CassetteStore) -> None:
+    for notice in store.notices:
+        typer.echo(f"notice: {notice}")
+
+
 def _dataset_paths(datasets_dir: Path) -> dict[str, Path]:
     return {"rag": datasets_dir / "rag.jsonl", "triage": datasets_dir / "triage.jsonl"}
 
@@ -216,7 +221,9 @@ def eval_command(
             typer.echo(notice)
         rag_cases = load_rag(rag_path) if "rag" in functions else ()
         triage_cases = load_triage(triage_path) if "triage" in functions else ()
-        client = ModelClient(Mode.REPLAY, CassetteStore(cassettes_dir), replay_config)
+        store = CassetteStore(cassettes_dir)
+        _echo_notices(store)
+        client = ModelClient(Mode.REPLAY, store, replay_config)
         outcome = run(
             client,
             replay_config.models.system,
@@ -265,6 +272,7 @@ def estimate_command(
     try:
         loaded, inputs = _plan_inputs(config, datasets_dir, rubric)
         store = CassetteStore(cassettes_dir)
+        _echo_notices(store)
         plan = full_plan(inputs, store)
         counts = count_plan(plan, store, loaded.models)
         for line in plan_lines(counts, loaded.models) + quota_lines(counts, loaded.models):
@@ -301,6 +309,7 @@ def status_command(
         loaded, inputs = _plan_inputs(config, datasets_dir, rubric)
         manifest = load_manifest(cassettes_dir)
         store = CassetteStore(cassettes_dir)
+        _echo_notices(store)
         plan = full_plan(inputs, store)
     except PLAN_ERRORS as exc:
         raise _fail(str(exc)) from None
