@@ -114,7 +114,8 @@ FAILING: frozenset[Verdict] = frozenset({"REGRESSION", "missing"})
 @dataclass(frozen=True)
 class Row:
     """One compared metric. `baseline` and `now` are rates, or counts when
-    `count` is set; `allowed` is the largest allowed drop (or rise of a count)."""
+    `count` is set. `allowed` is how far the metric may move in the direction
+    `may` names: a rate may drop, the count of new safety failures may rise."""
 
     metric: str
     baseline: float | None
@@ -122,6 +123,7 @@ class Row:
     allowed: float
     verdict: Verdict
     count: bool = False
+    may: Literal["drop", "rise"] = "drop"
 
 
 def rate_row(metric: str, baseline: float | None, now: float | None, allowed: float) -> Row:
@@ -224,7 +226,7 @@ def gate(baseline: Baseline, run: RunResults, tolerances: Tolerances) -> GateRep
                 new = new_safety_failures(expected, result)
                 verdict: Verdict = "REGRESSION" if new else "ok"
                 metric = f"{label} new safety failures"
-                rows.append(Row(metric, 0, len(new), 0, verdict, count=True))
+                rows.append(Row(metric, 0, len(new), 0, verdict, count=True, may="rise"))
                 notes += [f"new safety failure: {label} {failure}" for failure in new]
             rows += _other_rows(label, expected.metrics, now, tolerances)
     comparisons = {(p.function, pair_name(p.versions)): p for p in run.pairwise}
@@ -258,13 +260,14 @@ def _value(value: float | None, count: bool) -> str:
 
 
 def _allowed(row: Row) -> str:
-    return str(int(row.allowed)) if row.count else f"{row.allowed * 100:.2f} pp"
+    amount = str(int(row.allowed)) if row.count else f"{row.allowed * 100:.2f} pp"
+    return f"{row.may} {amount}"
 
 
 def format_report(report: GateReport) -> list[str]:
-    """The table (metric, baseline, now, allowed drop, verdict), the notes and
+    """The table (metric, baseline, now, allowed move, verdict), the notes and
     one verdict line."""
-    header = ("metric", "baseline", "now", "allowed drop", "verdict")
+    header = ("metric", "baseline", "now", "allowed", "verdict")
     cells = [
         (
             row.metric,

@@ -247,11 +247,13 @@ def test_the_report_is_a_table_with_a_verdict_line():
     rows = (
         rate_row("rag v1 all checks", 0.7756, 0.7756, 0.05),
         rate_row("rag v1 safety layer", 0.9551, 0.9487, 0.0),
-        Row("rag v1 new safety failures", 0, 1, 0, "REGRESSION", count=True),
+        Row("rag v1 new safety failures", 0, 1, 0, "REGRESSION", count=True, may="rise"),
         rate_row("rag v1 stable share", None, None, 0.10),
     )
     lines = format_report(GateReport(rows=rows, notes=("new safety failure: rag v1 rag-045",)))
-    assert lines[0].split() == ["metric", "baseline", "now", "allowed", "drop", "verdict"]
+    assert lines[0].split() == ["metric", "baseline", "now", "allowed", "verdict"]
+    # The allowed column says which way a metric may move: a rate may drop,
+    # the count of new safety failures may not rise at all.
     assert lines[1].split() == [
         "rag",
         "v1",
@@ -259,13 +261,14 @@ def test_the_report_is_a_table_with_a_verdict_line():
         "checks",
         "77.56%",
         "77.56%",
+        "drop",
         "5.00",
         "pp",
         "ok",
     ]
-    assert lines[2].split()[-4:] == ["94.87%", "0.00", "pp", "REGRESSION"]
-    assert lines[3].split()[-4:] == ["0", "1", "0", "REGRESSION"]
-    assert lines[4].split()[-5:] == ["n/a", "n/a", "10.00", "pp", "n/a"]
+    assert lines[2].split()[-5:] == ["94.87%", "drop", "0.00", "pp", "REGRESSION"]
+    assert lines[3].split()[-5:] == ["0", "1", "rise", "0", "REGRESSION"]
+    assert lines[4].split()[-6:] == ["n/a", "n/a", "drop", "10.00", "pp", "n/a"]
     # Numbers are right-aligned under their heading, verdicts left-aligned.
     assert lines[1].index("77.56%") + len("77.56%") == lines[0].index("baseline") + len("baseline")
     assert {line.rindex(line.split()[-1]) for line in lines[1:5]} == {lines[0].index("verdict")}

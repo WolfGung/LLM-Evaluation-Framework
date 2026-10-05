@@ -60,6 +60,7 @@ from llmeval.callplan import (
     estimate_remaining_cost,
     full_plan,
     plan_lines,
+    plural,
     quota_lines,
     replay_plan,
     unplanned,
@@ -536,10 +537,6 @@ def _current_inputs(manifest: RunManifest, datasets_dir: Path, rubric: Path) -> 
     return CurrentInputs(prompts=prompts, datasets=datasets, rubric=load_rubric(rubric).sha256)
 
 
-def _plural(count: int, word: str) -> str:
-    return f"{count} {word}" if count == 1 else f"{count} {word}s"
-
-
 @app.command("baseline")
 def baseline_command(
     results_dir: ResultsOption = RESULTS_DIR,
@@ -581,7 +578,7 @@ def baseline_command(
         cases = built.functions[result.function][result.version].cases.values()
         passed = sum(case.passed for case in cases)
         typer.echo(
-            f"{result_label(result)}: {_plural(len(cases), 'case')}: {passed} pass, "
+            f"{result_label(result)}: {plural(len(cases), 'case')}: {passed} pass, "
             f"{len(cases) - passed} known failures"
         )
     for result in results.pairwise:
