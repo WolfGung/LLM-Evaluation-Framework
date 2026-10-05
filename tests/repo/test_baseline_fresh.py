@@ -148,15 +148,18 @@ RAG_V1 = ("functions", "rag", "v1", "metrics")
         ),
     ],
 )
-def test_a_hand_edit_of_the_baseline_is_named(committed, rebuilt, edit, expected):
-    data = committed.model_dump(mode="json")
+def test_a_hand_edit_of_the_baseline_is_named(rebuilt, edit, expected):
+    # Each edit starts from the rebuilt baseline, so these cases test the
+    # message of baseline_differences alone: a drift of the committed file
+    # fails only the test above.
+    data = rebuilt.model_dump(mode="json")
     edit(data)
     differences = baseline_differences(Baseline.model_validate(data), rebuilt)
     assert differences == expected
 
 
-def test_deleting_every_known_failure_of_a_version_is_named_case_by_case(committed, rebuilt):
-    data = committed.model_dump(mode="json")
+def test_deleting_every_known_failure_of_a_version_is_named_case_by_case(rebuilt):
+    data = rebuilt.model_dump(mode="json")
     delete_every_triage_v1_failure(data)
     differences = baseline_differences(Baseline.model_validate(data), rebuilt)
     assert len(differences) == 15
