@@ -368,9 +368,11 @@ def record_command(
     Recorded calls are skipped, so a rerun continues. System calls come
     first, then the judge calls planned from the recorded answers. The run
     keeps to the configured rpm and stops cleanly on the free daily quota; a
-    429 without a reset time stops it at once. The manifest is written only
-    when every planned call is recorded. Exit codes: 0 complete, 75 stopped
-    on the quota or a rate limit (rerun later), 1 an error.
+    429 without a reset time stops it at once. A request the API refuses is
+    skipped and listed at the end; three failures in a row stop the run. The
+    manifest is written only when every planned call is recorded. Exit codes:
+    0 complete, 75 stopped on the quota or a rate limit (rerun later), 1 an
+    error or skipped calls (rerun to retry them).
     """
     net = _network()
     try:

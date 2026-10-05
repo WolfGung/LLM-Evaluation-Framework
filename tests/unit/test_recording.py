@@ -356,13 +356,89 @@ def test_an_api_error_stops_with_progress_and_the_key_scrubbed(ws, network):
 
     network(SyntheticOpenRouter(chat_override=broken))
     result = runner.invoke(app, args("record", ws))
+    out = result.output
     assert result.exit_code == 1
-    assert "stopped: /api/v1/chat/completions returned HTTP 500" in result.output
-    assert f"{SYSTEM_CALLS} of {ALL_CALLS} calls recorded" in result.output
-    assert "rerun make record to retry: recorded calls are kept and skipped" in result.output
-    assert "[redacted]" in result.output
-    assert FAKE_KEY not in result.output
+    # Every judge call fails: three in a row stop the run.
+    assert (
+        "skipped rag-001:judge/v1/0: /api/v1/chat/completions returned HTTP 500: "
+        "upstream failed for Bearer [redacted]"
+    ) in out
+    assert (
+        "stopped: 3 calls in a row failed; a wrong model id or config fails every call"
+    ) in out
+    assert f"{SYSTEM_CALLS} of {ALL_CALLS} calls recorded" in out
+    assert "rerun make record to retry: recorded calls are kept and skipped" in out
+    assert FAKE_KEY not in out
     assert load_manifest(ws / "cassettes") is None
+
+
+def test_day_one_records_one_call_of_each_kind_first(ws, network):
+    network(SyntheticOpenRouter())
+    out = runner.invoke(app, args("record", ws)).output
+    progress = [line.split("  ")[1] for line in out.splitlines() if line.startswith("recorded ")]
+    # Pass 1: rag v1, rag v2, triage v1, triage v2, then the rest in plan order.
+    assert progress[:5] == [
+        "rag-001/v1/0",
+        "rag-001/v2/0",
+        "tri-001/v1/0",
+        "tri-001/v2/0",
+        "rag-001/v1/1",
+    ]
+    # Pass 2: one grading and one pairwise question first.
+    assert progress[SYSTEM_CALLS : SYSTEM_CALLS + 2] == [
+        "rag-001:judge/v1/0",
+        "rag-001:A=v1/v1-v2/0",
+    ]
+    assert len(progress) == len(set(progress)) == ALL_CALLS
+
+
+def test_a_refused_request_is_skipped_and_the_rest_is_recorded(ws, network):
+    question = "Do you rent out ladders by the day?"  # rag-002
+
+    def moderated(request, body):
+        v1 = "Follow these rules" not in body["messages"][0]["content"]
+        if v1 and body["messages"][-1]["content"] == question and not judge_body(body):
+            return httpx.Response(403, json={"error": {"message": "flagged by moderation"}})
+        return None
+
+    router = network(SyntheticOpenRouter(chat_override=moderated))
+    result = runner.invoke(app, args("record", ws))
+    out = result.output
+    assert result.exit_code == 1
+    # rag-002 v1 fails on both repeats; everything else is recorded.
+    assert "skipped rag-002/v1/0: /api/v1/chat/completions returned HTTP 403" in out
+    assert len(router.chat_bodies) == ALL_CALLS - 2 - 3
+    assert "skipped 2 calls (rerun make record to retry them):" in out
+    assert "  rag-002/v1/1: /api/v1/chat/completions returned HTTP 403: flagged by moderation" in (
+        out
+    )
+    # Its grading and both pairwise questions wait for the missing answer.
+    assert "3 judge calls wait for answers that were skipped" in out
+    assert load_manifest(ws / "cassettes") is None
+
+    router = network(SyntheticOpenRouter())
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 0, result.output
+    assert len(router.chat_bodies) == 2 + 3
+    assert load_manifest(ws / "cassettes").planned_calls == ALL_CALLS
+
+
+def test_failures_that_are_not_in_a_row_do_not_stop_the_run(ws, network):
+    calls = {"n": 0, "failed": 0}
+
+    def every_other(request, body):
+        calls["n"] += 1
+        if calls["n"] % 2 == 0:
+            calls["failed"] += 1
+            return httpx.Response(502, json={"error": {"message": "bad gateway"}})
+        return None
+
+    network(SyntheticOpenRouter(chat_override=every_other))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 1
+    assert "calls in a row failed" not in result.output
+    assert calls["failed"] >= 6  # six in pass 1 alone
+    assert f"skipped {calls['failed']} calls (rerun make record to retry them):" in result.output
 
 
 def test_a_torn_last_line_is_recorded_again(ws, network):

@@ -13,17 +13,25 @@ The order of work:
    says how many free requests the key has left today. At 0 the run stops at
    once; otherwise it stops after that many (asking the endpoint once more
    first). When the number is unknown, HTTP 429 is the stop.
-4. Pass 1: the system calls (rag and triage), in plan order, skipping every
-   key already in the cassettes.
-5. Pass 2: the judge calls, planned again from the recorded answers. A judge
-   key exists only once the answers it grades are recorded; identical
-   answers share a grading and need no pairwise question.
+4. Pass 1: the system calls (rag and triage), skipping every key already in
+   the cassettes. One call of each kind goes first (rag v1, rag v2, triage
+   v1, triage v2), then the rest in plan order, so a broken prompt or config
+   shows on the first day of a recording spread over many.
+5. Pass 2: the judge calls, planned again from the recorded answers, one
+   grading and one pairwise question first. A judge key exists only once the
+   answers it grades are recorded; identical answers share a grading and
+   need no pairwise question.
 6. The manifest: written only when every planned call of both passes is in
    the cassettes. Until then the evaluation stays "pending first recorded
    run".
 
-Every call is appended and flushed as soon as it returns, so a stopped run
-loses nothing and a rerun continues where it stopped. The client keeps to the
+A request the API refuses or fails (for example a moderation 403 on one
+prompt) is skipped with its reason and the run goes on; the skipped calls are
+listed at the end and asked again by the next run. After
+`MAX_CONSECUTIVE_FAILURES` (3) failures in a row the run stops, because a
+wrong model id or config fails every call. Every call is appended and flushed
+as soon as it returns, so a stopped run loses nothing and a rerun continues
+where it stopped. The client keeps to the
 configured requests per minute (`rpm`). A 429 with a short reset waits and
 retries (at most three times); a 429 with a later reset, or without a reset
 time, stops the run at once: a wait is never guessed. Every stop prints
@@ -72,6 +80,9 @@ UPPER_BOUND_NOTE = "the total counts judge calls at their upper bound until the 
 
 
 LOCK_FILE = ".record.lock"
+# Failed requests in a row that stop the run: one bad prompt is skipped, but a
+# wrong model id or config fails every call and should stop early.
+MAX_CONSECUTIVE_FAILURES = 3
 
 
 class PlanMismatch(RuntimeError):
@@ -80,6 +91,28 @@ class PlanMismatch(RuntimeError):
 
 class RecordLocked(RuntimeError):
     """Another record run holds the lock on the same cassettes directory."""
+
+
+class TooManyFailures(RuntimeError):
+    """`MAX_CONSECUTIVE_FAILURES` requests failed in a row."""
+
+
+def kinds_first(planned: Sequence[PlannedRequest]) -> list[PlannedRequest]:
+    """The first call of each kind, then the rest in their order.
+
+    A system call's kind is its function and prompt version; a judge call's
+    kind is grading or pairwise.
+    """
+
+    def kind(request: PlannedRequest) -> tuple[str, str]:
+        return (request.function, request.version if request.role == "system" else "")
+
+    first: dict[tuple[str, str], PlannedRequest] = {}
+    for request in planned:
+        first.setdefault(kind(request), request)
+    leaders = list(first.values())
+    chosen = {id(request) for request in leaders}
+    return leaders + [request for request in planned if id(request) not in chosen]
 
 
 @contextmanager
@@ -145,6 +178,8 @@ class _Session:
         self.planned = 0
         self.exact = False
         self.sent = 0
+        self.skipped: list[tuple[str, str]] = []
+        self.failures_in_a_row = 0
 
     def progress(self, recorded: int, planned: int, exact: bool) -> None:
         self.recorded, self.planned, self.exact = recorded, planned, exact
@@ -170,13 +205,27 @@ class _Session:
             role = self._role(request)
             if is_free(role.model):
                 self._spend_free_request()
-            result = self.client.complete(
-                list(request.messages),
-                role=role,
-                response_format=request.response_format,
-                repeat=request.repeat,
-                tag=request.tag,
-            )
+            label = request.tag.label(request.repeat)
+            try:
+                result = self.client.complete(
+                    list(request.messages),
+                    role=role,
+                    response_format=request.response_format,
+                    repeat=request.repeat,
+                    tag=request.tag,
+                )
+            except OpenRouterError as exc:
+                # The message is already scrubbed of the key (llmeval.openrouter).
+                self.skipped.append((label, str(exc)))
+                self.failures_in_a_row += 1
+                self.echo(f"skipped {label}: {exc}")
+                if self.failures_in_a_row >= MAX_CONSECUTIVE_FAILURES:
+                    raise TooManyFailures(
+                        f"{self.failures_in_a_row} calls in a row failed; a wrong model id or "
+                        f"config fails every call (last: {exc})"
+                    ) from None
+                continue
+            self.failures_in_a_row = 0
             if result.key != request.key:
                 raise PlanMismatch(
                     f"{request.tag.label(request.repeat)}: the request sent does not match "
@@ -184,7 +233,6 @@ class _Session:
                 )
             self.sent += 1
             self.recorded += 1
-            label = request.tag.label(request.repeat)
             self.echo(f"recorded {self.recorded}/{self.planned}  {label}")
 
 
@@ -350,7 +398,7 @@ def _record(
         session = _Session(client, config, echo, free_left, refresh)
         session.progress(counts.recorded, counts.total, counts.exact)
         try:
-            system = [p for p in to_record(plan, store) if p.role == "system"]
+            system = kinds_first([p for p in to_record(plan, store) if p.role == "system"])
             if system:
                 echo(
                     f"pass 1: {len(system)} system calls to record; until their answers exist, "
@@ -360,7 +408,11 @@ def _record(
             plan = full_plan(inputs, store)
             counts = count_plan(plan, store, models)
             session.progress(counts.recorded, counts.total, counts.exact)
-            judge = to_record(plan, store)
+            # Judge calls whose answers were skipped have no key and wait; skipped
+            # system calls are not asked twice in one run.
+            judge = kinds_first(
+                [p for p in to_record(plan, store) if p.role == "judge" and p.key is not None]
+            )
             if judge:
                 echo(
                     f"pass 2: judge calls planned from the recorded answers: {len(judge)} to "
@@ -383,7 +435,7 @@ def _record(
             return RecordOutcome(
                 False, session.recorded, session.planned, session.sent, stopped=stopped
             )
-        except OpenRouterError as exc:
+        except TooManyFailures as exc:
             echo(f"stopped: {exc}")
             echo(
                 f"{session.recorded} of {session.planned} calls recorded; rerun make record "
@@ -396,8 +448,14 @@ def _record(
             )
     plan = full_plan(inputs, store)
     counts = count_plan(plan, store, models)
-    if not session.sent:
+    if not session.sent and not session.skipped:
         echo("nothing left to record")
+    if session.skipped:
+        echo(f"skipped {len(session.skipped)} calls (rerun make record to retry them):")
+        for label, reason in session.skipped:
+            echo(f"  {label}: {reason}")
+    if counts.waiting:
+        echo(f"{counts.waiting} judge calls wait for answers that were skipped")
     if counts.to_record or not counts.exact:
         echo(f"recorded {counts.recorded}/{counts.total}: not complete, no manifest written")
         return RecordOutcome(False, counts.recorded, counts.total, session.sent)
