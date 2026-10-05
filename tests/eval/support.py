@@ -10,7 +10,6 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import allure
 import pytest
 
 from llmeval.baseline import BASELINE_PATH, Verdict
@@ -55,13 +54,8 @@ class Replay:
         return run_triage(self.client, self.config.models.system, [case], version, **options)[0]
 
 
-def apply_verdict(request: pytest.FixtureRequest, record: CaseRecord, verdict: Verdict) -> None:
+def apply_verdict(request: pytest.FixtureRequest, verdict: Verdict) -> None:
     """Turn a baseline comparison into the pytest outcome."""
-    allure.attach(
-        record.model_dump_json(indent=2),
-        name=f"{record.id} record",
-        attachment_type=allure.attachment_type.JSON,
-    )
     if verdict.outcome == "pending":
         pytest.skip(verdict.message)
     if verdict.outcome == "xfail":
