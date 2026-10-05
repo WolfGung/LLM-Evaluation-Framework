@@ -14,9 +14,12 @@ import pytest
 from typer.testing import CliRunner
 
 from llmeval import cli, recording
+from llmeval.callplan import full_plan
 from llmeval.cassettes import MANIFEST_FILE, CassetteStore, load_manifest
 from llmeval.checks.judge import RUBRIC_PATH, load_rubric
 from llmeval.cli import app
+from llmeval.client import ModelClient
+from llmeval.config import Mode
 from llmeval.datasets import file_sha256
 from llmeval.recording import EXIT_STOPPED
 from tests.unit.synthetic_judge import ROOT
@@ -103,13 +106,18 @@ def test_record_runs_two_passes_and_writes_the_manifest(ws, network):
     result = runner.invoke(app, args("record", ws))
     assert result.exit_code == 0, result.output
     assert len(router.chat_bodies) == ALL_CALLS
-    # Pass 1 records every system call before the first judge call.
+    # Pass 1: the four system probes, the four judge probes, the other system
+    # calls; pass 2: the other judge calls.
     kinds = [judge_body(body) for body in router.chat_bodies]
-    assert kinds == [False] * SYSTEM_CALLS + [True] * (ALL_CALLS - SYSTEM_CALLS)
+    assert kinds == [False] * 4 + [True] * 4 + [False] * (SYSTEM_CALLS - 4) + [True] * 4
     out = result.output
     assert f"recorded 1/{ALL_CALLS}  rag-001/v1/0" in out
     assert f"recorded {ALL_CALLS}/{ALL_CALLS}" in out
-    assert "pass 2: judge calls planned from the recorded answers: 8 to record" in out
+    assert (
+        "judge probes: 4 calls now for the judge kinds not yet proven, "
+        "so a judge config problem shows on the first day"
+    ) in out
+    assert "pass 2: judge calls planned from the recorded answers: 4 to record" in out
     manifest = load_manifest(ws / "cassettes")
     assert manifest.planned_calls == manifest.recorded_calls == ALL_CALLS
     assert manifest.models == {"system": "synthetic/system:free", "judge": "synthetic/judge:free"}
@@ -534,7 +542,7 @@ def test_an_api_error_stops_with_progress_and_the_key_scrubbed(ws, network):
     result = runner.invoke(app, args("record", ws))
     out = result.output
     assert result.exit_code == 1
-    # Every judge call fails: three in a row stop the run.
+    # Every judge call fails: the first three judge probes stop the run.
     assert (
         "skipped rag-001:judge/v1/0: /api/v1/chat/completions returned HTTP 500: "
         "upstream failed for Bearer [redacted]"
@@ -543,7 +551,7 @@ def test_an_api_error_stops_with_progress_and_the_key_scrubbed(ws, network):
         "stopped: 3 different requests in a row failed, and none of their kinds has succeeded "
         "in this run: check the model id and config"
     ) in out
-    assert f"{SYSTEM_CALLS} of {ALL_CALLS} calls recorded" in out
+    assert f"4 of {ALL_CALLS} calls recorded" in out
     assert "rerun make record to retry: recorded calls are kept and skipped" in out
     assert FAKE_KEY not in out
     assert load_manifest(ws / "cassettes") is None
@@ -552,21 +560,24 @@ def test_an_api_error_stops_with_progress_and_the_key_scrubbed(ws, network):
 def test_day_one_records_one_call_of_each_kind_first(ws, network):
     network(SyntheticOpenRouter())
     out = runner.invoke(app, args("record", ws)).output
-    progress = [line.split("  ")[1] for line in out.splitlines() if line.startswith("recorded ")]
-    # Pass 1: rag v1, rag v2, triage v1, triage v2, then the rest in plan order.
-    assert progress[:5] == [
+    progress = labels_recorded(out)
+    # Pass 1: rag v1, rag v2, triage v1, triage v2; then, as their answers
+    # exist, a grading of rag-001 in each version and its pairwise question in
+    # both orders; then the rest of pass 1 in plan order.
+    assert progress[:9] == [
         "rag-001/v1/0",
         "rag-001/v2/0",
         "tri-001/v1/0",
         "tri-001/v2/0",
-        "rag-001/v1/1",
-    ]
-    # Pass 2: a grading of each version's answers and one pairwise question first.
-    assert progress[SYSTEM_CALLS : SYSTEM_CALLS + 3] == [
         "rag-001:judge/v1/0",
         "rag-001:judge/v2/0",
         "rag-001:A=v1/v1-v2/0",
+        "rag-001:A=v2/v1-v2/0",
+        "rag-001/v1/1",
     ]
+    # Pass 2 keeps its place after pass 1: the rest of the judge calls.
+    assert all(":" not in label for label in progress[8 : SYSTEM_CALLS + 4])
+    assert all(":" in label for label in progress[SYSTEM_CALLS + 4 :])
     assert len(progress) == len(set(progress)) == ALL_CALLS
 
 
@@ -850,13 +861,14 @@ def test_an_unknown_call_cost_counts_at_its_published_bound():
 def test_one_skipped_call_is_counted_in_the_singular(ws, network):
     calls = {"n": 0}
 
-    def seventh_fails(request, body):
+    def eleventh_fails(request, body):
+        # Calls 1-8: the system and judge probes, then rag-001/v1/1, rag-002/v1/0.
         calls["n"] += 1
-        if calls["n"] == 7:
+        if calls["n"] == 11:
             return httpx.Response(403, json={"error": {"message": "flagged by moderation"}})
         return None
 
-    network(SyntheticOpenRouter(chat_override=seventh_fails))
+    network(SyntheticOpenRouter(chat_override=eleventh_fails))
     result = runner.invoke(app, args("record", ws))
     assert result.exit_code == 1
     assert "skipped 1 call (rerun make record to retry it):" in result.output
@@ -987,8 +999,9 @@ def test_an_outage_stops_the_run_after_twenty_different_requests(
 ):
     monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
     ws = make_workspace(tmp_path, repeats=1, rag_rows=unanswerable_rows(25))
-    # The four day-1 probes succeed, so every kind is proven before the outage.
-    network(outage_after(4, failure))
+    # The four system and four judge probes succeed, so every kind is proven
+    # before the outage.
+    network(outage_after(8, failure))
     result = runner.invoke(app, args("record", ws))
     assert result.exit_code == 1
     assert (
@@ -1049,7 +1062,7 @@ def test_a_later_day_records_fresh_calls_after_a_refused_block(tmp_path, network
     rows = unanswerable_rows(8)
     ws = make_workspace(tmp_path, repeats=1, rag_rows=rows)
     blocked = [row["question"] for row in rows[1:6]]  # rag-002..rag-006
-    # Day 1: the probes, the five refusals in v1, rag-007/v1, then the quota.
+    # Day 1: the system and judge probes, two refusals in v1, then the quota.
     network(SyntheticOpenRouter(chat_override=daily_quota(10, refused=blocked)))
     day1 = runner.invoke(app, args("record", ws))
     assert day1.exit_code == EXIT_STOPPED and "free daily quota reached" in day1.output
@@ -1116,9 +1129,10 @@ def test_the_skip_summary_is_printed_when_a_stop_ends_the_run(ws, network):
 
     def refuse_then_quota(request, body):
         calls["n"] += 1
-        if calls["n"] == 6:  # rag-002/v1/0: refused, so rag-002/v1/1 is not sent
+        # Calls 1-8: the system and judge probes, 9: rag-001/v1/1.
+        if calls["n"] == 10:  # rag-002/v1/0: refused, so rag-002/v1/1 is not sent
             return httpx.Response(403, json={"error": {"message": "flagged by moderation"}})
-        if calls["n"] == 9:
+        if calls["n"] == 13:
             return httpx.Response(429, headers=reset, json={})
         return None
 
@@ -1174,15 +1188,16 @@ def test_calls_tried_on_an_earlier_day_go_after_the_fresh_ones(tmp_path, network
     monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
     rows = unanswerable_rows(6)
     ws = make_workspace(tmp_path, repeats=1, rag_rows=rows)
-    # Day 1: the probes, rag-002/v1 refused, rag-003 and rag-004 v1, then the quota.
-    network(SyntheticOpenRouter(chat_override=daily_quota(7, refused=[rows[1]["question"]])))
+    # Day 1: the system and judge probes, rag-002/v1 refused, rag-003 and
+    # rag-004 v1, then the quota.
+    network(SyntheticOpenRouter(chat_override=daily_quota(11, refused=[rows[1]["question"]])))
     assert runner.invoke(app, args("record", ws)).exit_code == EXIT_STOPPED
     # Day 2: rag-002/v1 sits before recorded calls of its kind, so it was tried
     # before; it goes last, and the day-1 probes are picked among fresh calls.
     network(SyntheticOpenRouter())
     result = runner.invoke(app, args("record", ws))
     out = result.output
-    progress = [line.split("  ")[1] for line in out.splitlines() if line.startswith("recorded ")]
+    progress = labels_recorded(out)
     assert progress[:7] == [
         "rag-005/v1/0",
         "rag-002/v2/0",
@@ -1235,3 +1250,174 @@ def test_a_failed_grading_holds_back_only_requests_with_the_same_body(
     recorded = {entry.tag.label(entry.repeat) for entry in CassetteStore(ws / "cassettes")}
     assert "rag-001:judge/v1/1" in recorded and "rag-001:judge/v1/0" not in recorded
     assert len(router.chat_bodies) == len(recorded)
+
+
+# --- judge probes on day 1 ------------------------------------------------------------
+
+
+def labels_recorded(output):
+    """The labels of the calls a run recorded, in order."""
+    return [line.split("  ")[1] for line in output.splitlines() if line.startswith("recorded ")]
+
+
+def record_only(ws, router, labels):
+    """Record exactly these planned calls, as an earlier run would have (synthetic)."""
+    loaded, inputs = cli._plan_inputs(ws / "config.yaml", ws / "datasets", RUBRIC)
+    store = CassetteStore(ws / "cassettes")
+    planned = {p.tag.label(p.repeat): p for p in full_plan(inputs, store)}
+    transport = httpx.MockTransport(router)
+    with ModelClient(Mode.RECORD, store, loaded, transport, limiter=NoWait()) as client:
+        for label in labels:
+            p = planned[label]
+            client.complete(
+                list(p.messages),
+                role=loaded.models.role(p.role),
+                response_format=p.response_format,
+                repeat=p.repeat,
+                tag=p.tag,
+            )
+
+
+# The six calls the owner's first real recording made before an upstream 429.
+OWNERS_FIRST_SIX = [
+    "rag-001/v1/0",
+    "rag-001/v2/0",
+    "tri-001/v1/0",
+    "tri-001/v2/0",
+    "rag-001/v1/1",
+    "rag-001/v1/2",
+]
+RAG_001_PROBES = [
+    "rag-001:judge/v1/0",
+    "rag-001:judge/v2/0",
+    "rag-001:A=v1/v1-v2/0",
+    "rag-001:A=v2/v1-v2/0",
+]
+
+
+def test_with_system_kinds_proven_the_next_run_sends_the_judge_probes_first(
+    tmp_path, network, monkeypatch
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
+    ws = make_workspace(tmp_path, repeats=3)
+    record_only(ws, SyntheticOpenRouter(), OWNERS_FIRST_SIX)
+    router = network(SyntheticOpenRouter())
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 0, result.output
+    progress = labels_recorded(result.output)
+    assert progress[:4] == RAG_001_PROBES
+    assert [judge_body(body) for body in router.chat_bodies[:5]] == [True] * 4 + [False]
+    assert progress[4] == "rag-002/v1/0"  # then pass 1 goes on
+
+
+def test_a_broken_judge_id_stops_on_day_one_after_three_judge_attempts(ws, network):
+    attempts = []
+
+    def unknown_judge(request, body):
+        if body["model"] == "synthetic/judge:free":
+            attempts.append(body)
+            return httpx.Response(404, json={"error": {"message": "model not found"}})
+        return None
+
+    router = network(SyntheticOpenRouter(chat_override=unknown_judge))
+    result = runner.invoke(app, args("record", ws))
+    out = result.output
+    assert result.exit_code == 1
+    assert len(attempts) == 3
+    # Only the four system probes went before them: no more system calls.
+    assert len(router.chat_bodies) == 4
+    assert labels_recorded(out) == OWNERS_FIRST_SIX[:4]
+    assert (
+        "stopped: 3 different requests in a row failed, and none of their kinds has succeeded "
+        "in this run: check the model id and config (last: /api/v1/chat/completions returned "
+        "HTTP 404: model not found)"
+    ) in out
+    assert f"4 of {ALL_CALLS} calls recorded" in out
+
+
+def daily_quota_count(per_day):
+    """A chat override: answer `per_day` calls, then HTTP 429 with tomorrow's reset."""
+    tomorrow = datetime.now(UTC) + timedelta(hours=10)
+    reset = {"X-RateLimit-Reset": str(int(tomorrow.timestamp() * 1000))}
+    override, _ = rate_limited(per_day, reset)
+    return override
+
+
+def test_judge_kinds_proven_on_an_earlier_day_are_not_probed_again(ws, network):
+    network(SyntheticOpenRouter(chat_override=daily_quota_count(8)))
+    day1 = runner.invoke(app, args("record", ws))
+    assert day1.exit_code == EXIT_STOPPED
+    assert labels_recorded(day1.output) == OWNERS_FIRST_SIX[:4] + RAG_001_PROBES
+    router = network(SyntheticOpenRouter())
+    day2 = runner.invoke(app, args("record", ws))
+    assert day2.exit_code == 0, day2.output
+    assert "judge probes" not in day2.output
+    # Every judge kind is proven: pass 1 finishes before the first judge call.
+    kinds = [judge_body(body) for body in router.chat_bodies]
+    assert kinds == [False] * (SYSTEM_CALLS - 4) + [True] * 4
+
+
+def test_only_the_judge_kinds_not_yet_proven_are_probed(ws, network):
+    # Day 1 ends after both gradings: the pairwise kind is not proven yet.
+    network(SyntheticOpenRouter(chat_override=daily_quota_count(6)))
+    assert runner.invoke(app, args("record", ws)).exit_code == EXIT_STOPPED
+    network(SyntheticOpenRouter())
+    day2 = runner.invoke(app, args("record", ws))
+    assert day2.exit_code == 0, day2.output
+    assert "judge probes: 2 calls now" in day2.output
+    assert labels_recorded(day2.output)[:3] == [
+        "rag-001:A=v1/v1-v2/0",
+        "rag-001:A=v2/v1-v2/0",
+        "rag-001/v1/1",
+    ]
+
+
+def test_identical_answers_probe_pairwise_with_the_next_case_that_differs(ws, network):
+    def same_rag_001_answer(body):
+        if body["messages"][-1]["content"] == "How many days do I have to return an item?":
+            return "You have 30 days [kb-returns]."  # the same text in both versions
+        return None
+
+    network(SyntheticOpenRouter(content=same_rag_001_answer))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 0, result.output
+    progress = labels_recorded(result.output)
+    # rag-001: one grading serves both versions and needs no pairwise question.
+    # The pairwise probe goes as soon as rag-002 has its answers in both versions.
+    assert progress[:12] == [
+        "rag-001/v1/0",
+        "rag-001/v2/0",
+        "tri-001/v1/0",
+        "tri-001/v2/0",
+        "rag-001:judge/v1/0",
+        "rag-001/v1/1",
+        "rag-002/v1/0",
+        "rag-002/v1/1",
+        "rag-001/v2/1",
+        "rag-002/v2/0",
+        "rag-002:A=v1/v1-v2/0",
+        "rag-002:A=v2/v1-v2/0",
+    ]
+    assert "rag-001:A=v1/v1-v2/0" not in progress
+    assert load_manifest(ws / "cassettes").planned_calls == ALL_CALLS - 3
+
+
+def test_status_after_the_judge_probes_still_counts_waiting_judge_calls_as_up_to(ws, network):
+    network(SyntheticOpenRouter(chat_override=daily_quota_count(8)))
+    assert runner.invoke(app, args("record", ws)).exit_code == EXIT_STOPPED
+    network(SyntheticOpenRouter())
+    out = runner.invoke(app, args("status", ws)).output
+    assert (
+        "  rag v1: 4 system calls (repeat 0: 2, repeat 1: 2) "
+        "+ up to 2 judge calls (repeat 0: 2) = up to 6; recorded 2"
+    ) in out
+    assert "  rag v1 vs v2: up to 4 pairwise judge calls (repeat 0: 4) = up to 4; recorded 2" in (
+        out
+    )
+    assert (
+        "total: 12 system calls + up to 8 judge calls = up to 20 distinct calls; "
+        "recorded 8, to record up to 12"
+    ) in out
+    assert "4 judge calls are planned once the answers they grade are recorded" in out
+    estimate = runner.invoke(app, args("estimate", ws)).output
+    assert "judge (synthetic/judge:free): $0.00 for up to 4 calls (a :free model id)" in estimate

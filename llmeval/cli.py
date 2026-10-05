@@ -395,7 +395,9 @@ def record_command(
 
     The budget guard runs first: nothing is sent above MAX_RUN_COST_USD.
     Recorded calls are skipped, so a rerun continues. System calls come
-    first, then the judge calls planned from the recorded answers. The run
+    first, then the judge calls planned from the recorded answers; each
+    judge kind not yet proven is probed as soon as the answers it needs are
+    recorded, so a judge config problem shows on the first day. The run
     keeps to the configured rpm and stops cleanly on the free daily quota.
     After a 429 without a reset time on a free model it waits 30 s, 60 s,
     120 s and 240 s, sending the call again after each wait, while the key

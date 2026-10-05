@@ -21,15 +21,20 @@ The order of work:
    once; otherwise it stops after that many (asking the endpoint once more
    first). When the number is unknown, HTTP 429 is the stop.
 4. Pass 1: the system calls (rag and triage), skipping every key already in
-   the cassettes. One call of each kind goes first (rag v1, rag v2, triage
-   v1, triage v2), then the rest in plan order, so a broken prompt or config
-   shows on the first day of a recording spread over many. Calls an earlier
-   run tried and could not record go after every fresh call of both passes
+   the cassettes. One call of each kind not yet proven goes first (rag v1,
+   rag v2, triage v1, triage v2 on the first day), then the rest in plan
+   order, so a broken prompt or config shows on the first day of a
+   recording spread over many. The judge kinds not yet proven are probed in
+   pass 1 too (`judge_probes`): as soon as the first judged case has its
+   repeat-0 answers in every version, its gradings and both orders of its
+   pairwise question go before the rest of pass 1. Calls an earlier run
+   tried and could not record go after every fresh call of both passes
    (`split_tried`), followed by the judge calls their answers make ready.
-5. Pass 2: the judge calls, planned again from the recorded answers, one
-   grading and one pairwise question first. A judge key exists only once the
-   answers it grades are recorded; identical answers share a grading and
-   need no pairwise question.
+5. Pass 2: the other judge calls, planned again from the recorded answers,
+   one call of each kind first. A judge key exists only once the answers it
+   grades are recorded; identical answers share a grading and need no
+   pairwise question (then the pairwise probe waits for the next judged case
+   whose answers differ).
 6. The manifest: written only when every planned call of both passes is in
    the cassettes. Until then the evaluation stays "pending first recorded
    run".
@@ -80,7 +85,7 @@ continue), 1 an error.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -101,6 +106,7 @@ from llmeval.callplan import (
     up_to,
 )
 from llmeval.cassettes import CassetteStore, RunManifest, request_key, utc_now, write_manifest
+from llmeval.checks.judge import JUDGE_FUNCTION, PAIRWISE_FUNCTION
 from llmeval.client import CallResult, ModelClient, build_role_request
 from llmeval.config import Config, Mode, RoleConfig
 from llmeval.datasets import file_sha256
@@ -282,6 +288,61 @@ def kinds_first(planned: Sequence[PlannedRequest]) -> list[PlannedRequest]:
     leaders = list(first.values())
     chosen = {id(request) for request in leaders}
     return leaders + [request for request in planned if id(request) not in chosen]
+
+
+def probes_first(
+    planned: Sequence[PlannedRequest], proven: Collection[Kind]
+) -> tuple[list[PlannedRequest], list[PlannedRequest]]:
+    """Split calls into the probes and the rest, both in `kinds_first` order.
+
+    A probe is the first call of a kind not in `proven`. The rest starts
+    with the first call of each proven kind.
+    """
+    ordered = kinds_first(planned)
+    first: dict[Kind, PlannedRequest] = {}
+    for request in planned:
+        first.setdefault(kind_of(request), request)
+    probes = {id(request) for kind, request in first.items() if kind not in proven}
+    return (
+        [request for request in ordered if id(request) in probes],
+        [request for request in ordered if id(request) not in probes],
+    )
+
+
+def judge_probes(
+    plan: Sequence[PlannedRequest], proven: Collection[Kind]
+) -> list[PlannedRequest]:
+    """The judge calls that probe the judge kinds not in `proven`, once their answers exist.
+
+    For the grading kinds: the repeat-0 gradings of the first judged case
+    whose repeat-0 answers are recorded in every prompt version. For each
+    pairwise kind: both questions (the two orders) of the first judged case
+    that has them. Identical answers share a grading and need no question,
+    so the questions can come from a later case, and the kind waits until
+    one exists. Empty while no answers they need are recorded.
+    """
+    gradings: dict[str, list[PlannedRequest]] = {}
+    for request in plan:
+        if request.function == JUDGE_FUNCTION and request.repeat == 0:
+            gradings.setdefault(request.case_id, []).append(request)
+    versions = {request.version for calls in gradings.values() for request in calls}
+    probes: list[PlannedRequest] = []
+    for calls in gradings.values():
+        if {request.version for request in calls if request.key is not None} == versions:
+            probes += [request for request in calls if kind_of(request) not in proven]
+            break
+    case_of: dict[Kind, str] = {}
+    for request in plan:
+        kind = kind_of(request)
+        if request.function != PAIRWISE_FUNCTION or request.key is None or kind in proven:
+            continue
+        if case_of.setdefault(kind, request.case_id) == request.case_id:
+            probes.append(request)
+    unique: dict[str, PlannedRequest] = {}
+    for request in probes:
+        if request.key is not None:
+            unique.setdefault(request.key, request)
+    return list(unique.values())
 
 
 def split_tried(
@@ -513,7 +574,12 @@ class _Session:
             return
         raise error
 
-    def send_all(self, planned: Sequence[PlannedRequest]) -> None:
+    def send_all(
+        self,
+        planned: Sequence[PlannedRequest],
+        after: Callable[[PlannedRequest], None] | None = None,
+    ) -> None:
+        """Send `planned` in order; `after` is called with each call recorded."""
         for request in planned:
             if request.key is not None:
                 self.attempted.add(request.key)
@@ -546,6 +612,70 @@ class _Session:
             self.recorded += 1
             self.echo(f"recorded {self.recorded}/{self.planned}  {label}")
             self.cap.add(result.cost_usd, bound=bound)
+            if after is not None:
+                after(request)
+
+
+class _JudgeProbes:
+    """Probes of the judge kinds not yet proven, sent during pass 1.
+
+    The rest of pass 2 waits for every system call, many days on the free
+    quota, so a broken judge config (model id, structured output, reasoning)
+    would show only then. The probes (`judge_probes`) go as soon as the
+    answers they need are recorded: right after the system probes, or right
+    after the system call that records the last of those answers. Then the
+    K=3 stop for unproven kinds catches a broken judge on the first day.
+    Each judge kind is probed at most once per run.
+    """
+
+    def __init__(
+        self,
+        inputs: PlanInputs,
+        store: CassetteStore,
+        session: _Session,
+        echo: Callable[[str], None],
+    ) -> None:
+        self.inputs = inputs
+        self.store = store
+        self.session = session
+        self.echo = echo
+        self.probed: set[Kind] = set()
+        # Keys of the answers that judge kinds still to probe wait for.
+        self.needs: set[str] = set()
+
+    def after(self, request: PlannedRequest) -> None:
+        """Called with each call recorded in pass 1."""
+        if request.key in self.needs:
+            self.send()
+
+    def send(self) -> None:
+        """Send the probes whose answers are recorded, and note what the others wait for."""
+        plan = full_plan(self.inputs, self.store)
+        counts = count_plan(plan, self.store, self.inputs.models)
+        self.session.progress(counts.recorded, counts.total, counts.exact)
+        self.session.prove(plan, self.store)
+        done = self.session.proven_kinds | self.probed
+        probes = [
+            request
+            for request in judge_probes(plan, done)
+            if request.key not in self.session.attempted
+        ]
+        # A probe also covers the kinds that share its key (identical answers).
+        keys = {request.key for request in probes}
+        self.probed |= {kind_of(request) for request in plan if request.key in keys}
+        done = self.session.proven_kinds | self.probed
+        self.needs = {
+            key
+            for request in plan
+            if request.role == "judge" and request.key is None and kind_of(request) not in done
+            for key in request.grades
+        }
+        if probes:
+            self.echo(
+                f"judge probes: {plural(len(probes), 'call')} now for the judge kinds not yet "
+                "proven, so a judge config problem shows on the first day"
+            )
+            self.session.send_all(probes)
 
 
 def _summarise_skips(session: _Session, echo: Callable[[str], None]) -> None:
@@ -777,7 +907,11 @@ def _record(
                     f"pass 1: {len(fresh)} system calls to record; until their answers exist, "
                     "the total counts judge calls at their upper bound"
                 )
-            session.send_all(kinds_first(fresh))
+            probes, rest = probes_first(fresh, session.proven_kinds)
+            session.send_all(probes)
+            judge = _JudgeProbes(inputs, store, session, echo)
+            judge.send()
+            session.send_all(rest, after=judge.after)
             plan = full_plan(inputs, store)
             counts = count_plan(plan, store, models)
             session.progress(counts.recorded, counts.total, counts.exact)
@@ -785,7 +919,11 @@ def _record(
             # Judge calls whose answers were skipped have no key and wait; skipped
             # system calls are not asked twice in one run.
             fresh, retry_judge = split_tried(
-                [p for p in to_record(plan, store) if p.role == "judge" and p.key is not None],
+                [
+                    p
+                    for p in to_record(plan, store)
+                    if p.role == "judge" and p.key is not None and p.key not in session.attempted
+                ],
                 plan,
                 store,
             )
