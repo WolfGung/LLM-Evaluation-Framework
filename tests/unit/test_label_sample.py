@@ -11,6 +11,7 @@ import pytest
 
 from llmeval.labels import (
     SAMPLE_RULE,
+    TWIN_GAP,
     LabelError,
     build_sample,
     load_sample,
@@ -168,3 +169,31 @@ def test_a_missing_or_broken_sample_file_is_named(tmp_path):
     (tmp_path / "sample.json").write_text("{}", encoding="utf-8")
     with pytest.raises(LabelError, match="sample.json: not a valid sample"):
         load_sample(tmp_path / "sample.json")
+
+
+def twin_gaps(sample) -> list[int]:
+    """The distance in labelling order between the two versions of each case."""
+    places: dict[str, list[int]] = {}
+    for at, item in enumerate(sample.items):
+        places.setdefault(item.case, []).append(at)
+    return [abs(first - second) for first, second in (p for p in places.values() if len(p) == 2)]
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_the_two_versions_of_a_case_are_at_least_3_apart(seed):
+    sample = build_sample(two_versions(), size=30, seed=seed)
+    gaps = twin_gaps(sample)
+    assert gaps and min(gaps) >= TWIN_GAP == 3
+
+
+def test_twins_are_kept_apart_even_when_every_case_comes_twice():
+    counts = {"answerable": (12, 3)}
+    sample = build_sample([population("v1", counts), population("v2", counts)], size=30, seed=5)
+    gaps = twin_gaps(sample)
+    assert len(gaps) == 15 and min(gaps) >= 3
+
+
+def test_twins_that_cannot_be_kept_apart_are_refused():
+    counts = {"answerable": (1, 1)}
+    with pytest.raises(LabelError, match="cannot keep the two versions of each case 3 apart"):
+        build_sample([population("v1", counts), population("v2", counts)], size=4, seed=1)

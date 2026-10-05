@@ -1,15 +1,22 @@
 {
   "schema_version": 1,
   "seed": 2026,
-  "rule": "Every judged answer of repeat 0 whose valid verdict fails the rubric's pass rule. Then judge-passed answers of repeat 0, drawn with Python's random.Random(seed) in strata of prompt version and category, to the sample size in all. Each stratum gets a share proportional to its judge-passed answers (largest remainder; a tie goes to the earlier stratum). Answers without a valid verdict are left out. The labelling order is shuffled with the same generator, so the judge failures are spread out.",
+  "rule": "Every judged answer of repeat 0 whose valid verdict fails the rubric's pass rule. Then judge-passed answers of repeat 0, drawn with Python's random.Random(seed) in strata of prompt version and category, to the sample size in all. Each stratum gets a share proportional to its judge-passed answers (largest remainder; a tie goes to the earlier stratum). Answers without a valid verdict are left out. The labelling order is shuffled with the same generator, so the judge failures are spread out, and shuffled again with it until the two versions of every case are at least 3 positions apart.",
   "size": 30,
   "items": [
     {
-      "case": "rag-021",
+      "case": "rag-008",
       "version": "v2",
       "repeat": 0,
-      "answer_key": "7c441078507789d17962e4b84e5466d32f25ff2bd5586367453306eafaf83349",
+      "answer_key": "552eb37542e04540d8923e7abaf6884557f12d3be0510ede39f8910cfd814a55",
       "category": "answerable"
+    },
+    {
+      "case": "rag-029",
+      "version": "v1",
+      "repeat": 0,
+      "answer_key": "e0ca61d7ac3e0c3bc882f15d848e6ab23dbae025783da4850d712e3ecb42ddee",
+      "category": "unanswerable"
     },
     {
       "case": "rag-039",
@@ -19,18 +26,18 @@
       "category": "multi_doc"
     },
     {
-      "case": "rag-014",
-      "version": "v1",
+      "case": "rag-020",
+      "version": "v2",
       "repeat": 0,
-      "answer_key": "e4a2268d02e2cd57e13fc094f1f7e3c935594ec3333d532a0c602594be998334",
+      "answer_key": "a38c2d215ab1e8d057ce533727aa0ee23597b06078d0961ea2d0cd508a103d7e",
       "category": "answerable"
     },
     {
-      "case": "rag-017",
-      "version": "v1",
+      "case": "rag-029",
+      "version": "v2",
       "repeat": 0,
-      "answer_key": "12bd140d145ec90ad11b9e2779a7bd12ccdd3f9ace0960a3d2ee24abded78784",
-      "category": "answerable"
+      "answer_key": "a5722a151f2fef67e08ef4c4d61304d676bab02465cdf3227308dd8bc25221dc",
+      "category": "unanswerable"
     },
     {
       "case": "rag-034",
@@ -47,25 +54,25 @@
       "category": "multi_doc"
     },
     {
-      "case": "rag-029",
-      "version": "v1",
-      "repeat": 0,
-      "answer_key": "e0ca61d7ac3e0c3bc882f15d848e6ab23dbae025783da4850d712e3ecb42ddee",
-      "category": "unanswerable"
-    },
-    {
-      "case": "rag-029",
+      "case": "rag-018",
       "version": "v2",
       "repeat": 0,
-      "answer_key": "a5722a151f2fef67e08ef4c4d61304d676bab02465cdf3227308dd8bc25221dc",
-      "category": "unanswerable"
+      "answer_key": "bae1612c73329e349c7d47cde64a63a9c20cbb157dfc992ce95319e79551ef92",
+      "category": "answerable"
     },
     {
-      "case": "rag-040",
+      "case": "rag-025",
+      "version": "v2",
+      "repeat": 0,
+      "answer_key": "fa03405af19657152ea28439e8305c48a303aa777417c9030ad54dfe040d7ce3",
+      "category": "multi_doc"
+    },
+    {
+      "case": "rag-022",
       "version": "v1",
       "repeat": 0,
-      "answer_key": "24c63e3849adc2b0d4844d7725abe0e62b11020e624329863f7d02442472b526",
-      "category": "unanswerable"
+      "answer_key": "2fcb7c57cb4e0b053d1f5d0cba35cb731575b31ecbd375c8a9976e10886eba7f",
+      "category": "answerable"
     },
     {
       "case": "rag-004",
@@ -75,31 +82,17 @@
       "category": "answerable"
     },
     {
-      "case": "rag-020",
+      "case": "rag-021",
       "version": "v2",
       "repeat": 0,
-      "answer_key": "a38c2d215ab1e8d057ce533727aa0ee23597b06078d0961ea2d0cd508a103d7e",
+      "answer_key": "7c441078507789d17962e4b84e5466d32f25ff2bd5586367453306eafaf83349",
       "category": "answerable"
     },
     {
-      "case": "rag-018",
-      "version": "v2",
-      "repeat": 0,
-      "answer_key": "bae1612c73329e349c7d47cde64a63a9c20cbb157dfc992ce95319e79551ef92",
-      "category": "answerable"
-    },
-    {
-      "case": "rag-018",
+      "case": "rag-011",
       "version": "v1",
       "repeat": 0,
-      "answer_key": "aa6f570a8488c32b4448817a27c20efc95c1f6970db8dcfe6806329bceaa6ec2",
-      "category": "answerable"
-    },
-    {
-      "case": "rag-004",
-      "version": "v2",
-      "repeat": 0,
-      "answer_key": "9d8ab160f2f6d21d82dc705f41c5dfd4cc96ab4246f68e6faf5d9b0c7463bedb",
+      "answer_key": "af63b2ad9944835461592fa5478fca0aa26cadc3e1cd9afba40867f3e155e1f2",
       "category": "answerable"
     },
     {
@@ -110,10 +103,59 @@
       "category": "unanswerable"
     },
     {
-      "case": "rag-003",
+      "case": "rag-027",
+      "version": "v1",
+      "repeat": 0,
+      "answer_key": "fe1a9cb2a9352c69e97acc780d0248f8c45e91265e2c165505d5c6f33bbf52f3",
+      "category": "multi_doc"
+    },
+    {
+      "case": "rag-037",
+      "version": "v1",
+      "repeat": 0,
+      "answer_key": "57943e370166a7493ef694dd80da570a8a062a2500785e8b8068d9c7e3d3ce69",
+      "category": "answerable"
+    },
+    {
+      "case": "rag-033",
       "version": "v2",
       "repeat": 0,
-      "answer_key": "c51b6c1c391fce9275a76587ba2a1ccfd208d4554812bf8c9582c86ad9806428",
+      "answer_key": "117d949b8a3fb8e4949df02b929b325fa58939cf0689c9b2dfd2064cfb79aae9",
+      "category": "unanswerable"
+    },
+    {
+      "case": "rag-040",
+      "version": "v1",
+      "repeat": 0,
+      "answer_key": "24c63e3849adc2b0d4844d7725abe0e62b11020e624329863f7d02442472b526",
+      "category": "unanswerable"
+    },
+    {
+      "case": "rag-008",
+      "version": "v1",
+      "repeat": 0,
+      "answer_key": "2d7accfa432f2db7d74920428d6fccf78d15cf4c6b2c73df9cb7589c3f5fedf3",
+      "category": "answerable"
+    },
+    {
+      "case": "rag-032",
+      "version": "v2",
+      "repeat": 0,
+      "answer_key": "68ad42dc5807d817cf9e19315d81b6dd258d1217097c9eb6de0118c62bca1691",
+      "category": "unanswerable"
+    },
+    {
+      "case": "rag-023",
+      "version": "v2",
+      "repeat": 0,
+      "answer_key": "2241dd01c70bec5e41f2b54068a314973e7c5c1fc6691cf8feb3cca8d5b79950",
+      "category": "multi_doc"
+    },
+    {
+      "case": "rag-015",
+      "version": "v2",
+      "repeat": 0,
+      "answer_key": "c7c0a43e704fc2b21d649a5d7ec37f51aa4b7a06948e3b7441dbae4ad94e6518",
       "category": "answerable"
     },
     {
@@ -121,6 +163,27 @@
       "version": "v1",
       "repeat": 0,
       "answer_key": "fa8b00dc071988f62fe5215dc37b08ecebd377e629efb7cf11fd040fc1e5488f",
+      "category": "answerable"
+    },
+    {
+      "case": "rag-004",
+      "version": "v2",
+      "repeat": 0,
+      "answer_key": "9d8ab160f2f6d21d82dc705f41c5dfd4cc96ab4246f68e6faf5d9b0c7463bedb",
+      "category": "answerable"
+    },
+    {
+      "case": "rag-017",
+      "version": "v1",
+      "repeat": 0,
+      "answer_key": "12bd140d145ec90ad11b9e2779a7bd12ccdd3f9ace0960a3d2ee24abded78784",
+      "category": "answerable"
+    },
+    {
+      "case": "rag-003",
+      "version": "v2",
+      "repeat": 0,
+      "answer_key": "c51b6c1c391fce9275a76587ba2a1ccfd208d4554812bf8c9582c86ad9806428",
       "category": "answerable"
     },
     {
@@ -138,81 +201,18 @@
       "category": "answerable"
     },
     {
-      "case": "rag-015",
-      "version": "v2",
-      "repeat": 0,
-      "answer_key": "c7c0a43e704fc2b21d649a5d7ec37f51aa4b7a06948e3b7441dbae4ad94e6518",
-      "category": "answerable"
-    },
-    {
-      "case": "rag-037",
+      "case": "rag-018",
       "version": "v1",
       "repeat": 0,
-      "answer_key": "57943e370166a7493ef694dd80da570a8a062a2500785e8b8068d9c7e3d3ce69",
+      "answer_key": "aa6f570a8488c32b4448817a27c20efc95c1f6970db8dcfe6806329bceaa6ec2",
       "category": "answerable"
     },
     {
-      "case": "rag-011",
+      "case": "rag-014",
       "version": "v1",
       "repeat": 0,
-      "answer_key": "af63b2ad9944835461592fa5478fca0aa26cadc3e1cd9afba40867f3e155e1f2",
+      "answer_key": "e4a2268d02e2cd57e13fc094f1f7e3c935594ec3333d532a0c602594be998334",
       "category": "answerable"
-    },
-    {
-      "case": "rag-008",
-      "version": "v1",
-      "repeat": 0,
-      "answer_key": "2d7accfa432f2db7d74920428d6fccf78d15cf4c6b2c73df9cb7589c3f5fedf3",
-      "category": "answerable"
-    },
-    {
-      "case": "rag-033",
-      "version": "v2",
-      "repeat": 0,
-      "answer_key": "117d949b8a3fb8e4949df02b929b325fa58939cf0689c9b2dfd2064cfb79aae9",
-      "category": "unanswerable"
-    },
-    {
-      "case": "rag-022",
-      "version": "v1",
-      "repeat": 0,
-      "answer_key": "2fcb7c57cb4e0b053d1f5d0cba35cb731575b31ecbd375c8a9976e10886eba7f",
-      "category": "answerable"
-    },
-    {
-      "case": "rag-023",
-      "version": "v2",
-      "repeat": 0,
-      "answer_key": "2241dd01c70bec5e41f2b54068a314973e7c5c1fc6691cf8feb3cca8d5b79950",
-      "category": "multi_doc"
-    },
-    {
-      "case": "rag-027",
-      "version": "v1",
-      "repeat": 0,
-      "answer_key": "fe1a9cb2a9352c69e97acc780d0248f8c45e91265e2c165505d5c6f33bbf52f3",
-      "category": "multi_doc"
-    },
-    {
-      "case": "rag-008",
-      "version": "v2",
-      "repeat": 0,
-      "answer_key": "552eb37542e04540d8923e7abaf6884557f12d3be0510ede39f8910cfd814a55",
-      "category": "answerable"
-    },
-    {
-      "case": "rag-032",
-      "version": "v2",
-      "repeat": 0,
-      "answer_key": "68ad42dc5807d817cf9e19315d81b6dd258d1217097c9eb6de0118c62bca1691",
-      "category": "unanswerable"
-    },
-    {
-      "case": "rag-025",
-      "version": "v2",
-      "repeat": 0,
-      "answer_key": "fa03405af19657152ea28439e8305c48a303aa777417c9030ad54dfe040d7ce3",
-      "category": "multi_doc"
     }
   ]
 }

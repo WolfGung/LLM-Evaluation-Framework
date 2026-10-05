@@ -97,8 +97,15 @@ SAMPLE_RULE = (
     "strata of prompt version and category, to the sample size in all. Each stratum gets "
     "a share proportional to its judge-passed answers (largest remainder; a tie goes to "
     "the earlier stratum). Answers without a valid verdict are left out. The labelling "
-    "order is shuffled with the same generator, so the judge failures are spread out."
+    "order is shuffled with the same generator, so the judge failures are spread out, and "
+    "shuffled again with it until the two versions of every case are at least 3 positions "
+    "apart."
 )
+# How far apart in the labelling order the two versions of one case are kept,
+# so the second answer is not read straight after the first; and how many
+# shuffles may try before the sample is refused.
+TWIN_GAP = 3
+MAX_SHUFFLES = 1000
 
 
 class LabelError(ValueError):
@@ -232,8 +239,34 @@ def build_sample(
     chosen = list(failures)
     for key, items in strata.items():
         chosen += rng.sample(sorted(items, key=lambda item: item.case), quotas[key])
-    rng.shuffle(chosen)
+    _shuffle_twins_apart(chosen, rng)
     return Sample(seed=seed, rule=SAMPLE_RULE, size=len(chosen), items=chosen)
+
+
+def _twins_apart(items: Sequence[SampleItem]) -> bool:
+    """Whether the answers to one case (two versions) are `TWIN_GAP` or more apart."""
+    seen: dict[str, int] = {}
+    for at, item in enumerate(items):
+        if item.case in seen and at - seen[item.case] < TWIN_GAP:
+            return False
+        seen[item.case] = at
+    return True
+
+
+def _shuffle_twins_apart(items: list[SampleItem], rng: random.Random) -> None:
+    """Shuffle `items` in place with `rng`, again until `_twins_apart` holds.
+
+    Every try is a fresh uniform shuffle, so the order stays random among the
+    orders that keep twins apart, and the seed fixes it.
+    """
+    for _ in range(MAX_SHUFFLES):
+        rng.shuffle(items)
+        if _twins_apart(items):
+            return
+    raise LabelError(
+        f"cannot keep the two versions of each case {TWIN_GAP} apart in {MAX_SHUFFLES} "
+        f"shuffles of {len(items)} answers"
+    )
 
 
 def write_sample(sample: Sample, path: Path | str = SAMPLE_PATH) -> Path:
