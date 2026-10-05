@@ -153,6 +153,10 @@ def _ms(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.0f} ms"
 
 
+def _tokens(value: float | None) -> str:
+    return "n/a" if value is None else str(value)
+
+
 def _perf_line(label: str, perf: Performance) -> str:
     """One line of performance: latency, mean tokens and cost (unknown costs named)."""
     cost = perf.cost
@@ -163,8 +167,8 @@ def _perf_line(label: str, perf: Performance) -> str:
         spent += f" (${cost.per_case_usd:.6f} per case)"
     return (
         f"  {label} calls {perf.calls}, latency p50 {_ms(perf.latency.p50_ms)}, "
-        f"p95 {_ms(perf.latency.p95_ms)}, mean tokens in {perf.mean_prompt_tokens} "
-        f"out {perf.mean_completion_tokens}, {spent}"
+        f"p95 {_ms(perf.latency.p95_ms)}, mean tokens in {_tokens(perf.mean_prompt_tokens)} "
+        f"out {_tokens(perf.mean_completion_tokens)}, {spent}"
     )
 
 

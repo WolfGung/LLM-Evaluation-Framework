@@ -392,3 +392,14 @@ def test_python_dash_m_runs_the_cli():
     )
     assert done.returncode == 0, done.stderr
     assert "eval" in done.stdout and "retrieval" in done.stdout
+
+
+def test_the_performance_line_says_n_a_without_calls():
+    from llmeval.cli import _perf_line
+    from llmeval.perf import performance
+
+    line = _perf_line("judge", performance([], cases=0))
+    assert line == (
+        "  judge calls 0, latency p50 n/a, p95 n/a, mean tokens in n/a out n/a, cost $0.000000"
+    )
+    assert "None" not in line
