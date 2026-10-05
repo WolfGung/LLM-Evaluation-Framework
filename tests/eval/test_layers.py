@@ -9,8 +9,13 @@ It fails as the gate does: when the rate drops below the baseline's by more
 than the layer's tolerance in `config/gate.yaml`. A rise passes; the
 per-case tests name the cases that changed. Without a baseline entry for the
 layer it is skipped as "pending baseline", after the rate is shown.
+
+The layers are listed here per function. One more test per function and
+version fails when the replayed run has a layer this list lacks, naming it,
+so a new layer cannot go without its layer test.
 """
 
+import allure
 import pytest
 
 from llmeval.baseline import PENDING_BASELINE
@@ -31,22 +36,42 @@ LAYERS = {
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     manifest = load_manifest(CASSETTES)
+    with_layer = "layer" in metafunc.fixturenames
     params = []
     for function, layers in LAYERS.items():
         if manifest is None:
             versions: tuple[str, ...] = (UNRECORDED,)
         else:
             versions = tuple(manifest.prompt_versions.get(function, ()))
-        params += [
-            pytest.param(function, version, layer, id=f"{function}-{version}-{layer}")
-            for version in versions
-            for layer in layers
-        ]
-    metafunc.parametrize(("function", "version", "layer"), params)
+        for version in versions:
+            if not with_layer:
+                params.append(pytest.param(function, version, id=f"{function}-{version}"))
+                continue
+            params += [
+                pytest.param(function, version, layer, id=f"{function}-{version}-{layer}")
+                for layer in layers
+            ]
+    names = ("function", "version", "layer") if with_layer else ("function", "version")
+    metafunc.parametrize(names, params)
+
+
+def replayed(replay, function: str, version: str):
+    return [replay.case(function, case, version) for case in CASES[function]]
+
+
+def test_every_layer_of_the_run_has_a_layer_test(replay, function, version):
+    allure.dynamic.epic(function)
+    allure.dynamic.title(f"{function} {version}: every layer of the run has a layer test")
+    found = summarise(function, replayed(replay, function, version)).layers
+    unlisted = [layer for layer in found if layer not in LAYERS[function]]
+    assert not unlisted, (
+        f"{function} {version} has a layer without a layer test: {', '.join(unlisted)}; "
+        "add it to LAYERS in tests/eval/test_layers.py"
+    )
 
 
 def test_layer_pass_rate(replay, baseline, function, version, layer):
-    records = [replay.case(function, case, version) for case in CASES[function]]
+    records = replayed(replay, function, version)
     now = summarise(function, records).layers.get(layer)
     if now is None:
         pytest.skip(f"no {layer} layer in the recorded run")

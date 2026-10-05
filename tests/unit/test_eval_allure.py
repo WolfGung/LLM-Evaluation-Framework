@@ -305,7 +305,7 @@ def test_a_layer_drop_within_its_tolerance_passes_and_shows_the_rate(ws):
     write_layer_baseline(ws)
     code, out, out_dir = run_with_allure(ws, suite=LAYER_SUITE)
     assert code == 0, out
-    assert "2 passed" in out
+    assert "3 passed" in out  # two layers, and the check that no layer is unlisted
     result = layer_result(out_dir, "reference")
     assert result["status"] == "passed"
     assert result["name"] == "triage v1: reference layer, 97.5% of runs pass (39 of 40)"
