@@ -251,21 +251,27 @@ def quota_lines(counts: PlanCounts, models: ModelsConfig) -> list[str]:
     lines = [FREE_LIMITS.describe()]
     calls = counts.free_to_record
     if not calls:
-        lines.append("free-model calls to record: none, so the free-model limits do not apply")
+        if any(is_free(getattr(models, name).model) for name in ROLES):
+            lines.append("free-model calls to record: none")
+        else:
+            lines.append(
+                f"free-model calls to record: none: the config names no {FREE_SUFFIX} model, "
+                "so the free-model limits do not apply"
+            )
         return lines
     at_low, at_high = FREE_LIMITS.days(calls)
     minutes = math.ceil(calls / models.rpm)
     lines.append(
         f"free-model calls to record: {up_to(calls, not counts.exact)}: "
-        f"{_days(at_low)} at {FREE_LIMITS.per_day} a day, "
-        f"{_days(at_high)} at {FREE_LIMITS.per_day_with_credits} a day; "
-        f"about {minutes} minutes of calls at rpm {models.rpm}"
+        f"{_plural(at_low, 'day')} at {FREE_LIMITS.per_day} a day, "
+        f"{_plural(at_high, 'day')} at {FREE_LIMITS.per_day_with_credits} a day; "
+        f"about {_plural(minutes, 'minute')} of calls at rpm {models.rpm}"
     )
     return lines
 
 
-def _days(n: int) -> str:
-    return f"{n} day" if n == 1 else f"{n} days"
+def _plural(n: int, unit: str) -> str:
+    return f"{n} {unit}" if n == 1 else f"{n} {unit}s"
 
 
 @dataclass(frozen=True)

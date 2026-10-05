@@ -6,6 +6,7 @@ client with an httpx MockTransport into `tmp_path` only; nothing is written
 to the repository's `cassettes/` or `results/`.
 """
 
+import dataclasses
 import json
 from datetime import UTC, datetime
 
@@ -310,8 +311,23 @@ def test_the_quota_lines_without_free_calls_say_the_limits_do_not_apply():
     plan_inputs = inputs(system="synthetic/system-paid", judge="synthetic/judge-paid")
     counts = count_plan(full_plan(plan_inputs, None), None, plan_inputs.models)
     assert quota_lines(counts, plan_inputs.models)[1] == (
-        "free-model calls to record: none, so the free-model limits do not apply"
+        "free-model calls to record: none: the config names no :free model, "
+        "so the free-model limits do not apply"
     )
+
+
+def test_the_quota_lines_when_every_free_call_is_recorded():
+    plan_inputs = inputs()
+    counts = count_plan(full_plan(plan_inputs, None), None, plan_inputs.models)
+    done = dataclasses.replace(counts, free_to_record=0)
+    assert quota_lines(done, plan_inputs.models)[1] == "free-model calls to record: none"
+
+
+def test_one_minute_is_singular():
+    plan_inputs = inputs()
+    counts = count_plan(full_plan(plan_inputs, None), None, plan_inputs.models)
+    few = dataclasses.replace(counts, free_to_record=10)
+    assert quota_lines(few, plan_inputs.models)[1].endswith("about 1 minute of calls at rpm 18")
 
 
 # --- cost -------------------------------------------------------------------------
