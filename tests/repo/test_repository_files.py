@@ -69,6 +69,20 @@ def test_ci_runs_tests_and_the_evaluation_as_separate_steps():
     assert "${{ secrets" not in workflow  # replay only: no key in CI
 
 
+def test_ci_replays_into_a_temporary_directory_and_runs_the_gate():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    eval_step = workflow.split("- name: Eval", 1)[1].split("- name:", 1)[0]
+    # CI never rewrites the committed results/: the replay goes to the runner's temp.
+    assert "REPLAY_DIR: ${{ runner.temp }}/" in eval_step
+    commands = [line.strip() for line in eval_step.splitlines()]
+    replay = commands.index('llmeval eval --results-dir "$REPLAY_DIR"')
+    gate = commands.index('llmeval gate --results-dir "$REPLAY_DIR"')
+    cases = next(
+        i for i, line in enumerate(commands) if line.startswith("pytest -W error tests/eval")
+    )
+    assert replay < gate < cases
+
+
 def test_a_half_written_manifest_and_the_record_lock_are_never_committed():
     ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "cassettes/.manifest.json.partial" in ignored

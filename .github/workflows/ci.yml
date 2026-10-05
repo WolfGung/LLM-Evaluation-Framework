@@ -28,14 +28,24 @@ jobs:
       - name: Lint
         run: ruff check .
 
+      # Unit, app and repository tests. The repository tests include the check
+      # that the committed results/ equal a fresh replay of the cassettes.
       - name: Test
         run: pytest -W error --ignore=tests/eval --alluredir=allure-results
 
-      # Replays the recorded run and compares each case with the baseline.
-      # Green while pending (no manifest or no baseline); a regression or a
-      # case that now passes without a baseline update fails the job.
+      # Replays the recorded run into a temporary directory (the committed
+      # results/ stay untouched), runs the gate against the committed baseline
+      # (key rates within config/gate.yaml), then compares each case with the
+      # baseline. A regression, a new safety failure, or a known failure that
+      # now passes without a baseline update fails the job. Green while
+      # pending (no manifest).
       - name: Eval
-        run: pytest -W error tests/eval --alluredir=allure-results
+        env:
+          REPLAY_DIR: ${{ runner.temp }}/replay
+        run: |
+          llmeval eval --results-dir "$REPLAY_DIR"
+          llmeval gate --results-dir "$REPLAY_DIR"
+          pytest -W error tests/eval --alluredir=allure-results
 
       - name: Upload Allure results
         if: always()
