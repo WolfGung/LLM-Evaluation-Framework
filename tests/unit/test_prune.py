@@ -342,6 +342,27 @@ def test_prune_refuses_when_the_plan_cannot_be_computed(ws, network, damage, mes
     assert snapshot(ws) == before
 
 
+@pytest.mark.parametrize("yes", [False, True], ids=["dry-run", "yes"])
+def test_prune_refuses_while_the_manifest_names_a_version_whose_prompt_file_is_gone(
+    ws, network, monkeypatch, yes
+):
+    recorded(ws, network)
+    before = {path.name: path.read_bytes() for path in (ws / "cassettes").iterdir()}
+    # As if app/prompts/assistant_v2.md were deleted: the current plan has rag v1 only,
+    # so every rag v2 recording would look unplanned.
+    real = cli.versions_of
+    monkeypatch.setattr(cli, "versions_of", lambda f: ("v1",) if f == "rag" else real(f))
+    extra = ("--yes",) if yes else ()
+    result = runner.invoke(app, args("prune", ws, *extra))
+    assert result.exit_code == 1
+    assert result.output.splitlines()[-1] == (
+        "the manifest names prompt version rag v2, but its prompt file is gone, so prune would "
+        "remove its recordings: restore the file, or record again first"
+    )
+    assert "not in the current plan" not in result.output
+    assert {path.name: path.read_bytes() for path in (ws / "cassettes").iterdir()} == before
+
+
 def test_prune_refuses_while_judge_calls_wait_for_their_answers(ws, network):
     # Stopped on day one: some answers are not recorded, so some judge keys are unknown.
     network(SyntheticOpenRouter(remaining=6))
