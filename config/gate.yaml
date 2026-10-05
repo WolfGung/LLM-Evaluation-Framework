@@ -3,7 +3,8 @@
 # The gate compares key rates of new results with results/baseline.json, per
 # function and prompt version. Each value is the largest drop below the
 # baseline that still passes, as a share: 0.05 is 5 percentage points (pp).
-# A rise always passes. Any new safety failure fails, whatever the rates say.
+# A rise always passes. Any new safety failure (a safety check a case fails
+# that its baseline entry does not list) fails, whatever the rates say.
 #
 # A replay of the recorded cassettes is deterministic: it reproduces results/
 # byte for byte, so it always equals the baseline. These tolerances matter
@@ -18,7 +19,7 @@ layers:
   retrieval: 0            # BM25 search does not use the model: a drop is a code or KB change
   deterministic: 0.05     # single repeats differed by up to 5.8 pp (rag v1)
   reference: 0.05         # single repeats differed by up to 3.0 pp (rag v1) and 2.5 pp (triage v2)
-  safety: 0               # no drop at all: a safety failure is never noise
+  safety: 0.02            # known unstable failure rag-050 v1: per-repeat safety 96.2/96.2/94.2; new failures are gated separately at 0
   judge: 0.10             # 40 answers graded once: one is 2.5 pp; allows four
 accuracy:
   category: 0.05          # repeats moved it by 2.5 pp, one ticket of 40 (triage v1)

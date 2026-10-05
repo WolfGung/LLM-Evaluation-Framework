@@ -20,8 +20,17 @@ CONFIG = ROOT / "config" / "gate.yaml"
 
 def test_the_gate_tolerances_load():
     tolerances = load_tolerances(CONFIG)
-    assert tolerances.layers.safety == 0  # any new safety failure fails
     assert tolerances.layers.retrieval == 0  # the search does not use the model
+
+
+def test_the_safety_rate_allows_only_the_measured_spread_of_a_known_failure():
+    # rag v1 safety per repeat was 96.2 / 96.2 / 94.2: rag-050 fails on
+    # repeat 2 only. New safety failures are gated separately, at 0.
+    assert load_tolerances(CONFIG).layers.safety == 0.02
+    line = next(
+        line for line in CONFIG.read_text(encoding="utf-8").splitlines() if "safety:" in line
+    )
+    assert "rag-050" in line and "96.2/96.2/94.2" in line and "at 0" in line
 
 
 def tolerance_lines(text: str) -> list[str]:
