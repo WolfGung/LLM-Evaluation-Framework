@@ -16,9 +16,10 @@ venv/
 .coverage
 htmlcov/
 
-# Test reports
+# Test reports, and the published page built from them (python -m tools.site)
 allure-results/
 allure-report/
+site/
 
 # Live-mode results: not reproducible from cassettes, never committed
 results-live/

@@ -101,3 +101,9 @@ def test_a_half_written_manifest_and_the_record_lock_are_never_committed():
     assert "cassettes/.record.lock" in ignored
     # A cassette file prune is rewriting (renamed into place when written).
     assert "cassettes/.*.jsonl.partial" in ignored
+
+
+def test_the_built_page_and_report_are_not_committed():
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "site/" in ignored  # python -m tools.site and allure generate write it in CI
+    assert "allure-results/" in ignored
