@@ -30,6 +30,17 @@ from tools.render import (
 
 FIX = "run make readme and commit the files"
 FILES = default_files()
+# The generated blocks each page must hold, in order: a page that loses one
+# would quote its results nowhere, and no other test would notice.
+EXPECTED_BLOCKS = {
+    "README.md": ["results", "pairwise", "agreement"],
+    "docs/01-what-is-evaluated.md": ["scope"],
+    "docs/02-eval-strategy.md": ["cost", "gate"],
+    "docs/03-judge-validation.md": ["agreement", "judge", "pairwise", "history"],
+    "docs/04-safety-cases.md": ["safety"],
+    "docs/05-limitations.md": ["scope"],
+    "docs/06-tools-and-versions.md": [],
+}
 
 
 def name(path) -> str:
@@ -71,3 +82,11 @@ def test_no_number_from_the_results_is_written_outside_a_block(path):
 def test_every_history_quote_names_its_commit(path):
     unnamed = history_without_commit(path.read_text(encoding="utf-8"))
     assert not unnamed, f"{name(path)}: a history block names no commit: {unnamed[0][:80]}"
+
+
+def test_each_page_holds_its_generated_blocks():
+    assert sorted(name(path) for path in FILES) == sorted(EXPECTED_BLOCKS)
+    for path in FILES:
+        assert block_names(path.read_text(encoding="utf-8")) == EXPECTED_BLOCKS[name(path)], (
+            f"{name(path)} lost or gained a generated block"
+        )

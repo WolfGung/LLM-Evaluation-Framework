@@ -79,8 +79,9 @@ def test_the_live_job_is_skipped_without_the_key():
 
 def test_the_live_job_runs_live_gates_and_uploads_the_drift_report():
     live = workflow()["jobs"]["live"]
-    run = step_named(live, "Live run")["run"]
-    assert "llmeval live --results-dir results-live" in run
+    run = step_named(live, "Live run")
+    assert run["shell"] == "bash"  # pipefail: a failed live run fails the step through tee
+    assert "llmeval live --results-dir results-live" in run["run"]
     gate = step_named(live, "Gate")
     assert gate["shell"] == "bash"  # pipefail: a regression fails the step through tee
     assert "llmeval gate --results-dir results-live" in gate["run"]
