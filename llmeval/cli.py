@@ -17,6 +17,8 @@
   with `--yes` remove them; see `llmeval.prune`.
 - `retrieval`: the retrieval layer over the RAG dataset, offline. BM25 is
   deterministic, so this needs no model and no recording.
+- `baseline`: write `results/baseline.json` from the replay results in
+  `results/` and the manifest; refuses missing or stale results.
 
 The API key comes only from the environment and is never printed.
 """
@@ -34,7 +36,19 @@ import httpx
 import typer
 
 from app.assistant import DEFAULT_K
+from app.prompting import PromptError
 from app.retrieval import search
+from llmeval.baseline import (
+    BASELINE_PATH,
+    BaselineError,
+    CurrentInputs,
+    PairwiseMetrics,
+    build_baseline,
+    load_run_results,
+    result_label,
+    stale_reasons,
+    write_baseline,
+)
 from llmeval.callplan import (
     PlanCounts,
     PlanInputs,
@@ -85,7 +99,7 @@ from llmeval.recording import (
     record_all,
 )
 from llmeval.results import RESULTS_DIR, FunctionResults, PairwiseResults
-from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, run, versions_of
+from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, prompt_sha256, run, versions_of
 from llmeval.stability import Stability
 
 app = typer.Typer(
@@ -128,6 +142,8 @@ ConfigOption = Annotated[Path, typer.Option("--config", help="Model config file.
 DatasetsOption = Annotated[Path, typer.Option(help="Directory with the datasets.")]
 CassettesOption = Annotated[Path, typer.Option(help="Recorded calls.")]
 RubricOption = Annotated[Path, typer.Option(help="The judge rubric.")]
+ResultsOption = Annotated[Path, typer.Option(help="Directory with the replay results.")]
+BaselineOption = Annotated[Path, typer.Option(help="The baseline file.")]
 
 
 def _echo_notices(store: CassetteStore) -> None:
@@ -500,6 +516,74 @@ def prune_command(
         prune(inputs, cassettes_dir, apply=yes, echo=typer.echo)
     except (RecordLocked, PruneRefused, *PLAN_ERRORS) as exc:
         raise _fail(str(exc)) from None
+
+
+def _current_inputs(manifest: RunManifest, datasets_dir: Path, rubric: Path) -> CurrentInputs:
+    """sha256 of the prompts, datasets and rubric a replay would read now."""
+    prompts = {
+        (function, version): prompt_sha256(function, version)
+        for function, versions in manifest.prompt_versions.items()
+        if function in EVAL_FUNCTIONS
+        for version in versions
+    }
+    paths = _dataset_paths(datasets_dir).values()
+    datasets = {path.name: file_sha256(path) for path in paths if path.is_file()}
+    return CurrentInputs(prompts=prompts, datasets=datasets, rubric=load_rubric(rubric).sha256)
+
+
+def _plural(count: int, word: str) -> str:
+    return f"{count} {word}" if count == 1 else f"{count} {word}s"
+
+
+@app.command("baseline")
+def baseline_command(
+    results_dir: ResultsOption = RESULTS_DIR,
+    baseline: BaselineOption = BASELINE_PATH,
+    cassettes_dir: CassettesOption = CASSETTES_DIR,
+    datasets_dir: DatasetsOption = DATASETS_DIR,
+    rubric: RubricOption = RUBRIC_PATH,
+) -> None:
+    """Write the baseline of the recorded run from the replay results.
+
+    Reads results/ (one file per function and prompt version of the manifest,
+    plus the pairwise comparison) and writes results/baseline.json: per case,
+    whether it passed and which checks failed, and the key metrics the gate
+    compares. Refuses (exit 1) and keeps the old baseline when a results file
+    is missing, or when the results are stale: other models, repeats,
+    judge_repeats or rubric than the manifest, or a prompt, dataset or rubric
+    changed since the results were written. Run make eval first. Without a
+    manifest it prints "pending first recorded run" and writes nothing.
+    Needs no key and calls nothing.
+    """
+    try:
+        manifest = load_manifest(cassettes_dir)
+        if manifest is None:
+            typer.echo(PENDING_RECORDED_RUN)
+            return
+        current = _current_inputs(manifest, datasets_dir, rubric)
+        results = load_run_results(results_dir, manifest.prompt_versions)
+        reasons = stale_reasons(results, manifest, current)
+        if reasons:
+            lines = "\n".join(f"  {reason}" for reason in reasons)
+            raise _fail(
+                f"refused: the results are stale:\n{lines}\nrun make eval, then make baseline"
+            )
+        built = build_baseline(results.functions, manifest, results.pairwise)
+        path = write_baseline(built, baseline)
+    except (BaselineError, CassetteError, PromptError, RubricError, OSError) as exc:
+        raise _fail(str(exc)) from None
+    for result in results.functions:
+        cases = built.functions[result.function][result.version].cases.values()
+        passed = sum(case.passed for case in cases)
+        typer.echo(
+            f"{result_label(result)}: {_plural(len(cases), 'case')}: {passed} pass, "
+            f"{len(cases) - passed} known failures"
+        )
+    for result in results.pairwise:
+        consistent = PairwiseMetrics.of(result.summary).consistent
+        share = "n/a" if consistent is None else f"{consistent:.1%}"
+        typer.echo(f"{result_label(result)}: position consistency {share}")
+    typer.echo(f"wrote {path}")
 
 
 @app.command("retrieval")

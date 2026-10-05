@@ -98,6 +98,12 @@ def versions_of(function: str) -> tuple[str, ...]:
     return prompt_versions(PROMPT_NAMES[function])
 
 
+def prompt_sha256(function: str, version: str) -> str:
+    """sha256 of the prompt text one function and version runs with now."""
+    prompt = load_prompt(PROMPT_NAMES[function], version)
+    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+
 def judged(case: RagCase) -> bool:
     return case.category in JUDGED_CATEGORIES
 
@@ -557,14 +563,13 @@ def evaluate(
         )
     else:
         raise ValueError(f"unknown function {function!r}; known: {', '.join(EVAL_FUNCTIONS)}")
-    prompt = load_prompt(PROMPT_NAMES[function], version)
     graded = judge is not None and function == "rag"
     return FunctionResults(
         function=function,
         version=version,
         mode=str(mode),
         model=role.model,
-        prompt_sha256=hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        prompt_sha256=prompt_sha256(function, version),
         dataset=Path(dataset_path).name,
         dataset_sha256=file_sha256(dataset_path),
         repeats=repeats,

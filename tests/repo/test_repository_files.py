@@ -40,6 +40,12 @@ def test_make_has_the_recording_targets():
     assert {"test", "eval", "estimate", "status", "record", "prune", "lint"} <= phony
 
 
+def test_make_baseline_writes_the_baseline_from_the_committed_results():
+    targets, phony = make_targets()
+    assert targets["baseline"] == ["$(BIN)/llmeval baseline"]
+    assert "baseline" in phony
+
+
 def test_make_prune_says_it_removes_and_how_to_look_first():
     lines = (ROOT / "Makefile").read_text(encoding="utf-8").splitlines()
     at = lines.index("prune:")

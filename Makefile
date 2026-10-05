@@ -2,7 +2,7 @@ PYTHON ?= python3.12
 VENV ?= .venv
 BIN := $(VENV)/bin
 
-.PHONY: install test eval estimate status record prune lint
+.PHONY: install test eval baseline estimate status record prune lint
 
 install:
 	$(PYTHON) -m venv $(VENV)
@@ -17,6 +17,13 @@ test:
 eval:
 	$(BIN)/llmeval eval
 	$(BIN)/pytest -W error tests/eval
+
+# Write results/baseline.json from the replay results in results/ and the
+# manifest: each case's known failures and the key metrics. Refuses missing or
+# stale results (run make eval first). Update it deliberately: the eval tests
+# and the gate compare with it.
+baseline:
+	$(BIN)/llmeval baseline
 
 # The call plan, the free-quota days and the estimated cost. No key needed.
 estimate:
