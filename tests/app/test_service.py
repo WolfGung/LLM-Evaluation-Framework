@@ -167,7 +167,7 @@ def test_triage_refuses_bad_requests(payload):
         (
             MissingRecording("a" * 64, 0, None),
             503,
-            "no recording for key aaaaaaaaaaaa/0: run make record",
+            "No recording for key aaaaaaaaaaaa/0.",
         ),
         (QuotaExhausted(reset_at=None), 503, "free daily quota reached"),
         (OpenRouterError("POST /chat/completions failed: HTTP 500", 500), 502, "HTTP 500"),
@@ -194,9 +194,11 @@ def test_the_default_client_answers_a_replay_miss_with_503(tmp_path):
     for response in (assist, triage):
         assert response.status_code == 503
         detail = response.json()["detail"]
-        assert detail.startswith("no recording for adhoc/")
-        assert ": run make record" in detail
-        assert detail.endswith(REPLAY_MISS_HINT)
+        # A client of the service gets the hint first; "make record" is for
+        # the repository's owner, not for someone calling the API.
+        assert detail.startswith(REPLAY_MISS_HINT)
+        assert "No recording for adhoc/" in detail
+        assert "make record" not in detail
 
 
 def test_the_replay_miss_hint_points_ad_hoc_questions_to_live_mode():
@@ -209,7 +211,7 @@ def test_the_replay_miss_hint_points_ad_hoc_questions_to_live_mode():
         json={"question": "Q?", "version": "v1"},
     )
     assert response.json()["detail"] == (
-        f"no recording for key aaaaaaaaaaaa/0: run make record. {REPLAY_MISS_HINT}"
+        f"{REPLAY_MISS_HINT} No recording for key aaaaaaaaaaaa/0."
     )
 
 

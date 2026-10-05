@@ -64,8 +64,8 @@ class MissingRecording(LookupError):
         self.key = key
         self.repeat = repeat
         self.tag = tag
-        where = tag.label(repeat) if tag else f"key {key[:12]}/{repeat}"
-        super().__init__(f"no recording for {where}: run make record")
+        self.where = tag.label(repeat) if tag else f"key {key[:12]}/{repeat}"
+        super().__init__(f"no recording for {self.where}: run make record")
 
 
 @dataclass(frozen=True)

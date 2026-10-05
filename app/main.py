@@ -212,7 +212,8 @@ def create_app(
 
     @app.exception_handler(MissingRecording)
     async def _missing(_: Request, exc: MissingRecording) -> JSONResponse:
-        return JSONResponse(status_code=503, content={"detail": f"{exc}. {REPLAY_MISS_HINT}"})
+        detail = f"{REPLAY_MISS_HINT} No recording for {exc.where}."
+        return JSONResponse(status_code=503, content={"detail": detail})
 
     @app.exception_handler(QuotaExhausted)
     async def _quota(_: Request, exc: QuotaExhausted) -> JSONResponse:
