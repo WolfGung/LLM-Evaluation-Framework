@@ -11,7 +11,6 @@ repository's `cassettes/` or `results/`.
 """
 
 import json
-import re
 from pathlib import Path
 
 import httpx
@@ -27,6 +26,15 @@ from llmeval.client import ModelClient
 from llmeval.config import Config, Mode, Settings
 from llmeval.datasets import load_triage
 from llmeval.runner import run_rag
+from tests.allure_files import (
+    KEY_LIKE,
+    attachments,
+    categories_of,
+    labels,
+    parameters,
+    results_of,
+    written_text,
+)
 from tests.unit.test_eval_suite import (
     CASE,
     KNOWN_PRIORITY_FAILURE,
@@ -45,9 +53,7 @@ from tests.unit.test_eval_suite import (
 )
 
 RAG_SUITE = "tests/eval/test_rag_eval.py"
-# What must never reach a report: the synthetic key, request headers, and
-# long hex strings such as cassette keys (sha256 of a request).
-KEY_LIKE = re.compile(r"synthetic-key-123|sk-or-|Bearer|Authorization|\b[0-9a-f]{40,}\b")
+SYNTHETIC_KEY = "synthetic-key-123"
 
 
 @pytest.fixture
@@ -62,28 +68,9 @@ def run_with_allure(ws: Path, *selection: str, suite: str = "tests/eval/test_tri
     return code, out, out_dir
 
 
-def results_of(out_dir: Path) -> list[dict]:
-    return [json.loads(path.read_text("utf-8")) for path in sorted(out_dir.glob("*-result.json"))]
-
-
 def only_result(out_dir: Path) -> dict:
     (result,) = results_of(out_dir)
     return result
-
-
-def labels(result: dict, name: str) -> list[str]:
-    return [label["value"] for label in result["labels"] if label["name"] == name]
-
-
-def parameters(result: dict) -> dict[str, str]:
-    return {param["name"]: param["value"] for param in result.get("parameters", [])}
-
-
-def attachments(out_dir: Path, result: dict) -> dict[str, str]:
-    return {
-        item["name"]: (out_dir / item["source"]).read_text("utf-8")
-        for item in result.get("attachments", [])
-    }
 
 
 def write_rag_manifest(ws: Path) -> None:
@@ -170,11 +157,9 @@ def test_nothing_key_like_reaches_the_report(ws):
     code, out, out_dir = run_with_allure(ws, "-k", RAG_CASE.id, suite=RAG_SUITE)
     assert code == 0, out
     result = only_result(out_dir)
-    shown = " ".join(attachments(out_dir, result).values())
-    written = " ".join([result["name"], result["description"], json.dumps(result["labels"]), shown])
-    assert not KEY_LIKE.findall(written)
+    assert not KEY_LIKE.findall(written_text(out_dir, result))
     for path in out_dir.iterdir():
-        assert "synthetic-key-123" not in path.read_text("utf-8")
+        assert SYNTHETIC_KEY not in path.read_text("utf-8")
 
 
 # --- categories and environment ------------------------------------------------
@@ -183,22 +168,6 @@ REGRESSION = "Regression against the baseline"
 FIXED = "Known failure that now passes: update the baseline"
 KNOWN = "Known failure in the baseline"
 PENDING = "Pending: no recorded run or no baseline"
-
-
-def categories_of(out_dir: Path, result: dict) -> list[str]:
-    """The categories of categories.json a result falls in, by Allure's rule:
-    the status is one of `matchedStatuses`, and `messageRegex` matches the
-    whole message (Java's Pattern.matches with DOTALL)."""
-    categories = json.loads((out_dir / "categories.json").read_text("utf-8"))
-    message = (result.get("statusDetails") or {}).get("message")
-    found = []
-    for category in categories:
-        if result["status"] not in category["matchedStatuses"]:
-            continue
-        regex = category.get("messageRegex")
-        if regex is None or (message is not None and re.fullmatch(regex, message, re.DOTALL)):
-            found.append(category["name"])
-    return found
 
 
 @pytest.mark.parametrize(
@@ -301,7 +270,7 @@ def record_every_ticket(ws: Path, wrong: frozenset[str] = frozenset()) -> None:
             },
         )
 
-    config = Config(models=MODELS, settings=Settings(api_key=SecretStr("synthetic-key-123")))
+    config = Config(models=MODELS, settings=Settings(api_key=SecretStr(SYNTHETIC_KEY)))
     with ModelClient(
         Mode.RECORD,
         CassetteStore(ws / "cassettes"),
@@ -427,7 +396,7 @@ def record_comparison(ws: Path, preferences: tuple[str, str], answers=ANSWERS) -
 
         return reply
 
-    config = Config(models=MODELS, settings=Settings(api_key=SecretStr("synthetic-key-123")))
+    config = Config(models=MODELS, settings=Settings(api_key=SecretStr(SYNTHETIC_KEY)))
     records = {}
     for version in ("v1", "v2"):
         with ModelClient(
