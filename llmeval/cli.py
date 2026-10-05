@@ -19,6 +19,9 @@
   deterministic, so this needs no model and no recording.
 - `baseline`: write `results/baseline.json` from the replay results in
   `results/` and the manifest; refuses missing or stale results.
+- `gate`: compare the key rates of a results directory with the baseline,
+  within the tolerances of `config/gate.yaml`; exit 1 on a regression. See
+  `llmeval.gate`.
 
 The API key comes only from the environment and is never printed.
 """
@@ -44,6 +47,7 @@ from llmeval.baseline import (
     CurrentInputs,
     PairwiseMetrics,
     build_baseline,
+    load_baseline,
     load_run_results,
     result_label,
     stale_reasons,
@@ -86,6 +90,7 @@ from llmeval.datasets import (
     load_rag,
     load_triage,
 )
+from llmeval.gate import GATE_CONFIG_PATH, GateError, format_report, gate, load_tolerances
 from llmeval.openrouter import MissingAPIKey, OpenRouterError
 from llmeval.perf import Performance
 from llmeval.pricing import BudgetExceeded, PricingError, check_budget, format_usd
@@ -584,6 +589,44 @@ def baseline_command(
         share = "n/a" if consistent is None else f"{consistent:.1%}"
         typer.echo(f"{result_label(result)}: position consistency {share}")
     typer.echo(f"wrote {path}")
+
+
+@app.command("gate")
+def gate_command(
+    results_dir: ResultsOption = RESULTS_DIR,
+    baseline: BaselineOption = BASELINE_PATH,
+    tolerances: Annotated[Path, typer.Option(help="The gate tolerances.")] = GATE_CONFIG_PATH,
+    cassettes_dir: CassettesOption = CASSETTES_DIR,
+) -> None:
+    """Compare the key rates of the results with the baseline; exit 1 on a regression.
+
+    Checks every function, prompt version and pairwise comparison in the
+    baseline: all checks, each layer, new safety failures, triage accuracy,
+    the stable share, the judge's rule pass rate and valid verdicts, and
+    pairwise position consistency. A rate may drop by its tolerance in
+    config/gate.yaml; any new safety failure fails. A replay equals the
+    baseline exactly, so the tolerances matter for live (drift) results.
+    Without a baseline: "pending first recorded run" when there is no
+    manifest either, otherwise exit 1. Needs no key and calls nothing.
+    """
+    try:
+        expected = load_baseline(baseline)
+        if expected is None:
+            if load_manifest(cassettes_dir) is None:
+                typer.echo(PENDING_RECORDED_RUN)
+                return
+            raise _fail(f"no baseline in {baseline}: run make baseline")
+        allowed = load_tolerances(tolerances)
+        results = load_run_results(results_dir, expected.provenance.prompt_versions)
+        report = gate(expected, results, allowed)
+    except (BaselineError, GateError, CassetteError, OSError) as exc:
+        raise _fail(str(exc)) from None
+    modes = sorted({result.mode for result in (*results.functions, *results.pairwise)})
+    typer.echo(f"gate: {results_dir} ({', '.join(modes)} results) against {baseline}")
+    for line in format_report(report):
+        typer.echo(line)
+    if not report.passed:
+        raise typer.Exit(code=1)
 
 
 @app.command("retrieval")

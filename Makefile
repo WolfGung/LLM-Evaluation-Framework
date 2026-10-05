@@ -2,7 +2,7 @@ PYTHON ?= python3.12
 VENV ?= .venv
 BIN := $(VENV)/bin
 
-.PHONY: install test eval baseline estimate status record prune lint
+.PHONY: install test eval baseline gate estimate status record prune lint
 
 install:
 	$(PYTHON) -m venv $(VENV)
@@ -24,6 +24,12 @@ eval:
 # and the gate compare with it.
 baseline:
 	$(BIN)/llmeval baseline
+
+# Compare the key rates of results/ with results/baseline.json, within the
+# tolerances of config/gate.yaml; exit 1 on a regression. A replay always
+# equals the baseline; the tolerances matter for live (drift) results.
+gate:
+	$(BIN)/llmeval gate
 
 # The call plan, the free-quota days and the estimated cost. No key needed.
 estimate:

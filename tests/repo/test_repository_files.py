@@ -40,10 +40,11 @@ def test_make_has_the_recording_targets():
     assert {"test", "eval", "estimate", "status", "record", "prune", "lint"} <= phony
 
 
-def test_make_baseline_writes_the_baseline_from_the_committed_results():
+def test_make_has_the_baseline_and_gate_targets():
     targets, phony = make_targets()
     assert targets["baseline"] == ["$(BIN)/llmeval baseline"]
-    assert "baseline" in phony
+    assert targets["gate"] == ["$(BIN)/llmeval gate"]
+    assert {"baseline", "gate"} <= phony
 
 
 def test_make_prune_says_it_removes_and_how_to_look_first():

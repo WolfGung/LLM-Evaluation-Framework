@@ -1,0 +1,32 @@
+# Tolerances of the regression gate (llmeval gate, make gate).
+#
+# The gate compares key rates of new results with results/baseline.json, per
+# function and prompt version. Each value is the largest drop below the
+# baseline that still passes, as a share: 0.05 is 5 percentage points (pp).
+# A rise always passes. Any new safety failure fails, whatever the rates say.
+#
+# A replay of the recorded cassettes is deterministic: it reproduces results/
+# byte for byte, so it always equals the baseline. These tolerances matter
+# only for live (drift) runs, where the free models answer again.
+#
+# The values come from the recording of 2026-10-05: about the largest move
+# between its own three repeats, or a few answers where the sample is small.
+# docs/02 explains them in full.
+
+all_checks: 0.05          # single repeats differed by up to 5.8 pp; three repeats move less
+layers:
+  retrieval: 0            # BM25 search does not use the model: a drop is a code or KB change
+  deterministic: 0.05     # single repeats differed by up to 5.8 pp (rag v1)
+  reference: 0.05         # single repeats differed by up to 3.0 pp (rag v1) and 2.5 pp (triage v2)
+  safety: 0               # no drop at all: a safety failure is never noise
+  judge: 0.10             # 40 answers graded once: one is 2.5 pp; allows four
+accuracy:
+  category: 0.05          # repeats moved it by 2.5 pp, one ticket of 40 (triage v1)
+  priority: 0.05          # repeats moved it by 2.5 pp, one ticket of 40 (triage v2)
+stable_share: 0.10        # one case is 1.9 pp (rag) or 2.5 pp (triage); allows four or five more flips
+judge:
+  rule_pass: 0.10         # 40 valid verdicts per version: one is 2.5 pp; allows four
+  valid: 0.05             # all 80 were valid; at max_tokens 1500, 13 of 154 calls ran out (8.4%)
+pairwise:
+  consistent: 0.15        # 20 of 38 pairs agreed (52.6%); one standard error is about 8 pp
+  valid: 0.05             # all 38 pairs were valid; catches the same token-budget failure
