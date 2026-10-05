@@ -62,10 +62,12 @@ def test_make_has_the_baseline_and_gate_targets():
     assert {"baseline", "gate"} <= phony
 
 
-def test_make_readme_writes_the_results_block():
+def test_make_readme_and_make_docs_write_the_generated_blocks():
     targets, phony = make_targets()
+    # Both render every block of README.md and docs/*.md from results/.
     assert targets["readme"] == ["$(BIN)/python -m tools.render --write"]
-    assert "readme" in phony
+    assert targets["docs"] == ["$(BIN)/python -m tools.render --write"]
+    assert {"readme", "docs"} <= phony
 
 
 def test_make_prune_says_it_removes_and_how_to_look_first():

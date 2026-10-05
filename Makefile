@@ -2,7 +2,7 @@ PYTHON ?= python3.12
 VENV ?= .venv
 BIN := $(VENV)/bin
 
-.PHONY: install test eval baseline gate readme estimate status record prune label lint
+.PHONY: install test eval baseline gate readme docs estimate status record prune label lint
 
 install:
 	$(PYTHON) -m venv $(VENV)
@@ -34,10 +34,14 @@ baseline:
 gate:
 	$(BIN)/llmeval gate
 
-# Write the results block of README.md (between <!-- results:start --> and
-# <!-- results:end -->) from results/ and the manifest. A repository test fails
-# when the README differs; python -m tools.render --check says the same.
+# Write every generated block of README.md and docs/*.md (between
+# <!-- NAME:start --> and <!-- NAME:end -->) from results/, the manifest, the
+# gate tolerances and the datasets. A repository test fails when a file
+# differs; python -m tools.render --check says the same. make docs is the same.
 readme:
+	$(BIN)/python -m tools.render --write
+
+docs:
 	$(BIN)/python -m tools.render --write
 
 # The call plan, the free-quota days and the estimated cost. No key needed.

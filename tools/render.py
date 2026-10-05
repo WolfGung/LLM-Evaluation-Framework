@@ -1,15 +1,28 @@
-"""The README results block, rendered from results/ and the run manifest.
+"""Generated blocks in README.md and docs/, rendered from results/ and the run manifest.
 
-    python -m tools.render           # print the block
-    python -m tools.render --check   # exit 1 when README.md holds another block
-    python -m tools.render --write   # write the block into README.md
+    python -m tools.render             # print each block the files use
+    python -m tools.render --check     # exit 1 when a file holds another block
+    python -m tools.render --write     # write the blocks into the files
+    python -m tools.render --write README.md   # only the files named
 
-The block sits between `<!-- results:start -->` and `<!-- results:end -->`
-in README.md. It reads only the results files in `results/` and
-`cassettes/manifest.json`, so every number in it comes from the recorded run,
+The files are README.md and every docs/*.md, unless files are named. A block
+sits between `<!-- NAME:start -->` and `<!-- NAME:end -->` and is rendered
+from the files in `results/`, `cassettes/manifest.json`, the gate tolerances
+and the datasets only, so every number in it comes from the recorded run,
 and the same files always give the same block. Without a manifest there is
-no recorded run, and the block says `pending first recorded run`. A manifest
-without its results files is an error (run make eval), never "pending".
+no recorded run, and every block says `pending first recorded run`. A
+manifest without its results files is an error (run make eval), never
+"pending". The block names (`BLOCKS`):
+
+- `results`: the main table (below);
+- `history`: never rendered. It quotes a fact that is not in results/, such
+  as one from an earlier recording, and names the commit it comes from; the
+  repository test checks that it does.
+
+Numbers from the results may appear only inside blocks: `bare_results` finds
+a percentage, a count such as "20 of 38" or "118/156", a number of cases,
+runs, calls, pairs, answers or the like, or a dollar amount written anywhere
+else, and a repository test runs it over README.md and docs/.
 
 The main table has one column per function and prompt version:
 
@@ -44,69 +57,47 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import re
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC
-from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
 from llmeval.baseline import BaselineError, RunResults, load_run_results
 from llmeval.callplan import plural
 from llmeval.cassettes import PENDING_RECORDED_RUN, CassetteError, RunManifest, load_manifest
+from llmeval.datasets import RAG_PATH
+from llmeval.gate import GATE_CONFIG_PATH
 from llmeval.perf import COST_PLACES
 from llmeval.pricing import format_usd
 from llmeval.results import LAYERS, CaseRecord, FunctionResults
+from tools.formatting import (
+    NONE,
+    Part,
+    RenderError,
+    Table,
+    markdown,
+    percent,
+    seconds,
+)
+from tools.formatting import share as share
+from tools.sections import Recorded
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
+DOCS = ROOT / "docs"
 RESULTS = ROOT / "results"
 CASSETTES = ROOT / "cassettes"
+GATE_CONFIG = ROOT / GATE_CONFIG_PATH
+RAG_DATASET = ROOT / RAG_PATH
 
 START_MARKER = "<!-- results:start -->"
 END_MARKER = "<!-- results:end -->"
-# A cell with nothing to show: the layer or measure does not apply.
-NONE = "—"
+# A block that quotes a historical fact with its commit; never rendered.
+HISTORY = "history"
 FREE_SUFFIX = ":free"
 SAFETY = "safety"  # the safety layer, and the RAG category of the attack cases
-
-
-class RenderError(ValueError):
-    """The block cannot be rendered or placed: broken results, or no markers."""
-
-
-def _one_decimal(value: Decimal) -> str:
-    return str(value.quantize(Decimal("0.1"), rounding=ROUND_HALF_UP))
-
-
-def percent(count: int, total: int) -> str:
-    """`count` of `total` as a percentage with one decimal; a half rounds up."""
-    if not total:
-        return NONE
-    return f"{_one_decimal(Decimal(count) * 100 / Decimal(total))}%"
-
-
-def share(rate: float | None) -> str:
-    """A stored rate (a share such as 0.9551) as a percentage with one decimal."""
-    if rate is None:
-        return NONE
-    return f"{_one_decimal(Decimal(str(rate)) * 100)}%"
-
-
-def seconds(ms: float | None) -> str:
-    """Milliseconds as seconds with one decimal; a half rounds up."""
-    if ms is None:
-        return NONE
-    return f"{_one_decimal(Decimal(str(ms)) / 1000)} s"
-
-
-@dataclass(frozen=True)
-class Table:
-    """The main table: a header, rows of cells, and the line under it."""
-
-    header: tuple[str, ...]
-    rows: tuple[tuple[str, ...], ...]
-    line: str
 
 
 def load(results_dir: Path, cassettes_dir: Path) -> tuple[RunManifest, RunResults] | None:
@@ -234,80 +225,256 @@ def table(manifest: RunManifest, run: RunResults) -> Table:
     return Table(header=header, rows=tuple(rows), line=_line(manifest, run))
 
 
-def markdown(main: Table) -> str:
-    """The table in Markdown, numbers right-aligned, then the line under it."""
-    lines = [
-        "| " + " | ".join(main.header) + " |",
-        "|---|" + "---:|" * (len(main.header) - 1),
-        *("| " + " | ".join(row) + " |" for row in main.rows),
-    ]
-    return "\n".join(lines) + f"\n\n{main.line}"
+
+
+# --- blocks ----------------------------------------------------------------------------
+
+BlockFn = Callable[[Recorded], Sequence[Part]]
+
+
+def _results_block(recorded: Recorded) -> list[Part]:
+    return [table(recorded.manifest, recorded.run)]
+
+
+BLOCKS: dict[str, BlockFn] = {
+    "results": _results_block,
+}
+
+
+@dataclass(frozen=True)
+class Sources:
+    """Where the blocks read from: the results, the manifest, the gate
+    tolerances and the RAG dataset (for the attack descriptions)."""
+
+    results_dir: Path = RESULTS
+    cassettes_dir: Path = CASSETTES
+    gate_config: Path = GATE_CONFIG
+    rag_dataset: Path = RAG_DATASET
+
+
+def recorded(sources: Sources) -> Recorded | None:
+    """The recorded run, or None without a manifest."""
+    loaded = load(sources.results_dir, sources.cassettes_dir)
+    if loaded is None:
+        return None
+    manifest, run = loaded
+    return Recorded(
+        manifest=manifest,
+        run=run,
+        results_dir=sources.results_dir,
+        gate_config=sources.gate_config,
+        rag_dataset=sources.rag_dataset,
+    )
+
+
+def render_bodies(names: Sequence[str], sources: Sources) -> dict[str, str]:
+    """What goes between the markers of each named block: the block's parts in
+    Markdown, or the pending sentence without a recorded run."""
+    if unknown := [name for name in names if name not in BLOCKS]:
+        raise RenderError(f"unknown block {unknown[0]!r} (known: {', '.join(BLOCKS)})")
+    run = recorded(sources)
+    bodies = {}
+    for name in dict.fromkeys(names):
+        body = PENDING_RECORDED_RUN if run is None else markdown(BLOCKS[name](run))
+        bodies[name] = f"\n{body}\n\n"
+    return bodies
 
 
 def render_block(results_dir: Path = RESULTS, cassettes_dir: Path = CASSETTES) -> str:
-    """What goes between the markers: the table and its line, or the pending sentence."""
-    loaded = load(results_dir, cassettes_dir)
-    body = PENDING_RECORDED_RUN if loaded is None else markdown(table(*loaded))
-    return f"\n{body}\n\n"
+    """What goes between the markers of the main results block."""
+    sources = Sources(results_dir=results_dir, cassettes_dir=cassettes_dir)
+    return render_bodies(["results"], sources)["results"]
 
 
-def replace_block(text: str, block: str) -> str:
-    """`text` with `block` between its markers; exactly one ordered pair is required."""
-    starts, ends = text.count(START_MARKER), text.count(END_MARKER)
-    start, end = text.find(START_MARKER), text.find(END_MARKER)
-    if starts != 1 or ends != 1 or end < start:
-        raise RenderError(f"needs one {START_MARKER} line, then one {END_MARKER} line")
-    head = text[: start + len(START_MARKER)]
-    return f"{head}\n{block}{text[end:]}"
+# --- markers ---------------------------------------------------------------------------
+
+MARKER = re.compile(r"<!-- ([a-z][a-z0-9-]*):(start|end) -->")
+
+
+@dataclass(frozen=True)
+class _Span:
+    name: str
+    start: int  # just after the start marker
+    end: int  # where the end marker begins
+
+
+def _spans(text: str) -> list[_Span]:
+    """The blocks of `text` in order; broken markers raise `RenderError`."""
+    spans: list[_Span] = []
+    open_name: str | None = None
+    open_at = 0
+    for match in MARKER.finditer(text):
+        name, kind = match.groups()
+        if open_name is None:
+            if kind == "end":
+                raise RenderError(f"{match.group(0)} without its start")
+            open_name, open_at = name, match.end()
+        elif kind == "start" or name != open_name:
+            raise RenderError(f"{match.group(0)} inside the {open_name} block")
+        else:
+            spans.append(_Span(name, open_at, match.start()))
+            open_name = None
+    if open_name is not None:
+        raise RenderError(f"no <!-- {open_name}:end --> line after its start")
+    return spans
+
+
+def block_names(text: str) -> list[str]:
+    """The names of the blocks in `text`, in order (history blocks included)."""
+    return [span.name for span in _spans(text)]
+
+
+def replace_blocks(text: str, bodies: Mapping[str, str]) -> str:
+    """`text` with each block's content replaced by its body; history blocks
+    stay as written. A block without a body raises `RenderError`."""
+    out, last = [], 0
+    for span in _spans(text):
+        if span.name == HISTORY:
+            continue
+        if span.name not in bodies:
+            raise RenderError(f"unknown block {span.name!r} (known: {', '.join(BLOCKS)})")
+        out += [text[last : span.start], "\n", bodies[span.name]]
+        last = span.end
+    out.append(text[last:])
+    return "".join(out)
+
+
+def render_text(text: str, sources: Sources) -> str:
+    """`text` with every block rendered."""
+    names = [name for name in block_names(text) if name != HISTORY]
+    return replace_blocks(text, render_bodies(names, sources))
+
+
+def outside_blocks(text: str) -> str:
+    """`text` without the content of its blocks (the markers stay)."""
+    out, last = [], 0
+    for span in _spans(text):
+        out.append(text[last : span.start])
+        last = span.end
+    out.append(text[last:])
+    return "".join(out)
+
+
+def history_bodies(text: str) -> list[str]:
+    return [text[span.start : span.end].strip() for span in _spans(text) if span.name == HISTORY]
+
+
+# A commit named by its hash: "commit 66b4a3a", "commits 66b4a3a and 1fc63b9".
+COMMIT = re.compile(r"\bcommits?\b.{0,80}?\b[0-9a-f]{7,40}\b", re.IGNORECASE | re.DOTALL)
+
+
+def history_without_commit(text: str) -> list[str]:
+    """The history quotes of `text` that name no commit."""
+    return [body for body in history_bodies(text) if not COMMIT.search(body)]
+
+
+# --- the guard -------------------------------------------------------------------------
+
+RESULT_NOUNS = (
+    "cases?|runs?|calls?|pairs?|answers?|checks?|labels?|verdicts?|failures?|"
+    "disagreements?|preferences?|tickets?|questions?|grades?|gradings?"
+)
+BARE_RESULTS = (
+    re.compile(r"\d+(?:\.\d+)?\s?%"),
+    re.compile(r"\b\d+\s+of\s+(?:the\s+)?\d+\b"),
+    re.compile(r"\b\d+\s?/\s?\d+\b"),
+    re.compile(rf"\b\d[\d,]*\s+(?:[a-z-]+\s+)?(?:{RESULT_NOUNS})\b", re.IGNORECASE),
+    re.compile(r"\$\s?\d"),
+)
+
+
+def bare_results(text: str) -> list[str]:
+    """Numbers in `text` that read like results: percentages, "N of M",
+    "N/M", a count of cases, runs, calls and the like, and dollar amounts.
+    Run it on the text outside the blocks (`outside_blocks`)."""
+    return [match.group(0) for pattern in BARE_RESULTS for match in pattern.finditer(text)]
+
+
+# --- the command line ------------------------------------------------------------------
+
+
+def default_files() -> list[Path]:
+    """README.md, then every docs/*.md in name order."""
+    return [README, *sorted(DOCS.glob("*.md"))]
+
+
+def _print_blocks(files: Sequence[Path], sources: Sources) -> None:
+    names: list[str] = []
+    for path in files:
+        names += [n for n in block_names(path.read_text(encoding="utf-8")) if n != HISTORY]
+    bodies = render_bodies(names, sources)
+    for name, body in bodies.items():
+        print(f"<!-- {name}:start -->\n{body}<!-- {name}:end -->")
+
+
+def _show(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return path.name
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m tools.render",
-        description="Render the README results block from results/ and the run manifest.",
+        description="Render the generated blocks of README.md and docs/ from results/.",
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument(
-        "--check", action="store_true", help="exit 1 when the README holds another block"
+        "--check", action="store_true", help="exit 1 when a file holds another block"
     )
-    mode.add_argument("--write", action="store_true", help="write the block into the README")
-    parser.add_argument("--readme", type=Path, default=README, help="the README file")
+    mode.add_argument("--write", action="store_true", help="write the blocks into the files")
+    parser.add_argument(
+        "files", nargs="*", type=Path, help="the files (default: README.md and docs/*.md)"
+    )
     parser.add_argument("--results-dir", type=Path, default=RESULTS, help="the results files")
     parser.add_argument("--cassettes-dir", type=Path, default=CASSETTES, help="the manifest")
+    parser.add_argument("--gate-config", type=Path, default=GATE_CONFIG, help="the tolerances")
+    parser.add_argument("--rag-dataset", type=Path, default=RAG_DATASET, help="the RAG cases")
     args = parser.parse_args(argv)
-    try:
-        block = render_block(args.results_dir, args.cassettes_dir)
-        if not (args.check or args.write):
-            print(block, end="")
-            return 0
-        text = args.readme.read_text(encoding="utf-8")
-        updated = replace_block(text, block)
-    except RenderError as exc:
-        print(f"{args.readme.name}: {str(exc).splitlines()[0]}", file=sys.stderr)
-        return 1
-    except OSError as exc:
-        print(f"{args.readme.name}: {exc.strerror}", file=sys.stderr)
-        return 1
-    name = args.readme.name
-    if args.check:
-        if updated == text:
-            print(f"{name}: the results block matches results/")
-            return 0
-        print(
-            f"{name}: the results block differs from results/: run python -m tools.render --write",
-            file=sys.stderr,
-        )
-        diff = difflib.unified_diff(
-            text.splitlines(), updated.splitlines(), "README now", "rendered", lineterm=""
-        )
-        print("\n".join(diff), file=sys.stderr)
-        return 1
-    if updated != text:
-        args.readme.write_text(updated, encoding="utf-8")
-        print(f"{name}: results block written")
-    else:
-        print(f"{name}: the results block is up to date")
-    return 0
+    sources = Sources(args.results_dir, args.cassettes_dir, args.gate_config, args.rag_dataset)
+    files = args.files or default_files()
+    if not (args.check or args.write):
+        try:
+            _print_blocks(files, sources)
+        except (RenderError, OSError) as exc:
+            print(str(exc).splitlines()[0], file=sys.stderr)
+            return 1
+        return 0
+    failed = False
+    for path in files:
+        name = _show(path)
+        try:
+            text = path.read_text(encoding="utf-8")
+            updated = render_text(text, sources)
+        except RenderError as exc:
+            print(f"{name}: {str(exc).splitlines()[0]}", file=sys.stderr)
+            failed = True
+            continue
+        except OSError as exc:
+            print(f"{name}: {exc.strerror}", file=sys.stderr)
+            failed = True
+            continue
+        if args.check:
+            if updated == text:
+                print(f"{name}: the generated blocks match results/")
+                continue
+            failed = True
+            print(
+                f"{name}: the generated blocks differ from results/: "
+                "run python -m tools.render --write",
+                file=sys.stderr,
+            )
+            diff = difflib.unified_diff(
+                text.splitlines(), updated.splitlines(), f"{name} now", "rendered", lineterm=""
+            )
+            print("\n".join(diff), file=sys.stderr)
+        elif updated != text:
+            path.write_text(updated, encoding="utf-8")
+            print(f"{name}: blocks written")
+        else:
+            print(f"{name}: the blocks are up to date")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

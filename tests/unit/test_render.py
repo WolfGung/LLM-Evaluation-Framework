@@ -252,7 +252,6 @@ def run_main(ws, *args):
     return render.main(
         [
             *args,
-            "--readme",
             str(ws / "README.md"),
             "--results-dir",
             str(ws / "results"),
@@ -276,20 +275,20 @@ def test_write_replaces_only_the_block_and_check_then_passes(ws, capsys):
 
 def test_without_a_flag_the_block_is_printed(ws, capsys):
     assert run_main(ws) == 0
-    assert capsys.readouterr().out == "\npending first recorded run\n\n"
+    assert capsys.readouterr().out == f"{START}\n\npending first recorded run\n\n{END}\n"
 
 
 @pytest.mark.parametrize(
     "text",
-    ["# Title\n\nNo markers.\n", f"{START}\n{START}\nx\n{END}\n", f"{END}\nx\n{START}\n"],
-    ids=["none", "twice", "reversed"],
+    [f"{START}\n{START}\nx\n{END}\n", f"{END}\nx\n{START}\n"],
+    ids=["twice", "reversed"],
 )
-def test_a_readme_without_one_ordered_pair_of_markers_is_refused(ws, capsys, text):
+def test_a_readme_with_markers_out_of_order_is_refused(ws, capsys, text):
     (ws / "README.md").write_text(text, encoding="utf-8")
     assert run_main(ws, "--check") == 1
     assert run_main(ws, "--write") == 1
     assert (ws / "README.md").read_text(encoding="utf-8") == text
-    assert "results:start" in capsys.readouterr().err
+    assert "results:" in capsys.readouterr().err
 
 
 def test_broken_results_exit_1_with_one_line(ws, capsys):
