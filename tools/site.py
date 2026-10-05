@@ -33,9 +33,11 @@ SITE = ROOT / "site" / "index.html"
 # Where the Allure report sits next to the page.
 REPORT = "report/"
 TITLE = "LLM Evaluation Framework"
+# The README's one sentence (a repository test keeps them the same).
 SUMMARY = (
-    "Layered evaluation of two LLM features, a support assistant and a ticket triage, "
-    "replayed from recorded calls to free models, so it runs in CI at no cost."
+    "Layered checks for two LLM features, a support assistant and a ticket triage, that show "
+    "in CI what a prompt or model change made better or worse, replayed from real recorded "
+    "calls so every run is free."
 )
 MAIN_CAPTION = "Each prompt version of both functions, layer by layer"
 BEHAVIORS = (
