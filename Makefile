@@ -2,7 +2,7 @@ PYTHON ?= python3.12
 VENV ?= .venv
 BIN := $(VENV)/bin
 
-.PHONY: install test eval estimate status record lint
+.PHONY: install test eval estimate status record prune lint
 
 install:
 	$(PYTHON) -m venv $(VENV)
@@ -33,6 +33,14 @@ status:
 # stops it cleanly (exit code 130); every recorded call is kept.
 record:
 	$(BIN)/llmeval record
+
+# Remove the recorded entries the current plan no longer has, for example the
+# judge calls of an older judge config: runs llmeval prune --yes. To see the
+# list first and change nothing, run $(BIN)/llmeval prune. The cassettes are
+# in git, so git can bring removed entries back. Prune never edits the
+# manifest; make record rewrites it once the current plan is fully recorded.
+prune:
+	$(BIN)/llmeval prune --yes
 
 lint:
 	$(BIN)/ruff check .

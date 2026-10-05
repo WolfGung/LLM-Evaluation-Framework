@@ -27,6 +27,8 @@ results-live/
 cassettes/.manifest.json.partial
 # Held while make record runs: one record run at a time
 cassettes/.record.lock
+# A cassette file being rewritten by make prune (renamed into place when written)
+cassettes/.*.jsonl.partial
 
 # Local secrets
 .env

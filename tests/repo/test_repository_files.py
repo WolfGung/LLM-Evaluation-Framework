@@ -36,7 +36,21 @@ def test_make_has_the_recording_targets():
     targets, phony = make_targets()
     for name in ("estimate", "status", "record"):
         assert targets[name] == [f"$(BIN)/llmeval {name}"]
-    assert {"test", "eval", "estimate", "status", "record", "lint"} <= phony
+    assert targets["prune"] == ["$(BIN)/llmeval prune --yes"]
+    assert {"test", "eval", "estimate", "status", "record", "prune", "lint"} <= phony
+
+
+def test_make_prune_says_it_removes_and_how_to_look_first():
+    lines = (ROOT / "Makefile").read_text(encoding="utf-8").splitlines()
+    at = lines.index("prune:")
+    comment = []
+    for line in reversed(lines[:at]):
+        if not line.startswith("#"):
+            break
+        comment.insert(0, line)
+    text = " ".join(comment)
+    assert "llmeval prune" in text  # the dry run that only lists
+    assert "git" in text  # the cassettes are in git, so a removal can be undone
 
 
 def test_ci_runs_tests_and_the_evaluation_as_separate_steps():
@@ -52,3 +66,5 @@ def test_a_half_written_manifest_and_the_record_lock_are_never_committed():
     ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "cassettes/.manifest.json.partial" in ignored
     assert "cassettes/.record.lock" in ignored
+    # A cassette file prune is rewriting (renamed into place when written).
+    assert "cassettes/.*.jsonl.partial" in ignored
