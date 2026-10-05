@@ -243,9 +243,10 @@ def agreement_parts(report: AgreementReport, failures: int) -> list[Part]:
     )
     disagreements = cells["judge_pass"]["human_fail"] + cells["judge_fail"]["human_pass"]
     kappa = decimal(report.kappa, 2) if report.kappa is not None else report.kappa_note
+    commented = any(item.human_comment for item in report.disagreements)
     listed = (
-        f"{disagreements}, listed in results/judge-agreement.json with the judge's reasons "
-        "and the author's comments"
+        f"{disagreements}, listed in results/judge-agreement.json with the judge's reasons"
+        + (" and the author's comments" if commented else "")
         if disagreements
         else "0"
     )

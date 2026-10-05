@@ -10,7 +10,7 @@ from fractions import Fraction
 
 import pytest
 
-from llmeval.agreement import AgreementReport, SampleSummary, write_agreement
+from llmeval.agreement import AgreementReport, Disagreement, SampleSummary, write_agreement
 from llmeval.cassettes import write_manifest
 from llmeval.results import PairwiseCaseRecord, write_results
 from tests.unit import synthetic_results as syn
@@ -194,13 +194,30 @@ def test_with_labels_the_agreement_block_shows_agreement_kappa_and_the_confusion
         "| Judge: pass | 1 | 1 |\n"
         "| Judge: fail | 0 | 1 |\n\n"
         "Percent agreement: 2 of 3 (66.7%). Cohen's kappa: 0.40. Disagreements: 1, listed in "
-        "results/judge-agreement.json with the judge's reasons and the author's comments.\n\n"
+        "results/judge-agreement.json with the judge's reasons.\n\n"
         "Labelled: 3 of 3 sample answers.\n\n"
         "Pavel Zhukov Atum, the author, labelled 3 judged answers by hand, blind to the judge's "
         "verdict (make label): "
         "all 2 answers the judge failed and 1 it passed. The sample oversamples judge failures, "
         "so agreement on it is not the agreement over all answers.\n\n"
     )
+
+
+def test_the_agreement_block_mentions_comments_only_when_a_disagreement_has_one(ws):
+    record_rag(ws, PAIRS)
+    disagreement = Disagreement(
+        case="rag-001",
+        version="v1",
+        repeat=0,
+        category="answerable",
+        judge="pass",
+        human="fail",
+        judge_scores={"groundedness": 5, "helpfulness": 5, "tone": 5},
+        judge_reasons="Synthetic reasons.",
+        human_comment="Synthetic comment.",
+    )
+    write_agreement(labelled_report(disagreements=[disagreement]), ws / "results")
+    assert "with the judge's reasons and the author's comments." in body(ws, "agreement")
 
 
 def test_a_partial_labelling_and_an_undefined_kappa_are_named(ws):
