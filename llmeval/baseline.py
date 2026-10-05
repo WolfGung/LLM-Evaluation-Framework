@@ -129,8 +129,18 @@ class FunctionBaseline(_Record):
     cases: dict[str, CaseBaseline]
 
 
+class InputHashes(_Record):
+    """sha256 of the prompt and of the dataset file one function and version ran with."""
+
+    prompt_sha256: str
+    dataset_sha256: str
+
+
 class Provenance(_Record):
-    """The recorded run the baseline was measured on (from its manifest)."""
+    """The recorded run the baseline was measured on (from its manifest), and
+    what it ran with: `inputs` per function and version (from the results)
+    and the judge rubric (`Rubric.sha256`, None without the judge layer). The
+    gate notes when new results ran with other inputs."""
 
     recorded_from: datetime
     recorded_to: datetime
@@ -139,6 +149,8 @@ class Provenance(_Record):
     judge_repeats: JudgeRepeats
     prompt_versions: dict[str, tuple[str, ...]]
     stability_cases: tuple[str, ...] | None = None
+    inputs: dict[str, dict[str, InputHashes]] = Field(default_factory=dict)
+    rubric_sha256: str | None = None
 
 
 class Baseline(_Record):
@@ -197,11 +209,15 @@ def build_baseline(
 ) -> Baseline:
     """The baseline of a replay of the recorded run described by `manifest`."""
     functions: dict[str, dict[str, FunctionBaseline]] = {}
+    inputs: dict[str, dict[str, InputHashes]] = {}
     for result in results:
         _replay_only(result)
         cases = {record.id: case_baseline(record) for record in result.cases}
         functions.setdefault(result.function, {})[result.version] = FunctionBaseline(
             metrics=Metrics.of(result.summary), cases=cases
+        )
+        inputs.setdefault(result.function, {})[result.version] = InputHashes(
+            prompt_sha256=result.prompt_sha256, dataset_sha256=result.dataset_sha256
         )
     comparisons: dict[str, dict[str, PairwiseMetrics]] = {}
     for result in pairwise:
@@ -217,6 +233,8 @@ def build_baseline(
         judge_repeats=manifest.judge_repeats,
         prompt_versions=dict(manifest.prompt_versions),
         stability_cases=manifest.stability_cases,
+        inputs=inputs,
+        rubric_sha256=manifest.rubric_sha256,
     )
     return Baseline(provenance=provenance, functions=functions, pairwise=comparisons)
 

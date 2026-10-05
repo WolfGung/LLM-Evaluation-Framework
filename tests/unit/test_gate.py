@@ -22,6 +22,7 @@ from llmeval.gate import (
     gate,
     load_tolerances,
     rate_row,
+    results_outside,
 )
 from llmeval.results import write_results
 from tests.unit import synthetic_results as syn
@@ -303,6 +304,45 @@ def test_a_layer_without_a_tolerance_is_refused():
         report_of(run, run)
 
 
+# --- notes: inputs changed since the baseline, results outside it ---------------
+
+
+def test_a_changed_prompt_dataset_or_rubric_is_noted_not_failed():
+    pair = syn.pairwise_results([syn.pair_case("rag-001", "A", "B")])
+    before = RunResults(
+        functions=(rag(*twenty_rag_cases()), triage(tri("tri-001"))), pairwise=(pair,)
+    )
+    changed_rag = rag(*twenty_rag_cases()).model_copy(
+        update={"prompt_sha256": "f" * 64, "dataset_sha256": "e" * 64, "rubric_sha256": "c" * 64}
+    )
+    changed_pair = pair.model_copy(update={"rubric_sha256": "c" * 64})
+    now = RunResults(functions=(changed_rag, triage(tri("tri-001"))), pairwise=(changed_pair,))
+    report = report_of(before, now)
+    assert report.notes == (
+        "changed since the baseline: rag v1 prompt, dataset, rubric",
+        "changed since the baseline: rag v1 vs v2 rubric",
+    )
+    assert report.passed  # a note, not a failure
+
+
+def test_results_outside_the_baseline_are_named(tmp_path):
+    for name in (
+        "rag-v1.json",
+        "rag-v3.json",
+        "rag-v1-vs-v3.json",
+        "triage-v1.json",
+        "baseline.json",
+        "judge-agreement.json",
+    ):
+        (tmp_path / name).write_text("{}", encoding="utf-8")
+    baseline = build_baseline(
+        [rag(*twenty_rag_cases()), triage(tri("tri-001"))], syn.manifest({"rag": ("v1",)})
+    )
+    assert results_outside(tmp_path, baseline) == ["rag v1 vs v3", "rag v3"]
+    report = gate(baseline, RunResults(functions=()), TOLERANCES, outside=["rag v3"])
+    assert "not gated (not in the baseline): rag v3" in report.notes
+
+
 # --- the table ---------------------------------------------------------------------
 
 
@@ -463,6 +503,15 @@ def test_llmeval_gate_without_a_baseline(tmp_path):
     result = runner.invoke(app, gate_args(ws, tolerances))
     assert result.exit_code == 1
     assert f"no baseline in {ws / 'baseline.json'}: run make baseline" in result.output
+
+
+def test_llmeval_gate_names_results_it_does_not_gate(tmp_path):
+    ws, tolerances = gate_workspace(tmp_path)
+    copy = (ws / "results" / "rag-v2.json").read_bytes()
+    (ws / "results" / "rag-v3.json").write_bytes(copy)
+    result = runner.invoke(app, gate_args(ws, tolerances))
+    assert result.exit_code == 0, result.output
+    assert "not gated (not in the baseline): rag v3" in result.output
 
 
 def test_llmeval_gate_names_live_results(tmp_path):

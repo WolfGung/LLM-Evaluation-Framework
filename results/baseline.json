@@ -19,7 +19,30 @@
         "v2"
       ]
     },
-    "stability_cases": null
+    "stability_cases": null,
+    "inputs": {
+      "rag": {
+        "v1": {
+          "prompt_sha256": "1c0368622e2598f52bba91d2b74e53b0cf04effee83c225236bf3deb12a5c178",
+          "dataset_sha256": "2d9a32d6aac7de53190fe03d57d783012b25c6ebe143087f4b817d47cfbb91a3"
+        },
+        "v2": {
+          "prompt_sha256": "8e8d364da5ae15601639a6b73d192dea51575700fccd8ca7c09e70f2cc563e9a",
+          "dataset_sha256": "2d9a32d6aac7de53190fe03d57d783012b25c6ebe143087f4b817d47cfbb91a3"
+        }
+      },
+      "triage": {
+        "v1": {
+          "prompt_sha256": "3a64b2af8003aa7b6341298f7ae37589faadeaca61dcf934660243bb47a53c12",
+          "dataset_sha256": "4dd4f087b2d93ab318741b5fb105e50e12e55ea768f84543cc08db9afdb33245"
+        },
+        "v2": {
+          "prompt_sha256": "957d4a2af84ffda4b9255051a0a6153b514e23b865bc92551b90cdd4510f56e6",
+          "dataset_sha256": "4dd4f087b2d93ab318741b5fb105e50e12e55ea768f84543cc08db9afdb33245"
+        }
+      }
+    },
+    "rubric_sha256": "68d6910f30641b27ad22c6d98dfbf9d962457eb438ffeee2c3002e2981ae1e0e"
   },
   "functions": {
     "rag": {

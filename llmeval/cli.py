@@ -91,7 +91,14 @@ from llmeval.datasets import (
     load_rag,
     load_triage,
 )
-from llmeval.gate import GATE_CONFIG_PATH, GateError, format_report, gate, load_tolerances
+from llmeval.gate import (
+    GATE_CONFIG_PATH,
+    GateError,
+    format_report,
+    gate,
+    load_tolerances,
+    results_outside,
+)
 from llmeval.openrouter import MissingAPIKey, OpenRouterError
 from llmeval.perf import Performance
 from llmeval.pricing import BudgetExceeded, PricingError, check_budget, format_usd
@@ -616,7 +623,7 @@ def gate_command(
             raise _fail(f"no baseline in {baseline}: run make baseline")
         allowed = load_tolerances(tolerances)
         results = load_run_results(results_dir, expected.provenance.prompt_versions)
-        report = gate(expected, results, allowed)
+        report = gate(expected, results, allowed, outside=results_outside(results_dir, expected))
     except (BaselineError, GateError, CassetteError, OSError) as exc:
         raise _fail(str(exc)) from None
     modes = sorted({result.mode for result in (*results.functions, *results.pairwise)})

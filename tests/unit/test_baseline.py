@@ -19,6 +19,7 @@ from llmeval.baseline import (
     BaselineError,
     CaseBaseline,
     CurrentInputs,
+    InputHashes,
     Metrics,
     PairwiseMetrics,
     baseline_differences,
@@ -513,11 +514,29 @@ def test_equal_baselines_have_no_differences():
 def test_differences_name_versions_and_cases_on_either_side():
     both = build_baseline([graded_rag("v1"), graded_rag("v2")], syn.manifest())
     only_v1 = build_baseline([graded_rag("v1")], syn.manifest())
-    assert baseline_differences(only_v1, both) == ["rag v2: not in the committed baseline"]
-    assert baseline_differences(both, only_v1) == ["rag v2: not in the results"]
+    assert "rag v2: not in the committed baseline" in baseline_differences(only_v1, both)
+    assert "rag v2: not in the results" in baseline_differences(both, only_v1)
+    # The provenance names the inputs of rag v2 on one side only.
+    assert (
+        f"provenance inputs.rag.v2.prompt_sha256: committed null, rebuilt "
+        f"{prompt_sha256('rag', 'v2')}"
+    ) in baseline_differences(only_v1, both)
     fewer = build_baseline(
         [syn.function_results("rag", "v1", graded_rag().cases[:3])], syn.manifest()
     )
     differences = baseline_differences(only_v1, fewer)
     assert "rag v1 rag-004: not in the results" in differences
     assert "rag v1 metric layers.safety: committed 0.75, rebuilt 1.0" in differences
+
+
+def test_the_provenance_keeps_the_input_hashes_of_the_results():
+    rag_v1 = graded_rag("v1", dataset_sha256="d" * 64)
+    triage_v1 = syn.function_results(
+        "triage", "v1", [syn.case_record("tri-001", checks=syn.TRIAGE_CHECKS)]
+    )
+    provenance = build_baseline([rag_v1, triage_v1], syn.manifest()).provenance
+    assert provenance.inputs["rag"]["v1"] == InputHashes(
+        prompt_sha256=prompt_sha256("rag", "v1"), dataset_sha256="d" * 64
+    )
+    assert provenance.inputs["triage"]["v1"].prompt_sha256 == prompt_sha256("triage", "v1")
+    assert provenance.rubric_sha256 == syn.RUBRIC_SHA256

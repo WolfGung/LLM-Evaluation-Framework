@@ -19,7 +19,10 @@ comparison the baseline has:
 A rate fails when it drops below the baseline by more than its tolerance in
 `config/gate.yaml`; a rise always passes. Any new safety failure fails,
 whatever the rates say. A metric the baseline has and the results lack fails
-as missing. The gate exits 1 when anything fails.
+as missing. The gate exits 1 when anything fails. Two notes never fail it:
+results that ran with another prompt, dataset or rubric than the baseline
+("changed since the baseline"), and results files the baseline has no entry
+for ("not gated").
 
 A replay of the recorded run is deterministic: it reproduces the results byte
 for byte, so it always equals the baseline. The tolerances matter for live
@@ -28,6 +31,8 @@ for byte, so it always equals the baseline. The tolerances matter for live
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Literal
@@ -43,8 +48,10 @@ from llmeval.baseline import (
     RunResults,
     failed_checks,
     pair_name,
+    result_label,
 )
-from llmeval.results import FunctionResults
+from llmeval.results import AnyResults, FunctionResults
+from llmeval.runner import EVAL_FUNCTIONS
 
 GATE_CONFIG_PATH = Path("config/gate.yaml")
 SAFETY = "safety"
@@ -237,11 +244,61 @@ def new_safety_failures(expected: FunctionBaseline, result: FunctionResults) -> 
     return new
 
 
-def gate(baseline: Baseline, run: RunResults, tolerances: Tolerances) -> GateReport:
-    """Compare `run` with `baseline` (see the module docstring)."""
+_RESULTS_FILE = re.compile(
+    rf"^(?P<function>{'|'.join(EVAL_FUNCTIONS)})-(?P<first>v\d+)(?:-vs-(?P<second>v\d+))?\.json$"
+)
+
+
+def results_outside(results_dir: Path | str, baseline: Baseline) -> list[str]:
+    """Labels of the results files in `results_dir` the baseline has no entry
+    for (`rag v3`, `rag v1 vs v3`), in file name order. The gate does not gate
+    them; it names them."""
+    outside = []
+    for path in sorted(Path(results_dir).glob("*.json")):
+        if not (match := _RESULTS_FILE.match(path.name)):
+            continue
+        function, first, second = match["function"], match["first"], match["second"]
+        if second is None:
+            known = first in baseline.functions.get(function, {})
+            outside += [] if known else [f"{function} {first}"]
+        else:
+            known = pair_name((first, second)) in baseline.pairwise.get(function, {})
+            outside += [] if known else [f"{function} {first} vs {second}"]
+    return outside
+
+
+def _changed_inputs(baseline: Baseline, result: AnyResults) -> list[str]:
+    """Which inputs of `result` differ from the ones the baseline ran with."""
+    provenance = baseline.provenance
+    changed = []
+    if isinstance(result, FunctionResults):
+        hashes = provenance.inputs.get(result.function, {}).get(result.version)
+        if hashes is not None and result.prompt_sha256 != hashes.prompt_sha256:
+            changed.append("prompt")
+        if hashes is not None and result.dataset_sha256 != hashes.dataset_sha256:
+            changed.append("dataset")
+    graded = result.rubric_sha256 is not None and provenance.rubric_sha256 is not None
+    if graded and result.rubric_sha256 != provenance.rubric_sha256:
+        changed.append("rubric")
+    return changed
+
+
+def gate(
+    baseline: Baseline,
+    run: RunResults,
+    tolerances: Tolerances,
+    *,
+    outside: Sequence[str] = (),
+) -> GateReport:
+    """Compare `run` with `baseline` (see the module docstring). `outside`
+    names results the baseline lacks (`results_outside`): they are noted as
+    not gated. Inputs that changed since the baseline are noted, not failed."""
     rows: list[Row] = []
     notes: list[str] = []
     results = {(result.function, result.version): result for result in run.functions}
+    for result in (*run.functions, *run.pairwise):
+        if changed := _changed_inputs(baseline, result):
+            notes.append(f"changed since the baseline: {result_label(result)} {', '.join(changed)}")
     for function, versions in baseline.functions.items():
         for version, expected in versions.items():
             label = f"{function} {version}"
@@ -282,6 +339,7 @@ def gate(baseline: Baseline, run: RunResults, tolerances: Tolerances) -> GateRep
             rows.append(
                 rate_row(f"{label} valid pairs", expected_pair.valid, now_pair.valid, allowed.valid)
             )
+    notes += [f"not gated (not in the baseline): {label}" for label in outside]
     return GateReport(rows=tuple(rows), notes=tuple(notes))
 
 
