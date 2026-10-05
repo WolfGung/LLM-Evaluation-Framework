@@ -11,7 +11,14 @@ from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
-from llmeval.labels import LABELER, HumanLabel, LabelError, append_label, load_labels
+from llmeval.labels import (
+    LABELER,
+    HumanLabel,
+    LabelError,
+    append_label,
+    label_lock,
+    load_labels,
+)
 
 TIME = datetime(2026, 1, 2, 9, 30, 5, tzinfo=UTC)
 
@@ -134,3 +141,14 @@ def test_a_short_write_leaves_no_partial_line(tmp_path):
     with pytest.raises(OSError, match="wrote 10 of"):
         append_label(path, label(), write=short)
     assert path.read_bytes() == b""
+
+
+def test_one_labelling_session_at_a_time(tmp_path):
+    path = tmp_path / "labels" / "human.jsonl"
+    held = r"another make label session holds .*\.label\.lock"
+    with label_lock(path), pytest.raises(LabelError, match=held), label_lock(path):
+        pass
+    assert (tmp_path / "labels" / ".label.lock").is_file()
+    with label_lock(path):  # released when the session ends
+        pass
+    assert not path.exists()  # the lock never creates the labels file

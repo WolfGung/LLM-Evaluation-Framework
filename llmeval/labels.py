@@ -34,7 +34,8 @@ import random
 import re
 import textwrap
 import unicodedata
-from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from fractions import Fraction
@@ -325,6 +326,35 @@ def load_labels(path: Path | str = LABELS_PATH) -> list[HumanLabel]:
         seen[answer] = number
         labels.append(item)
     return labels
+
+
+LOCK_FILE = ".label.lock"
+
+
+@contextmanager
+def label_lock(labels_path: Path | str) -> Iterator[None]:
+    """Hold `.label.lock` next to the labels file for a whole session, or refuse.
+
+    Two sessions on one labels file would show the same answers twice and
+    write two labels for one answer. The lock is advisory (`flock`, as for
+    `make record`), released when the session ends or the process dies; the
+    lock file stays and is git-ignored. It never creates the labels file.
+    """
+    try:
+        import fcntl  # POSIX only, like the record lock
+    except ImportError:
+        raise LabelError("make label needs a POSIX system (Linux, macOS) to lock") from None
+    path = Path(labels_path).parent / LOCK_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise LabelError(f"another make label session holds {path}: finish it first") from None
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 Writer = Callable[[int, bytes], int]

@@ -31,5 +31,8 @@ cassettes/.record.lock
 # A cassette file being rewritten by make prune (renamed into place when written)
 cassettes/.*.jsonl.partial
 
+# Held while make label runs: one labelling session at a time
+labels/.label.lock
+
 # Local secrets
 .env

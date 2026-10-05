@@ -1,5 +1,6 @@
 """Repository files that keep the evaluation honest: ignores, make targets, CI steps."""
 
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -142,6 +143,20 @@ def test_ci_publishes_the_page_and_the_allure_report_from_main_only():
     for name, job in jobs.items():
         if name != "pages":
             assert "permissions" not in job, name
+
+
+def test_the_label_lock_is_ignored_but_the_owner_labels_are_not():
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "labels/.label.lock" in ignored
+    # The owner commits labels/human.jsonl: nothing may ignore it.
+    done = subprocess.run(
+        ["git", "check-ignore", "labels/human.jsonl", "labels/sample.json"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (done.returncode, done.stdout) == (1, ""), f"git ignores: {done.stdout}"
 
 
 def test_make_label_runs_the_labelling_tool():

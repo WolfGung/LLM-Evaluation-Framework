@@ -113,6 +113,7 @@ from llmeval.labels import (
     SAMPLE_PATH,
     LabelError,
     build_sample,
+    label_lock,
     label_session,
     labelled_count,
     load_labels,
@@ -728,14 +729,26 @@ def label_command(
     label is appended to labels/human.jsonl at once, as one complete line,
     with the labeler and the time in UTC. Run it again to go on: labelled
     answers are not shown again. An answer whose prompt changed since the
-    recording is named and not shown. Ctrl-C stops it (exit code 130) and
-    keeps every saved label. Needs no key and calls nothing.
+    recording is named and not shown. One session at a time: a second one
+    refuses while labels/.label.lock is held. Ctrl-C stops it (exit code
+    130) and keeps every saved label. Needs no key and calls nothing.
     """
     # Line editing for the prompts: without it, an arrow key puts its escape
     # sequence into the comment. Not every platform has readline.
     with contextlib.suppress(ImportError):
         import readline  # noqa: F401
     columns = width or min(shutil.get_terminal_size((88, 24)).columns, MAX_LABEL_WIDTH)
+    try:
+        with label_lock(labels):
+            _label(sample, labels, config, datasets_dir, cassettes_dir, columns)
+    except LabelError as exc:
+        raise _fail(str(exc)) from None
+
+
+def _label(
+    sample: Path, labels: Path, config: Path, datasets_dir: Path, cassettes_dir: Path, columns: int
+) -> None:
+    """The labelling session of `label_command`, under the label lock."""
     try:
         chosen = load_sample(sample)
         existing = load_labels(labels)

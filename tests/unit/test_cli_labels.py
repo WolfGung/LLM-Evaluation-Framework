@@ -21,6 +21,7 @@ from llmeval.labels import (
     LABELER,
     HumanLabel,
     append_label,
+    label_lock,
     load_labels,
     load_sample,
     runs_by_answer,
@@ -326,3 +327,14 @@ def test_agreement_refuses_a_missing_sample_or_broken_labels(tmp_path):
     assert result.exit_code == 1
     assert "human.jsonl line 1: not a valid label" in result.output
     assert not (tmp_path / "results" / "judge-agreement.json").exists()
+
+
+def test_a_second_label_session_is_refused_in_one_line(recording):
+    with label_lock(recording.root / "labels" / "human.jsonl"):
+        result = runner.invoke(app, label_args(recording), input="p\n\n")
+    assert result.exit_code == 1
+    assert result.output.strip().splitlines() == [
+        f"another make label session holds {recording.root / 'labels' / '.label.lock'}: "
+        "finish it first"
+    ]
+    assert not (recording.root / "labels" / "human.jsonl").exists()
