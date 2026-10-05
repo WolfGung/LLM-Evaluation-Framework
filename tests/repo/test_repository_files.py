@@ -11,7 +11,7 @@ def test_live_results_are_not_committed():
     assert "results/" not in ignored  # replay results are committed
 
 
-def test_make_test_leaves_out_the_evaluation_and_make_eval_runs_it():
+def make_targets():
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     targets = {}
     current = None
@@ -20,8 +20,23 @@ def test_make_test_leaves_out_the_evaluation_and_make_eval_runs_it():
             current = line[:-1]
         elif line.startswith("\t") and current:
             targets.setdefault(current, []).append(line.strip())
+    phony = next(line for line in makefile.splitlines() if line.startswith(".PHONY:"))
+    return targets, set(phony.split(":", 1)[1].split())
+
+
+def test_make_test_leaves_out_the_evaluation_and_make_eval_runs_it():
+    targets, _ = make_targets()
     assert any("--ignore=tests/eval" in step for step in targets["test"])
     assert any("tests/eval" in step and "--ignore" not in step for step in targets["eval"])
+    # make eval also writes results/ from the replay (pending without a manifest).
+    assert any(step.endswith("llmeval eval") for step in targets["eval"])
+
+
+def test_make_has_the_recording_targets():
+    targets, phony = make_targets()
+    for name in ("estimate", "status", "record"):
+        assert targets[name] == [f"$(BIN)/llmeval {name}"]
+    assert {"test", "eval", "estimate", "status", "record", "lint"} <= phony
 
 
 def test_ci_runs_tests_and_the_evaluation_as_separate_steps():
