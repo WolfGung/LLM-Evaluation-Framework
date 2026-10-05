@@ -6,6 +6,7 @@ the repository.
 """
 
 import json
+from fractions import Fraction
 
 import pytest
 
@@ -13,7 +14,7 @@ from llmeval.agreement import AgreementReport, SampleSummary, write_agreement
 from llmeval.cassettes import write_manifest
 from llmeval.results import PairwiseCaseRecord, write_results
 from tests.unit import synthetic_results as syn
-from tools import render
+from tools import render, sections
 
 
 @pytest.fixture
@@ -84,7 +85,29 @@ def test_the_pairwise_block_counts_outcomes_over_cases_and_consistency_over_comp
         "swapped places: 1 time it chose the answer shown first in both orders, and 1 time it "
         "called a tie in one order and chose a side in the other. An inconsistent pair is never "
         "settled by picking one order.\n\n"
+        f"{LOW_CONSISTENCY_READING}\n\n"
     )
+
+
+LOW_CONSISTENCY_READING = (
+    "With this many flips, the comparison says more about the judge's position bias than about "
+    "the two prompts, so it picks no winner. The main table rests on the rules and the "
+    "per-answer grades."
+)
+
+
+def test_below_the_consistency_threshold_the_pairwise_block_picks_no_winner(ws):
+    record_rag(ws, PAIRS)  # 3 of 5 compared pairs consistent: 60.0%
+    assert body(ws, "pairwise").endswith(f"{LOW_CONSISTENCY_READING}\n\n")
+
+
+def test_at_the_consistency_threshold_the_pairwise_block_adds_no_reading(ws):
+    consistent = [syn.pair_case(f"rag-00{n}", "tie", "tie") for n in range(1, 5)]
+    record_rag(ws, [*consistent, syn.pair_case("rag-005", "A", "A")])  # 4 of 5: 80.0%
+    text = body(ws, "pairwise")
+    assert "Position consistency: 4 of 5 compared pairs (80.0%)" in text
+    assert LOW_CONSISTENCY_READING not in text
+    assert Fraction(4, 5) == sections.PAIRWISE_TRUSTED_CONSISTENCY
 
 
 def test_the_pairwise_block_leaves_out_outcomes_that_did_not_happen(ws):
@@ -132,7 +155,8 @@ def test_without_labels_the_agreement_block_is_pending_with_the_sample(ws):
     write_agreement(sample_report(), ws / "results")
     assert body(ws, "agreement") == (
         "\npending human labels\n\n"
-        "The owner labels 3 judged answers by hand, blind to the judge's verdict (make label): "
+        "Pavel Zhukov Atum, the author, labels 3 judged answers by hand, blind to the judge's "
+        "verdict (make label): "
         "all 2 answers the judge failed and 1 it passed. The sample oversamples judge failures, "
         "so agreement on it is not the agreement over all answers.\n\n"
     )
@@ -172,7 +196,8 @@ def test_with_labels_the_agreement_block_shows_agreement_kappa_and_the_confusion
         "Percent agreement: 2 of 3 (66.7%). Cohen's kappa: 0.40. Disagreements: 1, listed in "
         "results/judge-agreement.json with the judge's reasons and the owner's comments.\n\n"
         "Labelled: 3 of 3 sample answers.\n\n"
-        "The owner labels 3 judged answers by hand, blind to the judge's verdict (make label): "
+        "Pavel Zhukov Atum, the author, labelled 3 judged answers by hand, blind to the judge's "
+        "verdict (make label): "
         "all 2 answers the judge failed and 1 it passed. The sample oversamples judge failures, "
         "so agreement on it is not the agreement over all answers.\n\n"
     )
@@ -199,6 +224,7 @@ def test_a_partial_labelling_and_an_undefined_kappa_are_named(ws):
     assert "Disagreements: 0." in text
     assert "Labelled so far: 2 of 3 sample answers (partial)." in text
     assert "Labels not used: 1, listed in results/judge-agreement.json." in text
+    assert "Pavel Zhukov Atum, the author, labels 3 judged answers" in text  # not finished yet
 
 
 def test_a_recorded_run_without_the_agreement_file_is_an_error(ws):
@@ -442,25 +468,62 @@ def test_the_cost_block_has_a_row_per_kind_of_call_and_adds_them_up(ws):
     assert "The rows add up to 7 calls, as many as the recording holds." in text
 
 
-def test_the_cost_block_shows_reasoning_tokens_and_explains_shared_gradings(ws):
-    write_manifest(ws / "cassettes", syn.manifest({"rag": ("v1", "v2")}))
-    for version in ("v1", "v2"):
-        case = syn.case_record("rag-001", (), judge="pass")
-        grade = case.runs[0].judge
+def keyed(record, key: str, *, judge_key: str | None = None):
+    """The record with its system call (and its judge's call) under these cassette keys."""
+    run = record.runs[0]
+    update = {"call": run.call.model_copy(update={"key": key})}
+    if judge_key is not None:
+        grade = run.judge
         call = grade.call.model_copy(
-            update={"prompt_tokens": 1509, "completion_tokens": 668, "reasoning_tokens": 588}
+            update={
+                "key": judge_key,
+                "prompt_tokens": 1509,
+                "completion_tokens": 668,
+                "reasoning_tokens": 588,
+            }
         )
-        run = case.runs[0].model_copy(update={"judge": grade.model_copy(update={"call": call})})
-        case = case.model_copy(update={"runs": [run]})
+        update["judge"] = grade.model_copy(update={"call": call})
+    return record.model_copy(update={"runs": [run.model_copy(update=update)]})
+
+
+def record_shared_grading(ws, recorded_calls: int, *, same_grading: bool = True):
+    manifest = syn.manifest({"rag": ("v1", "v2")}).model_copy(
+        update={"recorded_calls": recorded_calls}
+    )
+    write_manifest(ws / "cassettes", manifest)
+    for version in ("v1", "v2"):
+        grading = "g" * 64 if same_grading else version * 32
+        case = keyed(
+            syn.case_record("rag-001", (), judge="pass"), version[1] * 64, judge_key=grading
+        )
         write_results(syn.function_results("rag", version, [case]), ws / "results")
-    write_results(syn.pairwise_results([syn.pair_case("rag-001", "A", "B")]), ws / "results")
+    pair = syn.pair_case("rag-001", "A", "B")
+    orders = [
+        order.model_copy(update={"call": order.call.model_copy(update={"key": f"{n}" * 64})})
+        for n, order in zip((3, 4), pair.orders, strict=True)
+    ]
+    write_results(
+        syn.pairwise_results([pair.model_copy(update={"orders": orders})]), ws / "results"
+    )
+
+
+def test_the_cost_block_shows_reasoning_tokens_and_explains_shared_gradings(ws):
+    # 2 answers, 2 gradings that share one recording, 2 pairwise questions: 5 recorded.
+    record_shared_grading(ws, recorded_calls=5)
     text = body(ws, "cost")
     assert "| Judge grades of rag v2 | 1 | 1509 / 668 (588 reasoning) |" in text
-    # 2 answers, 2 grades and 2 pairwise questions: 6 rows of calls, 2 recorded.
     assert (
-        "The rows add up to 6 calls; the recording holds 2. When both prompt versions wrote the "
-        "same answer, they share one recorded grading, and each version's row counts it."
+        "The rows add up to 6 calls; the recording holds 5. Both prompt versions wrote the same "
+        "answer 1 time, so the two versions share 1 recorded grading, and each version's row "
+        "counts it."
     ) in text
+
+
+def test_the_cost_block_gives_no_reason_it_cannot_count(ws):
+    record_shared_grading(ws, recorded_calls=4, same_grading=False)
+    text = body(ws, "cost")
+    assert "The rows add up to 6 calls; the recording holds 4.\n\n" in text
+    assert "share" not in text
 
 
 GATE_YAML = """\
@@ -517,14 +580,16 @@ def test_the_scope_block_counts_cases_by_category_and_the_judged_answers(ws):
         write_results(syn.function_results("rag", version, rag), ws / "results")
     tri = [syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS, category="shipping")]
     write_results(syn.function_results("triage", "v1", tri), ws / "results")
-    write_results(syn.pairwise_results([syn.pair_case("rag-001", "A", "B")]), ws / "results")
+    pairs = [syn.pair_case("rag-001", "A", "B"), identical("rag-002")]
+    write_results(syn.pairwise_results(pairs), ws / "results")
     assert body(ws, "scope") == (
         "\n| Function | Cases | By category |\n"
         "|---|---|---|\n"
         "| rag | 4 | answerable 2, multi_doc 1, safety 1 |\n"
         "| triage | 1 | shipping 1 |\n\n"
         "Each case ran 3 times. The judge graded 3 answers of each rag version, and compared "
-        "the two versions on 1 case. Recorded on 2026-01-01 (UTC): 2 calls.\n\n"
+        "the two versions on 1 case (1 had identical answers). Recorded on 2026-01-01 (UTC): "
+        "2 calls.\n\n"
     )
 
 

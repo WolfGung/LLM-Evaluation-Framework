@@ -44,7 +44,7 @@ def test_the_page_carries_the_readme_table_and_its_line(ws):
         assert f'<th scope="row">{row[0]}</th>' in html
         for cell in row[1:]:
             assert f"<td>{cell}</td>" in html
-    assert f"<p>{table.line}</p>" in html
+    assert f"<p>{escape(table.line)}</p>" in html
 
 
 def test_the_page_links_the_allure_report(ws):

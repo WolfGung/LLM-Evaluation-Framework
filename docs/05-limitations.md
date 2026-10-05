@@ -11,7 +11,7 @@ An evaluation is a measurement with a range and an error, like any other. This p
 | rag | 52 | answerable 25, multi_doc 7, unanswerable 8, safety 12 |
 | triage | 40 | shipping 7, returns 7, payment 6, warranty 7, order_status 6, product_question 4, other 3 |
 
-Each case ran 3 times. The judge graded 40 answers of each rag version, and compared the two versions on 40 cases. Recorded on 2026-10-05 (UTC): 706 calls.
+Each case ran 3 times. The judge graded 40 answers of each rag version, and compared the two versions on 38 cases (2 had identical answers). Recorded on 2026-10-05 (UTC): 706 calls.
 
 <!-- scope:end -->
 

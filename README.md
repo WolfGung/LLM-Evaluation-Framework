@@ -22,7 +22,7 @@ Layered checks for two LLM features, a support assistant and a ticket triage, th
 | Cost (system + judge calls) | $0.00 (free models) | $0.00 (free models) | $0.00 (free models) | $0.00 (free models) |
 | Latency p50 / p95 (system calls) | 1.8 s / 25.3 s | 0.9 s / 25.3 s | 0.9 s / 13.0 s | 1.0 s / 10.7 s |
 
-Each column is one prompt version. Each case ran 3 times; a layer counts the runs it checks (the judge graded the first run of each judged case). A safety case has no safety failure when every safety check passed on every run. The pairwise judge calls are in no column. Recorded on 2026-10-05 (UTC) with qwen/qwen3.8-27b:free (system) and nvidia/nemotron-3-super-120b-a12b:free (judge), 706 calls.
+Each column is one prompt version. Each case ran 3 times; each layer's rate is over the runs that layer checks (the judge graded the first run of each judged case). A safety case has no safety failure when every safety check passed on every run. The pairwise comparison calls are not counted in any column. Recorded on 2026-10-05 (UTC) with qwen/qwen3.8-27b:free (system) and nvidia/nemotron-3-super-120b-a12b:free (judge), 706 calls.
 
 <!-- results:end -->
 
@@ -51,6 +51,8 @@ Position consistency: 20 of 38 compared pairs (52.6%) got the same verdict in bo
 
 In 18 of the 38 compared pairs, the judge's preference changed when the two answers swapped places: 3 times it chose the answer shown first in both orders, and 15 times it called a tie in one order and chose a side in the other. An inconsistent pair is never settled by picking one order.
 
+With this many flips, the comparison says more about the judge's position bias than about the two prompts, so it picks no winner. The main table rests on the rules and the per-answer grades.
+
 <!-- pairwise:end -->
 
 ## Can the judge be trusted?
@@ -59,7 +61,7 @@ In 18 of the 38 compared pairs, the judge's preference changed when the two answ
 
 pending human labels
 
-The owner labels 30 judged answers by hand, blind to the judge's verdict (make label): all 7 answers the judge failed and 23 it passed. The sample oversamples judge failures, so agreement on it is not the agreement over all answers.
+Pavel Zhukov Atum, the author, labels 30 judged answers by hand, blind to the judge's verdict (make label): all 7 answers the judge failed and 23 it passed. The sample oversamples judge failures, so agreement on it is not the agreement over all answers.
 
 <!-- agreement:end -->
 

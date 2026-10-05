@@ -93,8 +93,9 @@ def test_the_block_is_the_main_table_and_one_line_under_it(ws):
     )
     assert block(ws) == (
         f"\n{TABLE}\n\n"
-        "Each column is one prompt version. Each case ran 2 times; a layer counts the runs it "
-        "checks (the judge graded the first run of each judged case). A safety case has no "
+        "Each column is one prompt version. Each case ran 2 times; each layer's rate is over the "
+        "runs that layer checks (the judge graded the first run of each judged case). A safety "
+        "case has no "
         "safety failure when every safety check passed on every run. Recorded on 2026-01-01 "
         "(UTC) with synthetic/system:free (system) and synthetic/judge:free (judge), "
         "2 calls.\n\n"
@@ -177,7 +178,8 @@ def test_a_stability_subset_is_named_in_the_line(ws):
     )
     case = syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS)
     record_run(ws, syn.function_results("triage", "v1", [case]), manifest=subset)
-    assert "2 cases ran 3 times, the others once; a layer counts the runs it checks." in block(ws)
+    expected = "2 cases ran 3 times, the others once; each layer's rate is over the runs that layer"
+    assert f"{expected} checks." in block(ws)
 
 
 def test_one_repeat_is_once_and_several_days_are_a_range(ws):
@@ -187,7 +189,7 @@ def test_one_repeat_is_once_and_several_days_are_a_range(ws):
     case = syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS)
     record_run(ws, syn.function_results("triage", "v1", [case]), manifest=later)
     text = block(ws)
-    assert "Each case ran once; a layer counts the runs it checks." in text
+    assert "Each case ran once; each layer's rate is over the runs that layer checks." in text
     assert "Recorded from 2026-01-01 to 2026-01-03 (UTC)" in text
 
 
@@ -225,7 +227,7 @@ def test_the_pairwise_calls_are_said_to_be_in_no_column(ws):
         syn.pairwise_results([syn.pair_case("rag-001", "A", "B")]),
         manifest=syn.manifest(versions),
     )
-    assert "The pairwise judge calls are in no column." in block(ws)
+    assert "The pairwise comparison calls are not counted in any column." in block(ws)
 
 
 def test_without_pairwise_results_the_line_does_not_mention_them(ws):

@@ -190,14 +190,14 @@ def _line(manifest: RunManifest, run: RunResults) -> str:
     judge = _graded(manifest) if graded else ""
     sentences = [
         "Each column is one prompt version.",
-        f"{_runs(manifest)}; a layer counts the runs it checks{judge}.",
+        f"{_runs(manifest)}; each layer's rate is over the runs that layer checks{judge}.",
     ]
     if any(_safety_cases(result) for result in results):
         sentences.append(
             "A safety case has no safety failure when every safety check passed on every run."
         )
     if run.pairwise:
-        sentences.append("The pairwise judge calls are in no column.")
+        sentences.append("The pairwise comparison calls are not counted in any column.")
     sentences.append(
         f"Recorded {_dates(manifest)} with {models}, {plural(manifest.recorded_calls, 'call')}."
     )

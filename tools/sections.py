@@ -53,6 +53,7 @@ from llmeval.cassettes import RunManifest
 from llmeval.checks.judge import CRITERIA
 from llmeval.datasets import DatasetError, RagCase, load_rag
 from llmeval.gate import GateError, Tolerances, load_tolerances
+from llmeval.labels import LABELER
 from llmeval.perf import Performance
 from llmeval.pricing import format_usd
 from llmeval.results import CaseRecord, FunctionResults, PairwiseResults, Rate, Summary, summarise
@@ -101,6 +102,16 @@ class Recorded:
 
 
 # --- pairwise ---------------------------------------------------------------------------
+
+# Below this share of compared pairs with the same verdict in both orders, the
+# pairwise block says the comparison picks no winner: too many verdicts
+# depend on which answer came first.
+PAIRWISE_TRUSTED_CONSISTENCY = Fraction(4, 5)
+LOW_CONSISTENCY = (
+    "With this many flips, the comparison says more about the judge's position bias than about "
+    "the two prompts, so it picks no winner. The main table rests on the rules and the "
+    "per-answer grades."
+)
 
 KINDS = {
     "same_position_a": "it chose the answer shown first in both orders",
@@ -158,6 +169,8 @@ def pairwise_parts(result: PairwiseResults) -> list[Part]:
             f"({percent(consistent, compared)}) got the same verdict in both orders."
         )
         flips = [_flips(result)]
+        if Fraction(consistent, compared) < PAIRWISE_TRUSTED_CONSISTENCY:
+            flips.append(LOW_CONSISTENCY)
     else:
         consistency = "Position consistency: no pair was compared."
         flips = []
@@ -202,10 +215,11 @@ def _sample_sentence(report: AgreementReport, failures: int) -> str:
         if sample.judge_fail == failures
         else f"{sample.judge_fail} of the {failures} answers the judge failed"
     )
+    labels = "labelled" if report.status == "complete" else "labels"
     return (
-        f"The owner labels {sample.size} judged answers by hand, blind to the judge's verdict "
-        f"(make label): {failed} and {sample.judge_pass} it passed. The sample oversamples "
-        "judge failures, so agreement on it is not the agreement over all answers."
+        f"{LABELER}, the author, {labels} {sample.size} judged answers by hand, blind to the "
+        f"judge's verdict (make label): {failed} and {sample.judge_pass} it passed. The sample "
+        "oversamples judge failures, so agreement on it is not the agreement over all answers."
     )
 
 
@@ -511,6 +525,18 @@ def _cost_row(label: str, perf: Performance, model: str | None) -> tuple[str, ..
     return (label, str(perf.calls), _tokens(perf), latency, _spent(perf, model))
 
 
+def _shared_gradings(recorded: Recorded) -> int:
+    """Gradings counted in more than one version's row: one recording, counted again."""
+    keys = Counter(
+        run.judge.call.key
+        for result in recorded.graded()
+        for case in result.cases
+        for run in case.runs
+        if run.judge is not None
+    )
+    return sum(count - 1 for count in keys.values())
+
+
 def cost(recorded: Recorded) -> list[Part]:
     """Calls, tokens, latency and cost of each kind of model call."""
     rows = [
@@ -532,10 +558,12 @@ def cost(recorded: Recorded) -> list[Part]:
         added = f"The rows add up to {plural(total, 'call')}, as many as the recording holds."
     else:
         added = f"The rows add up to {plural(total, 'call')}; the recording holds {held}."
-        if total > held:
+        shared = _shared_gradings(recorded)
+        if shared and total - shared == held:
             added += (
-                " When both prompt versions wrote the same answer, they share one recorded "
-                "grading, and each version's row counts it."
+                f" Both prompt versions wrote the same answer {plural(shared, 'time')}, so the "
+                f"two versions share {plural(shared, 'recorded grading')}, and each version's row "
+                "counts it."
             )
     return [
         Table(
@@ -682,12 +710,22 @@ def _judged_sentence(recorded: Recorded) -> str:
         )
     pairs = recorded.run.pairwise
     if len(pairs) == 1:
-        text += f", and compared the two versions on {plural(pairs[0].summary.pairs, 'case')}"
+        text += f", and compared the two versions on {_compared(pairs[0])}"
     elif pairs:
-        text += ", and compared " + ", ".join(
-            f"{_label(r)} on {plural(r.summary.pairs, 'case')}" for r in pairs
-        )
+        text += ", and compared " + ", ".join(f"{_label(r)} on {_compared(r)}" for r in pairs)
     return text + ". "
+
+
+def _compared(result: PairwiseResults) -> str:
+    """The cases the judge compared, and the ones it did not and why."""
+    outcomes = result.summary.outcomes
+    left_out = []
+    if outcomes.get("identical"):
+        left_out.append(f"{outcomes['identical']} had identical answers")
+    if outcomes.get("invalid"):
+        left_out.append(f"{outcomes['invalid']} an invalid verdict")
+    text = plural(result.summary.inconsistent.total, "case")
+    return f"{text} ({', '.join(left_out)})" if left_out else text
 
 
 def scope(recorded: Recorded) -> list[Part]:
