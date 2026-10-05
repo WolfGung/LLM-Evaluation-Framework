@@ -61,7 +61,6 @@ limit (rerun later), 1 an error.
 
 from __future__ import annotations
 
-import fcntl
 import time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -121,7 +120,8 @@ class PlanMismatch(RuntimeError):
 
 
 class RecordLocked(RuntimeError):
-    """Another record run holds the lock on the same cassettes directory."""
+    """Another record run holds the lock on the same cassettes directory,
+    or the platform has no file locks (`fcntl`)."""
 
 
 class TooManyFailures(RuntimeError):
@@ -228,6 +228,13 @@ def record_lock(cassettes_dir: Path) -> Iterator[None]:
     record calls twice. The lock is advisory (`flock`), released when the run
     ends or the process dies; the file itself stays and is git-ignored.
     """
+    try:
+        import fcntl  # POSIX only; imported here so that other commands work anywhere
+    except ImportError:
+        raise RecordLocked(
+            "recording needs a POSIX system (Linux, macOS, or the Docker image) to lock the "
+            "cassettes directory; the other commands work here"
+        ) from None
     path = Path(cassettes_dir) / LOCK_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as handle:

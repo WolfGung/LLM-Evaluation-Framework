@@ -824,3 +824,29 @@ def test_the_skip_summary_is_printed_when_a_stop_ends_the_run(ws, network):
     assert "not sent 1 call (rerun make record to send it):" in out
     assert out.index("free daily quota reached") < out.index("skipped 1 call")
     assert out.rstrip().endswith("kept and skipped")
+
+
+def test_without_fcntl_record_says_it_needs_posix_and_other_commands_work(
+    ws, network, monkeypatch
+):
+    import sys
+
+    router = network(SyntheticOpenRouter())
+    monkeypatch.setitem(sys.modules, "fcntl", None)  # as on a platform without it
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 1
+    assert (
+        "recording needs a POSIX system (Linux, macOS, or the Docker image) "
+        "to lock the cassettes directory"
+    ) in result.output
+    assert router.chat_bodies == []
+    assert runner.invoke(app, args("status", ws)).exit_code == 0
+
+
+def test_the_cli_imports_without_fcntl():
+    import subprocess
+    import sys
+
+    code = "import sys; sys.modules['fcntl'] = None; import llmeval.cli, llmeval.recording"
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
