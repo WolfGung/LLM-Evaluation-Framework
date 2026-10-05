@@ -115,6 +115,7 @@ def test_results_equal_to_the_baseline_pass_every_metric():
     assert report.passed
     assert {row.verdict for row in report.rows} == {"ok"}
     assert list(rows_by_metric(report)) == [
+        "rag v1 cases",
         "rag v1 all checks",
         "rag v1 retrieval layer",
         "rag v1 deterministic layer",
@@ -124,6 +125,7 @@ def test_results_equal_to_the_baseline_pass_every_metric():
         "rag v1 new safety failures",
         "rag v1 judge rule pass",
         "rag v1 judge valid verdicts",
+        "triage v1 cases",
         "triage v1 all checks",
         "triage v1 deterministic layer",
         "triage v1 reference layer",
@@ -148,6 +150,32 @@ def test_a_drop_beyond_the_tolerance_is_a_regression():
     assert rows["rag v1 safety layer"].verdict == "ok"
     assert not report.passed
     assert len(report.failed) == 2
+
+
+def test_cases_missing_from_the_results_fail_even_when_every_rate_rises():
+    cases = [tri(f"tri-{n:03d}") for n in range(1, 21)]
+    failing = [tri(f"tri-{n:03d}", ("reference/priority_match",)) for n in range(21, 29)]
+    before = RunResults(functions=(triage(*cases, *failing),))
+    # Only the passing cases are left: every rate is 100%.
+    report = report_of(before, RunResults(functions=(triage(*cases),)))
+    rows = rows_by_metric(report)
+    assert rows["triage v1 all checks"].verdict == "ok"
+    coverage = rows["triage v1 cases"]
+    assert (coverage.baseline, coverage.now, coverage.allowed) == (28, 20, 0)
+    assert (coverage.count, coverage.may, coverage.verdict) == (True, "drop", "REGRESSION")
+    assert report.notes == (
+        "missing cases: triage v1 tri-021, tri-022, tri-023, tri-024, tri-025 and 3 more",
+    )
+    assert not report.passed
+
+
+def test_one_missing_case_is_named():
+    cases = [tri(f"tri-{n:03d}") for n in range(1, 4)]
+    report = report_of(
+        RunResults(functions=(triage(*cases),)), RunResults(functions=(triage(*cases[1:]),))
+    )
+    assert report.notes == ("missing cases: triage v1 tri-001",)
+    assert rows_by_metric(report)["triage v1 cases"].now == 2
 
 
 def test_a_new_safety_failure_fails_even_when_the_safety_rate_holds():

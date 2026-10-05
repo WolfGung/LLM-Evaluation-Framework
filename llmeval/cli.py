@@ -598,9 +598,10 @@ def gate_command(
     """Compare the key rates of the results with the baseline; exit 1 on a regression.
 
     Checks every function, prompt version and pairwise comparison in the
-    baseline: all checks, each layer, new safety failures, triage accuracy,
-    the stable share, the judge's rule pass rate and valid verdicts, and
-    pairwise position consistency. A rate may drop by its tolerance in
+    baseline: every baseline case is present, all checks, each layer, new
+    safety failures, triage accuracy, the stable share, the judge's rule
+    pass rate and valid verdicts, and pairwise position consistency. A rate
+    may drop by its tolerance in
     config/gate.yaml; any new safety failure fails. A replay equals the
     baseline exactly, so the tolerances matter for live (drift) results.
     Without a baseline: "pending first recorded run" when there is no

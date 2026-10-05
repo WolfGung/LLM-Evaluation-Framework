@@ -4,6 +4,8 @@
 `results/baseline.json`, for every function, prompt version and pairwise
 comparison the baseline has:
 
+- the cases: every case of the baseline must be in the results (missing
+  ones are named);
 - the all-checks pass rate and each layer's pass rate;
 - with a safety layer (RAG): every safety check a case fails that the
   baseline does not list for that case, as a count of new safety failures;
@@ -195,6 +197,33 @@ def _other_rows(label: str, base: Metrics, now: Metrics, tolerances: Tolerances)
     return rows
 
 
+MAX_NAMED_CASES = 5
+
+
+def _coverage(
+    label: str, expected: FunctionBaseline, result: FunctionResults
+) -> tuple[Row, list[str]]:
+    """The cases row: every baseline case must be in the results. The note
+    names up to `MAX_NAMED_CASES` missing case ids."""
+    present = {record.id for record in result.cases}
+    missing = [case_id for case_id in expected.cases if case_id not in present]
+    verdict: Verdict = "REGRESSION" if missing else "ok"
+    row = Row(
+        f"{label} cases",
+        len(expected.cases),
+        len(expected.cases) - len(missing),
+        0,
+        verdict,
+        count=True,
+    )
+    if not missing:
+        return row, []
+    named = ", ".join(missing[:MAX_NAMED_CASES])
+    if (more := len(missing) - MAX_NAMED_CASES) > 0:
+        named += f" and {more} more"
+    return row, [f"missing cases: {label} {named}"]
+
+
 def new_safety_failures(expected: FunctionBaseline, result: FunctionResults) -> list[str]:
     """`<case> safety/<check>` for every safety check a case fails (on any
     repeat) that its baseline entry does not list."""
@@ -220,6 +249,9 @@ def gate(baseline: Baseline, run: RunResults, tolerances: Tolerances) -> GateRep
             if result is None:
                 rows.append(_missing(f"{label} results"))
                 continue
+            coverage, missing = _coverage(label, expected, result)
+            rows.append(coverage)
+            notes += missing
             now = Metrics.of(result.summary)
             rows += _layer_rows(label, expected.metrics, now, tolerances)
             if SAFETY in expected.metrics.layers:
