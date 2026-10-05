@@ -1,0 +1,262 @@
+"""The README results block, rendered from results/ and the run manifest.
+
+Synthetic data: every result, manifest and README below is made up for the
+test and written only into `tmp_path`, never into the repository.
+"""
+
+import time
+
+import pytest
+
+from llmeval.cassettes import write_manifest
+from llmeval.results import write_results
+from tests.unit import synthetic_results as syn
+from tools import render
+
+START, END = render.START_MARKER, render.END_MARKER
+
+
+def timed(record, *latencies_ms):
+    """The record with each run's call taking the given time."""
+    runs = [
+        run.model_copy(update={"call": run.call.model_copy(update={"latency_ms": ms})})
+        for run, ms in zip(record.runs, latencies_ms, strict=True)
+    ]
+    return record.model_copy(update={"runs": runs})
+
+
+def priced(record, cost):
+    """The record with each run's call costing `cost` (None: unknown)."""
+    source = "unknown" if cost is None else "provider"
+    update = {"cost_usd": cost, "cost_source": source}
+    runs = [
+        run.model_copy(update={"call": run.call.model_copy(update=update)}) for run in record.runs
+    ]
+    return record.model_copy(update={"runs": runs})
+
+
+@pytest.fixture
+def ws(tmp_path):
+    """A results directory, a cassette directory and a README with the markers."""
+    (tmp_path / "results").mkdir()
+    (tmp_path / "cassettes").mkdir()
+    readme = tmp_path / "README.md"
+    readme.write_text(f"# Title\n\nIntro.\n\n{START}\nold\n{END}\n\nAfter.\n", encoding="utf-8")
+    return tmp_path
+
+
+def record_run(ws, *results, manifest=None):
+    write_manifest(ws / "cassettes", manifest or syn.manifest({"rag": ("v1",), "triage": ("v1",)}))
+    for result in results:
+        write_results(result, ws / "results")
+
+
+def rag_v1():
+    rag_001 = timed(syn.case_record("rag-001", (), (), judge="pass"), 800, 1200)
+    attacked = syn.case_record("rag-047", ("safety/no_trap_leak",), (), category="safety")
+    return syn.function_results("rag", "v1", [rag_001, timed(attacked, 1000, 2550)])
+
+
+def triage_v1():
+    case = syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS, category="order_status")
+    return syn.function_results("triage", "v1", [timed(case, 400)])
+
+
+def block(ws):
+    return render.render_block(ws / "results", ws / "cassettes")
+
+
+TABLE = """\
+| Metric | rag v1 | triage v1 |
+|---|---:|---:|
+| All checks | 75.0% | 100.0% |
+| Retrieval layer | 100.0% | — |
+| Deterministic layer | 100.0% | 100.0% |
+| Reference layer | 100.0% | 100.0% |
+| Safety layer | 75.0% | — |
+| Judge layer | 100.0% | — |
+| Safety cases passed | 0 of 1 | — |
+| Stable cases | 50.0% | — |
+| Cost per run | $0.00 (free models) | $0.00 (free models) |
+| Latency p50 / p95 | 1.0 s / 2.6 s | 0.4 s / 0.4 s |"""
+
+
+def test_the_block_is_the_main_table_and_one_line_under_it(ws):
+    record_run(
+        ws,
+        rag_v1(),
+        triage_v1(),
+        manifest=syn.manifest({"rag": ("v1",), "triage": ("v1",)}, repeats=2),
+    )
+    assert block(ws) == (
+        f"\n{TABLE}\n\n"
+        "Each column is one prompt version. Pass rates count every run: each case ran 2 times. "
+        "Recorded on 2026-01-01 (UTC) with synthetic/system:free (system) and "
+        "synthetic/judge:free (judge), 2 calls.\n\n"
+    )
+
+
+def test_without_a_manifest_the_block_says_pending(ws):
+    assert block(ws) == "\npending first recorded run\n\n"
+
+
+def test_a_manifest_without_its_results_is_an_error_not_pending(ws):
+    write_manifest(ws / "cassettes", syn.manifest({"triage": ("v1",)}))
+    with pytest.raises(render.RenderError, match="results missing"):
+        block(ws)
+
+
+@pytest.mark.parametrize(
+    ("count", "total", "text"),
+    [
+        (1, 8, "12.5%"),
+        (13, 16, "81.3%"),  # 81.25: a half rounds up, never to even
+        (2, 3, "66.7%"),
+        (121, 156, "77.6%"),
+        (0, 5, "0.0%"),
+        (5, 5, "100.0%"),
+        (0, 0, "—"),
+    ],
+)
+def test_percentages_have_one_decimal_and_a_half_rounds_up(count, total, text):
+    assert render.percent(count, total) == text
+
+
+def test_seconds_have_one_decimal_and_a_half_rounds_up():
+    assert render.seconds(2550.0) == "2.6 s"
+    assert render.seconds(25290.3) == "25.3 s"
+    assert render.seconds(None) == "—"
+
+
+def test_a_paid_run_shows_the_provider_cost(ws):
+    paid = syn.manifest({"triage": ("v1",)}).model_copy(
+        update={"models": {"system": "synthetic/system", "judge": "synthetic/judge"}}
+    )
+    case = priced(syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS), 0.0012)
+    record_run(ws, syn.function_results("triage", "v1", [case]), manifest=paid)
+    assert "| Cost per run | $0.0012 |" in block(ws)
+
+
+def test_free_model_ids_with_a_reported_cost_show_the_cost(ws):
+    case = priced(syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS), 0.0012)
+    record_run(
+        ws, syn.function_results("triage", "v1", [case]), manifest=syn.manifest({"triage": ("v1",)})
+    )
+    assert "| Cost per run | $0.0012 |" in block(ws)
+
+
+def test_unknown_costs_are_named_never_counted_as_zero(ws):
+    case = priced(syn.case_record("tri-001", (), (), checks=syn.TRIAGE_CHECKS), None)
+    record_run(
+        ws, syn.function_results("triage", "v1", [case]), manifest=syn.manifest({"triage": ("v1",)})
+    )
+    assert "| Cost per run | $0.00 known, 2 calls unknown |" in block(ws)
+
+
+def test_the_judge_cost_counts_in_the_cost_per_run(ws):
+    graded = priced(syn.case_record("rag-001", (), judge="pass"), 0.001)
+    judge = graded.runs[0].judge
+    judge = judge.model_copy(update={"call": judge.call.model_copy(update={"cost_usd": 0.002})})
+    run = graded.runs[0].model_copy(update={"judge": judge})
+    graded = graded.model_copy(update={"runs": [run]})
+    paid = syn.manifest({"rag": ("v1",)}).model_copy(
+        update={"models": {"system": "synthetic/system", "judge": "synthetic/judge"}}
+    )
+    record_run(ws, syn.function_results("rag", "v1", [graded]), manifest=paid)
+    assert "| Cost per run | $0.003 |" in block(ws)
+
+
+def test_a_stability_subset_is_named_in_the_line(ws):
+    subset = syn.manifest({"triage": ("v1",)}, repeats=3).model_copy(
+        update={"stability_cases": ("tri-001", "tri-002")}
+    )
+    case = syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS)
+    record_run(ws, syn.function_results("triage", "v1", [case]), manifest=subset)
+    assert "Pass rates count every run: 2 cases ran 3 times, the others once." in block(ws)
+
+
+def test_one_repeat_is_once_and_several_days_are_a_range(ws):
+    later = syn.manifest({"triage": ("v1",)}).model_copy(
+        update={"recorded_to": syn.TIME.replace(day=3)}
+    )
+    case = syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS)
+    record_run(ws, syn.function_results("triage", "v1", [case]), manifest=later)
+    text = block(ws)
+    assert "each case ran once." in text
+    assert "Recorded from 2026-01-01 to 2026-01-03 (UTC)" in text
+
+
+def test_ungraded_results_name_no_judge(ws):
+    case = syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS)
+    record_run(
+        ws, syn.function_results("triage", "v1", [case]), manifest=syn.manifest({"triage": ("v1",)})
+    )
+    text = block(ws)
+    assert "with synthetic/system:free (system), 2 calls." in text
+    assert "judge" not in text
+
+
+@pytest.fixture
+def far_time_zone(monkeypatch):
+    """Local time UTC+14, where 12:00 UTC on 1 January is already 2 January."""
+    monkeypatch.setenv("TZ", "Pacific/Kiritimati")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
+
+
+def test_the_dates_are_utc_whatever_the_local_time_zone(ws, far_time_zone):
+    record_run(ws, rag_v1(), triage_v1())
+    assert "Recorded on 2026-01-01 (UTC)" in block(ws)
+
+
+def run_main(ws, *args):
+    return render.main(
+        [
+            *args,
+            "--readme",
+            str(ws / "README.md"),
+            "--results-dir",
+            str(ws / "results"),
+            "--cassettes-dir",
+            str(ws / "cassettes"),
+        ]
+    )
+
+
+def test_write_replaces_only_the_block_and_check_then_passes(ws, capsys):
+    record_run(ws, rag_v1(), triage_v1())
+    assert run_main(ws, "--check") == 1
+    assert "python -m tools.render --write" in capsys.readouterr().err
+    assert run_main(ws, "--write") == 0
+    text = (ws / "README.md").read_text(encoding="utf-8")
+    assert text == f"# Title\n\nIntro.\n\n{START}\n{block(ws)}{END}\n\nAfter.\n"
+    assert run_main(ws, "--check") == 0
+    assert run_main(ws, "--write") == 0
+    assert (ws / "README.md").read_text(encoding="utf-8") == text
+
+
+def test_without_a_flag_the_block_is_printed(ws, capsys):
+    assert run_main(ws) == 0
+    assert capsys.readouterr().out == "\npending first recorded run\n\n"
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["# Title\n\nNo markers.\n", f"{START}\n{START}\nx\n{END}\n", f"{END}\nx\n{START}\n"],
+    ids=["none", "twice", "reversed"],
+)
+def test_a_readme_without_one_ordered_pair_of_markers_is_refused(ws, capsys, text):
+    (ws / "README.md").write_text(text, encoding="utf-8")
+    assert run_main(ws, "--check") == 1
+    assert run_main(ws, "--write") == 1
+    assert (ws / "README.md").read_text(encoding="utf-8") == text
+    assert "results:start" in capsys.readouterr().err
+
+
+def test_broken_results_exit_1_with_one_line(ws, capsys):
+    write_manifest(ws / "cassettes", syn.manifest({"triage": ("v1",)}))
+    (ws / "results" / "triage-v1.json").write_text("{}", encoding="utf-8")
+    assert run_main(ws, "--check") == 1
+    assert "triage-v1.json: not valid results" in capsys.readouterr().err
