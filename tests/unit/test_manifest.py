@@ -18,6 +18,7 @@ from llmeval.cassettes import (
     RunManifest,
     load_manifest,
     repeats_for,
+    write_manifest,
 )
 
 HASH = "a" * 64
@@ -212,3 +213,11 @@ def test_a_changed_rubric_gives_one_notice():
 
 def test_no_recorded_rubric_gives_no_notice():
     assert RunManifest.model_validate(manifest_data()).rubric_notice("d" * 64) is None
+
+
+def test_a_written_manifest_loads_back_and_leaves_no_temporary_file(tmp_path):
+    manifest = RunManifest.model_validate(manifest_data(rubric_sha256="c" * 64))
+    path = write_manifest(tmp_path, manifest)
+    assert path == tmp_path / MANIFEST_FILE
+    assert load_manifest(tmp_path) == manifest
+    assert sorted(p.name for p in tmp_path.iterdir()) == [MANIFEST_FILE]

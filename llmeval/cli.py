@@ -11,6 +11,8 @@
   without recorded costs it reads the public price list.
 - `status`: calls planned and recorded, whether the manifest is there, and,
   with OPENROUTER_API_KEY set, the free requests the key has left today.
+- `record`: record every planned call with the real API (needs the key),
+  resumably and inside the free limits; see `llmeval.recording`.
 - `retrieval`: the retrieval layer over the RAG dataset, offline. BM25 is
   deterministic, so this needs no model and no recording.
 
@@ -58,10 +60,11 @@ from llmeval.datasets import (
     load_rag,
     load_triage,
 )
-from llmeval.openrouter import OpenRouterError
+from llmeval.openrouter import MissingAPIKey, OpenRouterError
 from llmeval.perf import Performance
 from llmeval.pricing import BudgetExceeded, PricingError, check_budget
 from llmeval.quota import free_daily_quota
+from llmeval.recording import EXIT_STOPPED, PlanMismatch, record_all
 from llmeval.results import RESULTS_DIR, FunctionResults, PairwiseResults
 from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, run, versions_of
 
@@ -339,6 +342,46 @@ def _quota_today(loaded: Config) -> str:
         f"free quota today (GET /api/v1/key, read live): used {quota.used}, "
         f"limit {quota.limit}, remaining {quota.remaining}"
     )
+
+
+@app.command("record")
+def record_command(
+    config: ConfigOption = DEFAULT_MODELS_PATH,
+    datasets_dir: DatasetsOption = DATASETS_DIR,
+    cassettes_dir: CassettesOption = CASSETTES_DIR,
+    rubric: RubricOption = RUBRIC_PATH,
+) -> None:
+    """Record every planned call with the real API. Needs OPENROUTER_API_KEY.
+
+    The budget guard runs first: nothing is sent above MAX_RUN_COST_USD.
+    Recorded calls are skipped, so a rerun continues. System calls come
+    first, then the judge calls planned from the recorded answers. The run
+    keeps to the configured rpm and stops cleanly on the free daily quota; a
+    429 without a reset time stops it at once. The manifest is written only
+    when every planned call is recorded. Exit codes: 0 complete, 75 stopped
+    on the quota or a rate limit (rerun later), 1 an error.
+    """
+    net = _network()
+    try:
+        loaded, inputs = _plan_inputs(config, datasets_dir, rubric)
+        outcome = record_all(
+            inputs,
+            loaded,
+            cassettes_dir,
+            _dataset_paths(datasets_dir),
+            echo=typer.echo,
+            transport=net.transport,
+            limiter=net.limiter,
+            sleep=net.sleep,
+        )
+    except BudgetExceeded as exc:
+        raise _fail(f"refused: {exc}") from None
+    except (MissingAPIKey, PlanMismatch, *PLAN_ERRORS) as exc:
+        raise _fail(str(exc)) from None
+    if outcome.stopped is not None:
+        raise typer.Exit(code=EXIT_STOPPED)
+    if not outcome.complete:
+        raise typer.Exit(code=1)
 
 
 @app.command("retrieval")

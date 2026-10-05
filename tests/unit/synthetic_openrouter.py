@@ -119,7 +119,7 @@ class SyntheticOpenRouter:
     """Serves `/chat/completions`, `/key` and `/models`.
 
     - `remaining`: the free-model requests the key endpoint reports (None:
-      the endpoint leaves the field out);
+      the endpoint leaves the field out); each answered chat call uses one;
     - `chat_override`: called before the normal reply; a response it returns
       is sent instead (for 429s and errors), None means answer normally;
     - `cost`: the `usage.cost` of every chat reply (None: the field is absent).
@@ -153,6 +153,8 @@ class SyntheticOpenRouter:
             if response is not None:
                 return response
         self.chat_bodies.append(body)
+        if self.remaining is not None:
+            self.remaining -= 1
         usage: dict[str, Any] = {"prompt_tokens": 120, "completion_tokens": 30}
         if self.cost is not None:
             usage["cost"] = self.cost

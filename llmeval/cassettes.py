@@ -332,6 +332,24 @@ def repeats_for(case_id: str, repeats: int, stability_cases: Collection[str] | N
     return 1
 
 
+def write_manifest(root: Path | str, manifest: RunManifest) -> Path:
+    """Write `manifest.json` into `root`. Only `record` calls this, and only for
+    a complete recording.
+
+    The file is written beside the target and then renamed over it, so a
+    crash never leaves a half-written manifest.
+    """
+    path = Path(root) / MANIFEST_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_name(f".{MANIFEST_FILE}.partial")
+    with partial.open("w", encoding="utf-8") as fh:
+        fh.write(manifest.model_dump_json(indent=2) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    os.replace(partial, path)
+    return path
+
+
 def load_manifest(root: Path | str) -> RunManifest | None:
     """The manifest of the recorded run in `root`, or None when there is none.
 
