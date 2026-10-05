@@ -15,7 +15,8 @@ manifest without its results files is an error (run make eval), never
 "pending". The block names (`BLOCKS`):
 
 - `results`: the main table (below);
-- `pairwise`, `agreement`: see `tools.sections`;
+- `pairwise`, `agreement`, `judge`, `safety`, `cost`, `gate`, `scope`: see
+  `tools.sections`;
 - `history`: never rendered. It quotes a fact that is not in results/, such
   as one from an earlier recording, and names the commit it comes from; the
   repository test checks that it does.
@@ -227,8 +228,6 @@ def table(manifest: RunManifest, run: RunResults) -> Table:
     return Table(header=header, rows=tuple(rows), line=_line(manifest, run))
 
 
-
-
 # --- blocks ----------------------------------------------------------------------------
 
 BlockFn = Callable[[Recorded], Sequence[Part]]
@@ -242,6 +241,11 @@ BLOCKS: dict[str, BlockFn] = {
     "results": _results_block,
     "pairwise": sections.pairwise,
     "agreement": sections.agreement,
+    "judge": sections.judge,
+    "safety": sections.safety,
+    "cost": sections.cost,
+    "gate": sections.gate,
+    "scope": sections.scope,
 }
 
 
@@ -424,9 +428,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         description="Render the generated blocks of README.md and docs/ from results/.",
     )
     mode = parser.add_mutually_exclusive_group()
-    mode.add_argument(
-        "--check", action="store_true", help="exit 1 when a file holds another block"
-    )
+    mode.add_argument("--check", action="store_true", help="exit 1 when a file holds another block")
     mode.add_argument("--write", action="store_true", help="write the blocks into the files")
     parser.add_argument(
         "files", nargs="*", type=Path, help="the files (default: README.md and docs/*.md)"
