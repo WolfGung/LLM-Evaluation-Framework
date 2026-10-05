@@ -73,14 +73,33 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
 
 
+def unanswerable_rows(count: int) -> list[dict[str, Any]]:
+    """`count` synthetic unanswerable RAG cases with distinct questions."""
+    return [
+        {
+            "id": f"rag-{n:03d}",
+            "category": "unanswerable",
+            "question": f"Synthetic question number {n}: do you rent ladders?",
+            "expected": "dont_know",
+            "forbidden": [],
+        }
+        for n in range(1, count + 1)
+    ]
+
+
 def make_workspace(
-    root: Path, *, repeats: int = 2, judge_repeats: str = "first", stability_cases: str = "null"
+    root: Path,
+    *,
+    repeats: int = 2,
+    judge_repeats: str = "first",
+    stability_cases: str = "null",
+    rag_rows: list[dict[str, Any]] | None = None,
 ) -> Path:
     config = CONFIG_YAML.format(
         repeats=repeats, judge_repeats=judge_repeats, stability_cases=stability_cases
     )
     (root / "config.yaml").write_text(config, encoding="utf-8")
-    write_jsonl(root / "datasets" / "rag.jsonl", RAG_ROWS)
+    write_jsonl(root / "datasets" / "rag.jsonl", RAG_ROWS if rag_rows is None else rag_rows)
     write_jsonl(root / "datasets" / "triage.jsonl", TRIAGE_ROWS)
     (root / "cassettes").mkdir()
     (root / "cassettes" / ".gitkeep").write_text("", encoding="utf-8")

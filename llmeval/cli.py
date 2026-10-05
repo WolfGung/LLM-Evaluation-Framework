@@ -392,8 +392,10 @@ def record_command(
     first, then the judge calls planned from the recorded answers. The run
     keeps to the configured rpm and stops cleanly on the free daily quota; a
     429 without a reset time stops it at once. A request the API refuses is
-    skipped and listed at the end; three failures in a row stop the run. The
-    manifest is written only when every planned call is recorded. Exit codes:
+    skipped (its other repeats are not sent) and listed at the end; three
+    different requests failing in a row before their kind has succeeded, or
+    twenty of any kind, stop the run. The manifest is written only when every
+    planned call is recorded. Exit codes:
     0 complete, 75 stopped on the quota or a rate limit (rerun later), 1 an
     error or skipped calls (rerun to retry them).
     """

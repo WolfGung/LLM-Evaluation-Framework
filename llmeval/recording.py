@@ -33,12 +33,23 @@ The order of work:
    run".
 
 A request the API refuses or fails (for example a moderation 403 on one
-prompt) is skipped with its reason and the run goes on; the skipped calls are
-listed at the end and asked again by the next run. After
-`MAX_CONSECUTIVE_FAILURES` (3) failures in a row the run stops, because a
-wrong model id or config fails every call. Every call is appended and flushed
-as soon as it returns, so a stopped run loses nothing and a rerun continues
-where it stopped. The client keeps to the
+prompt) is skipped with its reason and the run goes on. Failures are counted
+per distinct request (its cassette tag: case, version, function): the other
+repeats of a failed request are not sent in this run, so one refused prompt
+costs one request, not `repeats`. Skipped and not-sent calls are listed at the
+end of every run, also when a stop ends it, and the next run asks them again.
+Two stops guard against a broken setup:
+
+- `MAX_CONSECUTIVE_FAILURES` (3) different requests failing in a row, when
+  none of their kinds (function, version and role) has succeeded in this run:
+  a wrong model id or config fails the first call of its kind, and the day-1
+  ordering probes every kind first. A failure of a kind that has succeeded
+  (a refused prompt, even a block of them) does not count toward this stop.
+- `MAX_FAILURES_IN_A_ROW` (20) different requests failing in a row, whatever
+  their kind: the API or the network may be down.
+
+Every call is appended and flushed as soon as it returns, so a stopped run
+loses nothing and a rerun continues where it stopped. The client keeps to the
 configured requests per minute (`rpm`). A 429 with a short reset waits and
 retries (at most three times); a 429 with a later reset, or without a reset
 time, stops the run at once: a wait is never guessed. Every stop prints
@@ -72,7 +83,7 @@ from llmeval.callplan import (
     to_record,
     up_to,
 )
-from llmeval.cassettes import CassetteStore, RunManifest, utc_now, write_manifest
+from llmeval.cassettes import CallTag, CassetteStore, RunManifest, utc_now, write_manifest
 from llmeval.client import ModelClient
 from llmeval.config import Config, Mode, RoleConfig
 from llmeval.datasets import file_sha256
@@ -96,9 +107,12 @@ UPPER_BOUND_NOTE = "the total counts judge calls at their upper bound until the 
 
 
 LOCK_FILE = ".record.lock"
-# Failed requests in a row that stop the run: one bad prompt is skipped, but a
-# wrong model id or config fails every call and should stop early.
+# Different requests failing in a row, none of whose kinds has succeeded in
+# this run, that stop the run: a wrong model id or config fails every call.
 MAX_CONSECUTIVE_FAILURES = 3
+# Different requests failing in a row, whatever their kind, that stop the run:
+# the API or the network is likely down.
+MAX_FAILURES_IN_A_ROW = 20
 
 
 class PlanMismatch(RuntimeError):
@@ -183,19 +197,23 @@ def _cap_prices(
         raise PricingError(f"{exc}; the running spending cap needs it") from None
 
 
-def kinds_first(planned: Sequence[PlannedRequest]) -> list[PlannedRequest]:
-    """The first call of each kind, then the rest in their order.
+Kind = tuple[str, str, str]
 
-    A system call's kind is its function and prompt version; a judge call's
-    kind is grading or pairwise.
+
+def kind_of(request: PlannedRequest) -> Kind:
+    """A request's kind: its function, prompt version (or version pair) and role.
+
+    Every call of one kind is built from the same prompt and model, so a
+    broken model id or config fails the first call of a kind.
     """
+    return (request.function, request.version, request.role)
 
-    def kind(request: PlannedRequest) -> tuple[str, str]:
-        return (request.function, request.version if request.role == "system" else "")
 
-    first: dict[tuple[str, str], PlannedRequest] = {}
+def kinds_first(planned: Sequence[PlannedRequest]) -> list[PlannedRequest]:
+    """The first call of each kind (`kind_of`), then the rest in their order."""
+    first: dict[Kind, PlannedRequest] = {}
     for request in planned:
-        first.setdefault(kind(request), request)
+        first.setdefault(kind_of(request), request)
     leaders = list(first.values())
     chosen = {id(request) for request in leaders}
     return leaders + [request for request in planned if id(request) not in chosen]
@@ -267,6 +285,12 @@ class _Session:
         self.exact = False
         self.sent = 0
         self.skipped: list[tuple[str, str]] = []
+        self.not_sent: list[tuple[str, str]] = []
+        self.failed: dict[CallTag, str] = {}
+        self.succeeded_kinds: set[Kind] = set()
+        # Different requests failing in a row: of kinds that have not succeeded
+        # in this run, and of any kind.
+        self.unproven_failures = 0
         self.failures_in_a_row = 0
 
     def progress(self, recorded: int, planned: int, exact: bool) -> None:
@@ -284,14 +308,40 @@ class _Session:
                 return
         self.free_left -= 1
 
+    def _fail(self, request: PlannedRequest, label: str, reason: str) -> None:
+        """Skip a failed request and stop the run when failures look like a broken setup."""
+        self.failed[request.tag] = reason
+        self.skipped.append((label, reason))
+        self.echo(f"skipped {label}: {reason}")
+        self.failures_in_a_row += 1
+        if kind_of(request) not in self.succeeded_kinds:
+            self.unproven_failures += 1
+        if self.unproven_failures >= MAX_CONSECUTIVE_FAILURES:
+            raise TooManyFailures(
+                f"{self.unproven_failures} different requests in a row failed, and none of "
+                f"their kinds has succeeded in this run: check the model id and config "
+                f"(last: {reason})"
+            )
+        if self.failures_in_a_row >= MAX_FAILURES_IN_A_ROW:
+            raise TooManyFailures(
+                f"{self.failures_in_a_row} different requests in a row failed: the API or "
+                f"network may be down; rerun later (last: {reason})"
+            )
+
     def send_all(self, planned: Sequence[PlannedRequest]) -> None:
         for request in planned:
+            label = request.tag.label(request.repeat)
+            if request.tag in self.failed:
+                # Another repeat of this request failed in this run: do not ask again.
+                reason = f"an earlier repeat failed ({self.failed[request.tag]})"
+                self.not_sent.append((label, reason))
+                self.echo(f"not sent {label}: {reason}")
+                continue
             role = self.config.models.role(request.role)
             bound = self.cap.bound(role, request)
             self.cap.check(bound)
             if is_free(role.model):
                 self._spend_free_request()
-            label = request.tag.label(request.repeat)
             try:
                 result = self.client.complete(
                     list(request.messages),
@@ -302,16 +352,10 @@ class _Session:
                 )
             except OpenRouterError as exc:
                 # The message is already scrubbed of the key (llmeval.openrouter).
-                self.skipped.append((label, str(exc)))
-                self.failures_in_a_row += 1
-                self.echo(f"skipped {label}: {exc}")
-                if self.failures_in_a_row >= MAX_CONSECUTIVE_FAILURES:
-                    raise TooManyFailures(
-                        f"{self.failures_in_a_row} calls in a row failed; a wrong model id or "
-                        f"config fails every call (last: {exc})"
-                    ) from None
+                self._fail(request, label, str(exc))
                 continue
-            self.failures_in_a_row = 0
+            self.succeeded_kinds.add(kind_of(request))
+            self.unproven_failures = self.failures_in_a_row = 0
             if result.key != request.key:
                 raise PlanMismatch(
                     f"{request.tag.label(request.repeat)}: the request sent does not match "
@@ -321,6 +365,26 @@ class _Session:
             self.recorded += 1
             self.echo(f"recorded {self.recorded}/{self.planned}  {label}")
             self.cap.add(result.cost_usd, bound=bound)
+
+
+def _summarise_skips(session: _Session, echo: Callable[[str], None]) -> None:
+    """List the calls this run skipped and those it did not send."""
+    if session.skipped:
+        them = "them" if len(session.skipped) > 1 else "it"
+        echo(
+            f"skipped {plural(len(session.skipped), 'call')} "
+            f"(rerun make record to retry {them}):"
+        )
+        for label, reason in session.skipped:
+            echo(f"  {label}: {reason}")
+    if session.not_sent:
+        them = "them" if len(session.not_sent) > 1 else "it"
+        echo(
+            f"not sent {plural(len(session.not_sent), 'call')} "
+            f"(rerun make record to send {them}):"
+        )
+        for label, reason in session.not_sent:
+            echo(f"  {label}: {reason}")
 
 
 def _free_requests_left(
@@ -491,6 +555,9 @@ def _record(
     ) as client:
         session = _Session(client, config, echo, free_left, refresh, cap)
         session.progress(counts.recorded, counts.total, counts.exact)
+        stopped: QuotaExhausted | None = None
+        error: str | None = None
+        hint = ""
         try:
             system = kinds_first([p for p in to_record(plan, store) if p.role == "system"])
             if system:
@@ -525,46 +592,37 @@ def _record(
                 )
                 if calls_free_models:
                     echo(_daily_quota_hint(config, transport))
-            echo(CONTINUE_HINT.format(n=session.recorded))
-            return RecordOutcome(
-                False, session.recorded, session.planned, session.sent, stopped=stopped
-            )
+            hint = CONTINUE_HINT.format(n=session.recorded)
         except SpendCapReached as exc:
             echo(str(exc))
-            echo(
+            error = str(exc)
+            hint = (
                 f"{session.recorded} of {session.planned} calls recorded; raise MAX_RUN_COST_USD "
                 "or rerun make record later to continue: each run may spend up to the limit, "
                 "and recorded calls are kept and skipped"
             )
-            return RecordOutcome(
-                False, session.recorded, session.planned, session.sent, error=str(exc)
-            )
         except TooManyFailures as exc:
             echo(f"stopped: {exc}")
-            echo(
+            if not session.exact:
+                echo(UPPER_BOUND_NOTE)
+            error = str(exc)
+            hint = (
                 f"{session.recorded} of {session.planned} calls recorded; rerun make record "
                 "to retry: recorded calls are kept and skipped"
             )
-            if not session.exact:
-                echo(UPPER_BOUND_NOTE)
-            return RecordOutcome(
-                False, session.recorded, session.planned, session.sent, error=str(exc)
-            )
+    _summarise_skips(session, echo)
     plan = full_plan(inputs, store)
     counts = count_plan(plan, store, models)
-    if not session.sent and not session.skipped:
-        echo("nothing left to record")
-    if session.skipped:
-        them = "them" if len(session.skipped) > 1 else "it"
-        echo(
-            f"skipped {plural(len(session.skipped), 'call')} "
-            f"(rerun make record to retry {them}):"
-        )
-        for label, reason in session.skipped:
-            echo(f"  {label}: {reason}")
     if counts.waiting:
         wait = "wait" if counts.waiting > 1 else "waits"
         echo(f"{plural(counts.waiting, 'judge call')} {wait} for answers that were skipped")
+    if stopped is not None or error is not None:
+        echo(hint)
+        return RecordOutcome(
+            False, session.recorded, session.planned, session.sent, stopped=stopped, error=error
+        )
+    if not session.sent and not session.skipped:
+        echo("nothing left to record")
     if counts.to_record or not counts.exact:
         echo(f"recorded {counts.recorded}/{counts.total}: not complete, no manifest written")
         return RecordOutcome(False, counts.recorded, counts.total, session.sent)

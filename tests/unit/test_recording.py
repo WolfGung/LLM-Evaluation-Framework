@@ -26,6 +26,7 @@ from tests.unit.synthetic_openrouter import (
     SyntheticOpenRouter,
     everything_under,
     make_workspace,
+    unanswerable_rows,
 )
 
 runner = CliRunner()
@@ -369,7 +370,8 @@ def test_an_api_error_stops_with_progress_and_the_key_scrubbed(ws, network):
         "upstream failed for Bearer [redacted]"
     ) in out
     assert (
-        "stopped: 3 calls in a row failed; a wrong model id or config fails every call"
+        "stopped: 3 different requests in a row failed, and none of their kinds has succeeded "
+        "in this run: check the model id and config"
     ) in out
     assert f"{SYSTEM_CALLS} of {ALL_CALLS} calls recorded" in out
     assert "rerun make record to retry: recorded calls are kept and skipped" in out
@@ -389,9 +391,10 @@ def test_day_one_records_one_call_of_each_kind_first(ws, network):
         "tri-001/v2/0",
         "rag-001/v1/1",
     ]
-    # Pass 2: one grading and one pairwise question first.
-    assert progress[SYSTEM_CALLS : SYSTEM_CALLS + 2] == [
+    # Pass 2: a grading of each version's answers and one pairwise question first.
+    assert progress[SYSTEM_CALLS : SYSTEM_CALLS + 3] == [
         "rag-001:judge/v1/0",
+        "rag-001:judge/v2/0",
         "rag-001:A=v1/v1-v2/0",
     ]
     assert len(progress) == len(set(progress)) == ALL_CALLS
@@ -410,13 +413,15 @@ def test_a_refused_request_is_skipped_and_the_rest_is_recorded(ws, network):
     result = runner.invoke(app, args("record", ws))
     out = result.output
     assert result.exit_code == 1
-    # rag-002 v1 fails on both repeats; everything else is recorded.
+    # rag-002 v1 is tried once; its second repeat is not sent; the rest is recorded.
     assert "skipped rag-002/v1/0: /api/v1/chat/completions returned HTTP 403" in out
     assert len(router.chat_bodies) == ALL_CALLS - 2 - 3
-    assert "skipped 2 calls (rerun make record to retry them):" in out
-    assert "  rag-002/v1/1: /api/v1/chat/completions returned HTTP 403: flagged by moderation" in (
-        out
-    )
+    assert "skipped 1 call (rerun make record to retry it):" in out
+    assert "not sent 1 call (rerun make record to send it):" in out
+    assert (
+        "  rag-002/v1/1: an earlier repeat failed "
+        "(/api/v1/chat/completions returned HTTP 403: flagged by moderation)"
+    ) in out
     # Its grading and both pairwise questions wait for the missing answer.
     assert "3 judge calls wait for answers that were skipped" in out
     assert load_manifest(ws / "cassettes") is None
@@ -442,8 +447,9 @@ def test_failures_that_are_not_in_a_row_do_not_stop_the_run(ws, network):
     result = runner.invoke(app, args("record", ws))
     assert result.exit_code == 1
     assert "calls in a row failed" not in result.output
-    assert calls["failed"] >= 6  # six in pass 1 alone
+    assert calls["failed"] >= 3
     assert f"skipped {calls['failed']} calls (rerun make record to retry them):" in result.output
+    assert "not sent " in result.output  # the other repeats of the failed requests
 
 
 def test_a_torn_last_line_is_recorded_again(ws, network):
@@ -678,3 +684,139 @@ def test_one_skipped_call_is_counted_in_the_singular(ws, network):
     assert result.exit_code == 1
     assert "skipped 1 call (rerun make record to retry it):" in result.output
     assert "  rag-002/v1/1: /api/v1/chat/completions returned HTTP 403" in result.output
+
+
+# --- refused prompts under repeats, blocks of them, and outages ---------------------------
+
+
+def refuse_questions(*questions):
+    """A chat override: HTTP 403 for system calls asking any of `questions`."""
+
+    def override(request, body):
+        if not judge_body(body) and body["messages"][-1]["content"] in questions:
+            return httpx.Response(403, json={"error": {"message": "flagged by moderation"}})
+        return None
+
+    return override
+
+
+def test_a_refused_prompt_under_three_repeats_is_tried_once_and_the_rest_recorded(
+    tmp_path, network, monkeypatch
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
+    ws = make_workspace(tmp_path, repeats=3)
+    # rag-002 is refused in both versions. Plan: 18 system calls, 4 gradings,
+    # 4 pairwise questions = 26.
+    attempts = []
+    refuse = refuse_questions("Do you rent out ladders by the day?")
+
+    def counting(request, body):
+        response = refuse(request, body)
+        if response is not None:
+            attempts.append(body["messages"][0]["content"][:20])
+        return response
+
+    router = network(SyntheticOpenRouter(chat_override=counting))
+    result = runner.invoke(app, args("record", ws))
+    out = result.output
+    assert result.exit_code == 1
+    assert "stopped:" not in out
+    assert len(attempts) == 2  # one try per version; its other repeats are not sent
+    assert len(router.chat_bodies) == 26 - 6 - 4  # all but rag-002's 6 and the 4 judge calls
+    assert "skipped 2 calls (rerun make record to retry them):" in out
+    assert "not sent 4 calls (rerun make record to send them):" in out
+    assert (
+        "  rag-002/v1/1: an earlier repeat failed "
+        "(/api/v1/chat/completions returned HTTP 403: flagged by moderation)"
+    ) in out
+    assert "4 judge calls wait for answers that were skipped" in out
+    assert load_manifest(ws / "cassettes") is None
+
+    router = network(SyntheticOpenRouter())
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 0, result.output
+    assert len(router.chat_bodies) == 6 + 4
+    assert load_manifest(ws / "cassettes").planned_calls == 26
+
+
+def test_a_block_of_refused_prompts_after_their_kind_succeeded_does_not_stop(
+    tmp_path, network, monkeypatch
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
+    rows = unanswerable_rows(7)
+    ws = make_workspace(tmp_path, repeats=1, rag_rows=rows)
+    blocked = [row["question"] for row in rows[1:6]]  # rag-002..rag-006, contiguous
+    router = network(SyntheticOpenRouter(chat_override=refuse_questions(*blocked)))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 1
+    assert "stopped:" not in result.output
+    assert "skipped 10 calls (rerun make record to retry them):" in result.output
+    # rag-001 and rag-007 in both versions, triage in both, and their judge calls.
+    recorded = {entry.tag.label(entry.repeat) for entry in CassetteStore(ws / "cassettes")}
+    assert {"rag-001/v1/0", "rag-007/v1/0", "rag-007/v2/0", "tri-001/v2/0"} <= recorded
+    assert len(router.chat_bodies) == len(recorded)
+
+
+def test_three_failures_of_a_kind_that_never_succeeded_stop_the_run(
+    tmp_path, network, monkeypatch
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
+    ws = make_workspace(tmp_path, repeats=1, rag_rows=unanswerable_rows(6))
+
+    def v1_broken(request, body):  # every rag v1 call fails, as with a broken prompt
+        system = body["messages"][0]["content"]
+        question = body["messages"][-1]["content"]
+        rag_v1 = question.startswith("Synthetic question") and "Follow these rules" not in system
+        if rag_v1 and not judge_body(body):
+            return httpx.Response(400, json={"error": {"message": "bad request"}})
+        return None
+
+    network(SyntheticOpenRouter(chat_override=v1_broken))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 1
+    assert (
+        "stopped: 3 different requests in a row failed, and none of their kinds has succeeded "
+        "in this run: check the model id and config"
+    ) in result.output
+    # The day-1 probe of rag v1 failed; rag v2 and triage succeeded in between;
+    # then rag-002, rag-003 and rag-004 v1 failed in a row.
+    assert "skipped 4 calls" in result.output
+
+
+def test_twenty_different_requests_failing_in_a_row_stop_the_run(tmp_path, network, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
+    rows = unanswerable_rows(25)
+    ws = make_workspace(tmp_path, repeats=1, rag_rows=rows)
+    blocked = [row["question"] for row in rows[1:]]  # all but rag-001
+    network(SyntheticOpenRouter(chat_override=refuse_questions(*blocked)))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 1
+    assert (
+        "stopped: 20 different requests in a row failed: the API or network may be down; "
+        "rerun later"
+    ) in result.output
+    assert "skipped 20 calls (rerun make record to retry them):" in result.output
+
+
+def test_the_skip_summary_is_printed_when_a_stop_ends_the_run(ws, network):
+    calls = {"n": 0}
+    tomorrow = datetime.now(UTC) + timedelta(hours=10)
+    reset = {"X-RateLimit-Reset": str(int(tomorrow.timestamp() * 1000))}
+
+    def refuse_then_quota(request, body):
+        calls["n"] += 1
+        if calls["n"] == 6:  # rag-002/v1/0: refused, so rag-002/v1/1 is not sent
+            return httpx.Response(403, json={"error": {"message": "flagged by moderation"}})
+        if calls["n"] == 9:
+            return httpx.Response(429, headers=reset, json={})
+        return None
+
+    network(SyntheticOpenRouter(chat_override=refuse_then_quota))
+    result = runner.invoke(app, args("record", ws))
+    out = result.output
+    assert result.exit_code == EXIT_STOPPED
+    assert "free daily quota reached" in out
+    assert "skipped 1 call (rerun make record to retry it):" in out
+    assert "not sent 1 call (rerun make record to send it):" in out
+    assert out.index("free daily quota reached") < out.index("skipped 1 call")
+    assert out.rstrip().endswith("kept and skipped")
