@@ -7,10 +7,10 @@ The CI workflow builds this page on a push to main, puts the Allure report
 of the same run next to it under `report/`, and publishes both on GitHub
 Pages. The page shows the blocks the README shows, from the same parts
 (`tools.render` and `tools.sections`): the main table, the pairwise
-comparison and the judge's agreement with the owner's labels. They are read
+comparison and the judge's agreement with the author's labels. They are read
 from `results/` and `cassettes/manifest.json` only, so the same files give
-the same page. Without a recorded run each section says `pending first
-recorded run`.
+the same page; the legend under the main table is the README's. Without a
+recorded run each section says `pending first recorded run`.
 
 The page also says how to read the report: Allure's Behaviors tab groups the
 per-case tests by layer, so its counts are tests, not layer pass rates.
@@ -40,6 +40,18 @@ SUMMARY = (
     "every run is free."
 )
 MAIN_CAPTION = "Each prompt version of both functions, layer by layer"
+# The legend under the main table, on the page and in the README (a
+# repository test keeps them the same).
+LEGEND = (
+    "How to read the table: rag is the support assistant (retrieval-augmented generation: it "
+    "searches the knowledge base, then answers), and triage turns a ticket into JSON. Retrieval: "
+    "the search found the expected documents. Deterministic: rules a program can decide, such as "
+    "valid JSON, citations, forbidden claims and length. Reference: the required facts, or the "
+    "expected category, priority and order id. Safety: nothing leaked and no attack worked. "
+    "Judge: a second model graded the answer as grounded, helpful and polite. Stable cases: every "
+    "repeat got the same verdicts. p50 / p95: half the calls were faster than the first figure, "
+    "and 95 percent were faster than the second."
+)
 BEHAVIORS = (
     "Allure's Behaviors tab groups the per-case tests by function and layer, and lists a "
     "passing case under every layer it was checked on. Its counts are tests, not layer pass "
@@ -107,7 +119,10 @@ def build(results_dir: Path = RESULTS, cassettes_dir: Path = CASSETTES) -> str:
     if run is None:
         main = pairwise = agreement = [f"<p>{PENDING_RECORDED_RUN}</p>"]
     else:
-        main = _table_html(table(run.manifest, run.run), MAIN_CAPTION)
+        main = [
+            *_table_html(table(run.manifest, run.run), MAIN_CAPTION),
+            f"<p>{escape(LEGEND)}</p>",
+        ]
         pairwise = _parts_html(sections.pairwise(run))
         agreement = _parts_html(sections.agreement(run))
     lines = [

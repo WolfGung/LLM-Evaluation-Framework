@@ -11,7 +11,7 @@ in `config/gate.yaml` or the datasets; the same files give the same text.
   counted over every case; position consistency only over the pairs the
   judge really compared (two different answers, two valid verdicts), so an
   identical or invalid pair never counts as consistent.
-- `agreement`: the judge against the owner's labels on the label sample:
+- `agreement`: the judge against the author's labels on the label sample:
   `pending human labels` with the sample until there are labels, then
   percent agreement, Cohen's kappa, the confusion and the disagreements,
   always with the note that the sample oversamples judge failures.
@@ -224,13 +224,13 @@ def _sample_sentence(report: AgreementReport, failures: int) -> str:
 
 
 def agreement_parts(report: AgreementReport, failures: int) -> list[Part]:
-    """The judge's agreement with the owner's labels (see the module docstring)."""
+    """The judge's agreement with the author's labels (see the module docstring)."""
     sample = _sample_sentence(report, failures)
     if report.status == PENDING_HUMAN_LABELS:
         return [PENDING_HUMAN_LABELS, sample]
     cells = report.confusion
     confusion = Table(
-        header=("Judge's verdict", "Owner: pass", "Owner: fail"),
+        header=("Judge's verdict", "Author: pass", "Author: fail"),
         rows=tuple(
             (
                 f"Judge: {verdict}",
@@ -239,13 +239,13 @@ def agreement_parts(report: AgreementReport, failures: int) -> list[Part]:
             )
             for verdict in ("pass", "fail")
         ),
-        caption="The judge's verdict by the owner's label, on the labelled sample answers",
+        caption="The judge's verdict by the author's label, on the labelled sample answers",
     )
     disagreements = cells["judge_pass"]["human_fail"] + cells["judge_fail"]["human_pass"]
     kappa = decimal(report.kappa, 2) if report.kappa is not None else report.kappa_note
     listed = (
         f"{disagreements}, listed in results/judge-agreement.json with the judge's reasons "
-        "and the owner's comments"
+        "and the author's comments"
         if disagreements
         else "0"
     )
@@ -560,10 +560,10 @@ def cost(recorded: Recorded) -> list[Part]:
         added = f"The rows add up to {plural(total, 'call')}; the recording holds {held}."
         shared = _shared_gradings(recorded)
         if shared and total - shared == held:
+            verb = "is" if shared == 1 else "are"
             added += (
-                f" Both prompt versions wrote the same answer {plural(shared, 'time')}, so the "
-                f"two versions share {plural(shared, 'recorded grading')}, and each version's row "
-                "counts it."
+                f" On {plural(shared, 'case')} both prompt versions wrote the same answer, so "
+                f"{plural(shared, 'recorded grading')} {verb} counted in both versions' rows."
             )
     return [
         Table(
@@ -721,11 +721,15 @@ def _compared(result: PairwiseResults) -> str:
     outcomes = result.summary.outcomes
     left_out = []
     if outcomes.get("identical"):
-        left_out.append(f"{outcomes['identical']} had identical answers")
+        left_out.append((outcomes["identical"], "identical answers"))
     if outcomes.get("invalid"):
-        left_out.append(f"{outcomes['invalid']} an invalid verdict")
+        left_out.append((outcomes["invalid"], "an invalid verdict"))
     text = plural(result.summary.inconsistent.total, "case")
-    return f"{text} ({', '.join(left_out)})" if left_out else text
+    if not left_out:
+        return text
+    named = " and ".join(f"{count} more with {what}" for count, what in left_out)
+    verb = "was" if sum(count for count, _ in left_out) == 1 else "were"
+    return f"{text} ({named} {verb} not compared)"
 
 
 def scope(recorded: Recorded) -> list[Part]:

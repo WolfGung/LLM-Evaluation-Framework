@@ -49,7 +49,7 @@ The judge also compares the two prompt versions directly: it sees both answers t
 
 The rule-based layers (retrieval, deterministic, reference, safety and stability) call no model: they read the answers above, so they add no calls and no cost.
 
-The rows add up to 708 calls; the recording holds 706. Both prompt versions wrote the same answer 2 times, so the two versions share 2 recorded gradings, and each version's row counts it.
+The rows add up to 708 calls; the recording holds 706. On 2 cases both prompt versions wrote the same answer, so 2 recorded gradings are counted in both versions' rows.
 
 <!-- cost:end -->
 

@@ -60,7 +60,7 @@ Where this repository differs on purpose:
 - **Every call is recorded, the judge's included,** keyed by a hash of the whole request, and committed. CI replays it exactly, offline and without a key, and a changed prompt or rubric fails loudly instead of reusing an old answer. A response cache saves calls; a recording makes a result reproducible.
 - **Safety is decided by rules,** never by a model, and the judge never grades the safety cases.
 - **Evaluation outcomes are compared with a baseline case by case,** so a fixed case is reported as clearly as a broken one, and updating the baseline is a reviewed diff.
-- **The judge is measured** against the owner's labels and for position and length bias, and those measurements are shown next to its grades ([docs/03](03-judge-validation.md)).
+- **The judge is measured** against the author's labels and for position and length bias, and those measurements are shown next to its grades ([docs/03](03-judge-validation.md)).
 
 Sources, read on 2026-10-05:
 
@@ -72,4 +72,4 @@ Sources, read on 2026-10-05:
 
 ## How this was built
 
-Pavel Zhukov Atum built this repository with AI coding tools: Claude Code and Codex in VS Code, the Claude browser extensions, and the superpowers skills for planning, test-first work and code review. Every change went through the tests and a review. The model answers in [`cassettes/`](../cassettes/) come only from the repository's own `make record`, and the human labels only from the owner's `make label`.
+Pavel Zhukov Atum built this repository with AI coding tools: Claude Code and Codex in VS Code, the Claude browser extensions, and the superpowers skills for planning, test-first work and code review. Every change went through the tests and a review. The model answers in [`cassettes/`](../cassettes/) come only from the repository's own `make record`, and the human labels only from the author's `make label`.

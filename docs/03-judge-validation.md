@@ -12,9 +12,9 @@ The judge is a measuring instrument, and an instrument is checked before its rea
 
 ## Agreement with a person
 
-The owner labels a sample of judged answers by hand with `make label`, and `make eval` compares the judge's verdicts with those labels.
+Pavel Zhukov Atum, the author, labels a sample of judged answers by hand with `make label`, and `make eval` compares the judge's verdicts with those labels.
 
-- **The question.** For each answer the owner decides one thing: would you send this answer to the customer as is? Pass if it is grounded in the shown documents, answers the question (or says honestly that the documents do not cover it), and is polite. That is the judge's three criteria in one decision.
+- **The question.** For each answer the author decides one thing: would you send this answer to the customer as is? Pass if it is grounded in the shown documents, answers the question (or says honestly that the documents do not cover it), and is polite. That is the judge's three criteria in one decision.
 - **Blind.** The tool shows the question, the documents the assistant was given and the answer. It never shows the judge's verdict, the case id, the prompt version or the category. The two versions' answers to the same question are kept apart in the order.
 - **The sample.** [`labels/sample.json`](../labels/sample.json) holds every answer the judge failed, plus answers it passed, drawn with a fixed seed across the case categories and both versions. Judge failures are rare, so a random sample could hold none, and then agreement would say nothing about the answers the judge rejects. The price is that agreement on this sample is not the agreement over all answers.
 - **The measures.** Percent agreement, and Cohen's kappa: agreement corrected for the agreement two raters would reach by chance, given how often each one passes answers. A kappa of 1 is perfect agreement; 0 is no better than chance. Kappa matters here: when most answers pass, two raters who pass almost everything agree often without judging alike.
@@ -27,7 +27,7 @@ Pavel Zhukov Atum, the author, labels 30 judged answers by hand, blind to the ju
 
 <!-- agreement:end -->
 
-When labels exist, [`results/judge-agreement.json`](../results/judge-agreement.json) also lists every disagreement with the judge's scores and reasons and the owner's comment.
+When labels exist, [`results/judge-agreement.json`](../results/judge-agreement.json) also lists every disagreement with the judge's scores and reasons and the author's comment.
 
 ## The judge's grades
 
@@ -84,7 +84,7 @@ With this many flips, the comparison says more about the judge's position bias t
 
 <!-- pairwise:end -->
 
-Read the outcomes with the consistency next to them. Identical answers are not asked, so they count in no rate. Only the pairs the judge really compared count toward consistency. A comparison with many inconsistent pairs says more about the judge than about the two prompts, which is why the per-answer grades and the rule-based layers carry the main table and the pairwise result sits beside them.
+Read the outcomes with the consistency next to them: identical answers are not asked and count in no rate, and only the pairs the judge really compared count toward consistency. When consistency is low, the block above says so and names no winner. The main table rests on the per-answer grades and the rule-based layers, not on the pairwise result.
 
 ### Length
 
@@ -101,7 +101,7 @@ A document can tell an AI to do something, as the supplier page in the knowledge
 ## A finding from the first recording: the judge's token budget
 
 <!-- history:start -->
-The first recording (commit 66b4a3a) gave the judge a budget of max_tokens 1500. Its reasoning used the whole budget in 13 of 154 judge calls (6 gradings and 7 pairwise questions), so those verdicts were empty or cut off, and replay counted them as invalid. The owner raised the judge's max_tokens to 4096 and re-recorded only the judge calls (commit 1fc63b9); the system's answers stayed as they were.
+The first recording (commit 66b4a3a) gave the judge a budget of max_tokens 1500. Its reasoning used the whole budget in 13 of 154 judge calls (6 gradings and 7 pairwise questions), so those verdicts were empty or cut off, and replay counted them as invalid. The author raised the judge's max_tokens to 4096 and re-recorded only the judge calls (commit 1fc63b9); the system's answers stayed as they were.
 <!-- history:end -->
 
 The lesson for any evaluation with a reasoning model as judge: reasoning tokens count toward the answer's token budget, and a budget that is too small looks like a judge that cannot follow the format. That is why the share of valid verdicts is reported per version and gated, and why the client records each call's finish reason and reasoning tokens.

@@ -107,7 +107,7 @@ make live                         # every case again against the API, into resul
 .venv/bin/llmeval gate --results-dir results-live   # the drift since the recording
 ```
 
-`make label` is the owner's blind labelling tool for the judge-agreement sample.
+`make label` is the author's blind labelling tool for the judge-agreement sample.
 
 ## How the repository is put together
 
@@ -122,9 +122,9 @@ datasets/ ─► runner ─► ModelClient ─► OpenRouter          (record, l
 ```
 
 - [`app/`](app/): the system under test, a FastAPI service with the support assistant (BM25 search over [`app/kb/`](app/kb/), then the model) and the ticket triage, and two prompt versions of each in [`app/prompts/`](app/prompts/).
-- [`llmeval/`](llmeval/): the evaluation. [`client.py`](llmeval/client.py) makes every call in one of three modes and [`cassettes.py`](llmeval/cassettes.py) stores them; [`runner.py`](llmeval/runner.py) runs the cases; [`checks/`](llmeval/checks/) holds the layers; [`stability.py`](llmeval/stability.py) and [`perf.py`](llmeval/perf.py) measure repeats, latency, tokens and cost; [`baseline.py`](llmeval/baseline.py) and [`gate.py`](llmeval/gate.py) turn results into a verdict; [`recording.py`](llmeval/recording.py), [`callplan.py`](llmeval/callplan.py), [`pricing.py`](llmeval/pricing.py) and [`quota.py`](llmeval/quota.py) keep recording inside the budget and the free limits; [`labels.py`](llmeval/labels.py) and [`agreement.py`](llmeval/agreement.py) compare the judge with the owner's labels; [`cli.py`](llmeval/cli.py) is the `llmeval` command.
+- [`llmeval/`](llmeval/): the evaluation. [`client.py`](llmeval/client.py) makes every call in one of three modes and [`cassettes.py`](llmeval/cassettes.py) stores them; [`runner.py`](llmeval/runner.py) runs the cases; [`checks/`](llmeval/checks/) holds the layers; [`stability.py`](llmeval/stability.py) and [`perf.py`](llmeval/perf.py) measure repeats, latency, tokens and cost; [`baseline.py`](llmeval/baseline.py) and [`gate.py`](llmeval/gate.py) turn results into a verdict; [`recording.py`](llmeval/recording.py), [`callplan.py`](llmeval/callplan.py), [`pricing.py`](llmeval/pricing.py) and [`quota.py`](llmeval/quota.py) keep recording inside the budget and the free limits; [`labels.py`](llmeval/labels.py) and [`agreement.py`](llmeval/agreement.py) compare the judge with the author's labels; [`cli.py`](llmeval/cli.py) is the `llmeval` command.
 - [`datasets/`](datasets/): the authored cases and the triage guideline. [`rubrics/judge.md`](rubrics/judge.md): the judge's rubric.
-- [`cassettes/`](cassettes/): every recorded call, with its manifest. [`results/`](results/): the replay results, the baseline and the judge agreement, all committed. [`labels/`](labels/): the label sample and the owner's labels.
+- [`cassettes/`](cassettes/): every recorded call, with its manifest. [`results/`](results/): the replay results, the baseline and the judge agreement, all committed. [`labels/`](labels/): the label sample and the author's labels.
 - [`tests/`](tests/): `unit/` on synthetic data, `app/` for the service, `repo/` for the repository's own promises (fresh results, the baseline, the generated blocks, the workflows), `eval/` for the per-case and per-layer evaluation.
 - [`tools/`](tools/): [`render.py`](tools/render.py) and [`sections.py`](tools/sections.py) write the generated blocks; [`site.py`](tools/site.py) builds the published page.
 - [`.github/workflows/`](.github/workflows/): [`ci.yml`](.github/workflows/ci.yml) lints, tests and replays on every push and pull request and publishes the page and the Allure report from `main`; [`live.yml`](.github/workflows/live.yml) is the live run, started by hand.
@@ -150,7 +150,7 @@ Record and live estimate the cost first and refuse to start above `MAX_RUN_COST_
 
 - [What is evaluated](docs/01-what-is-evaluated.md): the system under test, its two features and two prompt versions, the cases, and the business risks each check covers.
 - [Evaluation strategy](docs/02-eval-strategy.md): the layers and their order, when a judge is needed, what each layer costs, the baseline and the gate with its tolerances.
-- [Can the judge be trusted?](docs/03-judge-validation.md): agreement with the owner's labels, and position, length and self-preference bias.
+- [Can the judge be trusted?](docs/03-judge-validation.md): agreement with the author's labels, and position, length and self-preference bias.
 - [Safety cases](docs/04-safety-cases.md): each attack, the safe answer and the result per prompt version.
 - [What evaluation cannot tell you](docs/05-limitations.md): the limits of the dataset, the recording, the judge and every detector.
 - [Tools and versions](docs/06-tools-and-versions.md): library versions and model ids with the date checked, and how the concepts map to DeepEval, promptfoo, Inspect and Ragas.

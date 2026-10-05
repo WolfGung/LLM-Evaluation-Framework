@@ -171,3 +171,15 @@ def test_the_page_says_the_behaviors_counts_are_not_layer_pass_rates(ws):
 def test_without_a_recorded_run_every_section_is_pending(ws):
     html = page(ws)
     assert html.count("<p>pending first recorded run</p>") == 3
+
+
+def test_the_page_explains_the_main_table_with_the_readme_legend(ws):
+    record_run(ws)
+    html = page(ws)
+    legend = f"<p>{escape(site.LEGEND)}</p>"
+    assert legend in html
+    assert html.index("</table>") < html.index(legend) < html.index("<h2>The two RAG")
+
+
+def test_without_a_recorded_run_the_page_has_no_legend(ws):
+    assert escape(site.LEGEND) not in page(ws)

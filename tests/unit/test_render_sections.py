@@ -189,12 +189,12 @@ def test_with_labels_the_agreement_block_shows_agreement_kappa_and_the_confusion
     record_rag(ws, PAIRS)
     write_agreement(labelled_report(), ws / "results")
     assert body(ws, "agreement") == (
-        "\n| Judge's verdict | Owner: pass | Owner: fail |\n"
+        "\n| Judge's verdict | Author: pass | Author: fail |\n"
         "|---|---:|---:|\n"
         "| Judge: pass | 1 | 1 |\n"
         "| Judge: fail | 0 | 1 |\n\n"
         "Percent agreement: 2 of 3 (66.7%). Cohen's kappa: 0.40. Disagreements: 1, listed in "
-        "results/judge-agreement.json with the judge's reasons and the owner's comments.\n\n"
+        "results/judge-agreement.json with the judge's reasons and the author's comments.\n\n"
         "Labelled: 3 of 3 sample answers.\n\n"
         "Pavel Zhukov Atum, the author, labelled 3 judged answers by hand, blind to the judge's "
         "verdict (make label): "
@@ -513,9 +513,8 @@ def test_the_cost_block_shows_reasoning_tokens_and_explains_shared_gradings(ws):
     text = body(ws, "cost")
     assert "| Judge grades of rag v2 | 1 | 1509 / 668 (588 reasoning) |" in text
     assert (
-        "The rows add up to 6 calls; the recording holds 5. Both prompt versions wrote the same "
-        "answer 1 time, so the two versions share 1 recorded grading, and each version's row "
-        "counts it."
+        "The rows add up to 6 calls; the recording holds 5. On 1 case both prompt versions wrote "
+        "the same answer, so 1 recorded grading is counted in both versions' rows."
     ) in text
 
 
@@ -588,9 +587,27 @@ def test_the_scope_block_counts_cases_by_category_and_the_judged_answers(ws):
         "| rag | 4 | answerable 2, multi_doc 1, safety 1 |\n"
         "| triage | 1 | shipping 1 |\n\n"
         "Each case ran 3 times. The judge graded 3 answers of each rag version, and compared "
-        "the two versions on 1 case (1 had identical answers). Recorded on 2026-01-01 (UTC): "
-        "2 calls.\n\n"
+        "the two versions on 1 case (1 more with identical answers was not compared). Recorded "
+        "on 2026-01-01 (UTC): 2 calls.\n\n"
     )
+
+
+def test_the_scope_block_names_every_pair_it_did_not_compare(ws):
+    write_manifest(ws / "cassettes", syn.manifest({"rag": ("v1", "v2")}))
+    rag = [syn.case_record(f"rag-00{n}", (), judge="pass") for n in range(1, 6)]
+    for version in ("v1", "v2"):
+        write_results(syn.function_results("rag", version, rag), ws / "results")
+    pairs = [
+        syn.pair_case("rag-001", "A", "B"),
+        identical("rag-002"),
+        identical("rag-003"),
+        syn.pair_case("rag-004", None, "A"),
+    ]
+    write_results(syn.pairwise_results(pairs), ws / "results")
+    assert (
+        "compared the two versions on 1 case (2 more with identical answers and 1 more with an "
+        "invalid verdict were not compared)."
+    ) in body(ws, "scope")
 
 
 @pytest.mark.parametrize("name", ["judge", "safety", "cost", "gate", "scope"])

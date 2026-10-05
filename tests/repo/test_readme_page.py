@@ -83,6 +83,13 @@ def test_the_published_page_opens_with_the_readme_sentence():
     assert lines()[2] == site.SUMMARY
 
 
+def test_the_readme_legend_follows_the_main_table_and_is_the_page_legend():
+    text = lines()
+    after = text.index("<!-- results:end -->")
+    assert text[after + 1] == "" and text[after + 3] == ""
+    assert text[after + 2] == site.LEGEND
+
+
 def test_what_this_shows_names_the_four_client_tasks():
     bullets = section("What this shows")
     assert len(bullets) == len(CLIENT_POINTS)
