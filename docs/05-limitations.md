@@ -76,7 +76,6 @@ Each check documents its own limits in [`llmeval/checks/`](../llmeval/checks/). 
 
 - **A request the provider always refuses.** Recording skips a refused request and goes on, and the next run asks it again, after the fresh calls. If the provider refuses it every time, the recording never completes and the manifest is not written; every stop lists the missing calls. A whole refused block at the very end of a function's plan can still go first on each new day and use part of the daily allowance.
 - **A free model that is removed.** Every call then fails with HTTP 404, "No endpoints found". The run does not stop early on it; change the model in [`config/models.yaml`](../config/models.yaml).
-- **A deleted prompt file.** When the manifest names a prompt version whose file is gone, `llmeval status` and `llmeval eval` stop with a Python error instead of a one-line message. Restore the file, or record again.
 - **The service in replay mode** answers only the recorded dataset questions. Any other question gets HTTP 503 with a hint to run it live with free models.
 - **Docker and file permissions.** The service reads `cassettes/` through a read-only mount. A restrictive umask when recording can leave cassette files the container cannot read.
 - **New cases.** The gate checks every case the baseline lists. A case that a live run has and the baseline does not is not gated until the baseline is updated.

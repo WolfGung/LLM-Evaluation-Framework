@@ -144,7 +144,14 @@ from llmeval.recording import (
     record_all,
 )
 from llmeval.results import LIVE_RESULTS_DIR, RESULTS_DIR, FunctionResults, PairwiseResults
-from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, prompt_sha256, run, versions_of
+from llmeval.runner import (
+    CASSETTES_DIR,
+    EVAL_FUNCTIONS,
+    UnknownPromptVersion,
+    prompt_sha256,
+    run,
+    versions_of,
+)
 from llmeval.stability import Stability
 
 app = typer.Typer(
@@ -344,6 +351,8 @@ def eval_command(
             stability_cases=manifest.stability_cases,
             judge_repeats=manifest.judge_repeats,
         )
+    except UnknownPromptVersion as exc:
+        raise _fail(exc.from_manifest()) from None
     except (
         MissingRecording,
         CassetteError,
@@ -422,7 +431,10 @@ def status_command(
     if manifest is None:
         typer.echo(f"manifest: absent, so the evaluation is {PENDING_RECORDED_RUN}")
     else:
-        replay = count_plan(replay_plan(inputs, manifest, store), store, loaded.models)
+        try:
+            replay = count_plan(replay_plan(inputs, manifest, store), store, loaded.models)
+        except UnknownPromptVersion as exc:
+            raise _fail(exc.from_manifest()) from None
         for line in _manifest_lines(manifest, replay, counts):
             typer.echo(line)
     for line in plan_lines(counts, loaded.models):

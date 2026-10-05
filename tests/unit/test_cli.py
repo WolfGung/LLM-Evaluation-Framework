@@ -426,3 +426,34 @@ def test_eval_lists_at_most_ten_unstable_cases_with_their_flips():
     assert _unstable_lines(None) == []
     eleven = Stability(repeated=20, stable=9, stable_share=0.45, unstable=unstable[:11])
     assert _unstable_lines(eleven)[-1] == "  and 1 more unstable case"
+
+
+GONE = (
+    "the manifest names prompt version rag v9, but its prompt file is gone: restore it or "
+    "record again"
+)
+
+
+def status_args(ws):
+    return [
+        "status",
+        "--config",
+        str(ws / "config.yaml"),
+        "--datasets-dir",
+        str(ws / "datasets"),
+        "--cassettes-dir",
+        str(ws / "cassettes"),
+        "--rubric",
+        str(RUBRIC),
+    ]
+
+
+@pytest.mark.parametrize("command", ["eval", "status"])
+def test_a_manifest_naming_a_deleted_prompt_version_fails_in_one_line(workspace, command):
+    write_manifest(workspace, {"rag": ["v1", "v9"], "triage": ["v1"]})
+    args = eval_args(workspace) if command == "eval" else status_args(workspace)
+    result = runner.invoke(app, args)
+    assert result.exit_code == 1, result.output
+    assert isinstance(result.exception, SystemExit)  # no traceback
+    assert [line for line in result.output.splitlines() if "prompt" in line] == [GONE]
+    assert not (workspace / "results").exists()

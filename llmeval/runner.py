@@ -168,15 +168,39 @@ def recorded_answers(store: CassetteStore) -> Answers:
     return answer
 
 
+class UnknownPromptVersion(ValueError):
+    """A prompt version was asked for that has no prompt file in `app/prompts/`."""
+
+    def __init__(self, function: str, unknown: Sequence[str], known: Sequence[str]) -> None:
+        self.function = function
+        self.unknown = tuple(unknown)
+        self.known = tuple(known)
+        super().__init__(
+            f"unknown prompt version for {function}: {', '.join(unknown)} "
+            f"(known: {', '.join(known)})"
+        )
+
+    def from_manifest(self) -> str:
+        """The one-line message when the versions came from the run manifest."""
+        versions = ", ".join(f"{self.function} {version}" for version in self.unknown)
+        one = len(self.unknown) == 1
+        word, files, them = (
+            ("version", "its prompt file is", "it")
+            if one
+            else ("versions", "their files are", "them")
+        )
+        return (
+            f"the manifest names prompt {word} {versions}, but {files} gone: "
+            f"restore {them} or record again"
+        )
+
+
 def _versions(versions: Mapping[str, Sequence[str]] | None, function: str) -> tuple[str, ...]:
     known = versions_of(function)
     chosen = tuple(versions[function]) if versions and function in versions else known
     unknown = [v for v in chosen if v not in known]
     if unknown:
-        raise ValueError(
-            f"unknown prompt version for {function}: {', '.join(unknown)} "
-            f"(known: {', '.join(known)})"
-        )
+        raise UnknownPromptVersion(function, unknown, known)
     return chosen
 
 
