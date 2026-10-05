@@ -268,3 +268,10 @@ def test_load_config_combines_file_and_environment(tmp_path):
 
     assert config.models.judge.model == "vendor-b/large:free"
     assert config.settings.mode is Mode.LIVE
+
+
+def test_a_role_is_found_by_its_name(tmp_path):
+    config = load_models_config(write(tmp_path, VALID_YAML))
+
+    assert config.role("system") is config.system
+    assert config.role("judge") is config.judge

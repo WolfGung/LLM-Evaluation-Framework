@@ -8,7 +8,14 @@ The order of work:
    run is refused instead of appending to the same files.
 2. The budget guard: the calls still to record are estimated
    (`llmeval.callplan`), and the run stops before any call when the estimate
-   is above MAX_RUN_COST_USD. `:free` model ids cost $0.00.
+   is above MAX_RUN_COST_USD. `:free` model ids cost $0.00. The estimate can
+   come from recorded costs, which are not a bound, so the run also keeps a
+   running spending cap (`SpendCap`): before each paid call it adds the
+   call's published-price bound (full token budget) to what this run has
+   spent and stops if that would pass MAX_RUN_COST_USD; a call whose cost is
+   unknown counts at that bound. A paid model with no published price is
+   refused before any call. When real costs exceed the published bound, the
+   run stops right after the call that passed the limit.
 3. The free quota: when the plan calls a `:free` model, `GET /api/v1/key`
    says how many free requests the key has left today. At 0 the run stops at
    once; otherwise it stops after that many (asking the endpoint once more
@@ -69,7 +76,15 @@ from llmeval.client import ModelClient
 from llmeval.config import Config, Mode, RoleConfig
 from llmeval.datasets import file_sha256
 from llmeval.openrouter import OpenRouterError, require_key
-from llmeval.pricing import check_budget
+from llmeval.pricing import (
+    ModelPrice,
+    PlannedCall,
+    PricingError,
+    check_budget,
+    estimate_cost,
+    estimate_prompt_tokens,
+    fetch_prices,
+)
 from llmeval.quota import FreeQuotaUsed, QuotaExhausted, RateLimitedNoReset, free_daily_quota
 from llmeval.runner import PlannedRequest
 
@@ -95,6 +110,76 @@ class RecordLocked(RuntimeError):
 
 class TooManyFailures(RuntimeError):
     """`MAX_CONSECUTIVE_FAILURES` requests failed in a row."""
+
+
+class SpendCapReached(RuntimeError):
+    """The run stopped to keep its spending under MAX_RUN_COST_USD."""
+
+
+class SpendCap:
+    """What this run has spent on paid calls, kept under `limit` (USD).
+
+    `prices` are the published prices of the paid models; a free model costs
+    nothing and is never checked. `unknown` counts calls whose cost the API
+    did not report (counted at their published-price bound, never as 0).
+    """
+
+    def __init__(self, limit: float, prices: Mapping[str, ModelPrice]) -> None:
+        self.limit = limit
+        self.prices = dict(prices)
+        self.spent = 0.0
+        self.unknown = 0
+
+    def bound(self, role: RoleConfig, request: PlannedRequest) -> float:
+        """The most this call can cost: its prompt and full budgets at published prices."""
+        if is_free(role.model):
+            return 0.0
+        call = PlannedCall.for_role(role, estimate_prompt_tokens(request.messages))
+        return estimate_cost([call], self.prices)
+
+    def check(self, bound: float) -> None:
+        if bound and self.spent + bound > self.limit:
+            raise SpendCapReached(
+                f"spending cap: this run spent ${self.spent:.4f} of "
+                f"MAX_RUN_COST_USD=${self.limit:.4f}; the next call could cost up to "
+                f"${bound:.4f}, so the run stopped before it"
+            )
+
+    def add(self, cost: float | None, *, bound: float) -> None:
+        if cost is None:
+            self.unknown += 1
+            cost = bound
+        self.spent += cost
+        if self.spent > self.limit:
+            raise SpendCapReached(
+                f"spending cap: this run spent ${self.spent:.4f} of "
+                f"MAX_RUN_COST_USD=${self.limit:.4f}; the last call cost more than its "
+                "published-price bound, so the run stopped"
+            )
+
+
+def _cap_prices(
+    plan: Sequence[PlannedRequest],
+    store: CassetteStore,
+    config: Config,
+    transport: httpx.BaseTransport | None,
+    now: Callable[[], datetime],
+) -> dict[str, ModelPrice]:
+    """Published prices of the paid models that still have calls to record."""
+    models = config.models
+    paid = sorted(
+        {
+            models.role(p.role).model
+            for p in to_record(plan, store)
+            if not is_free(models.role(p.role).model)
+        }
+    )
+    if not paid:
+        return {}
+    try:
+        return fetch_prices(paid, transport=transport, now=now)
+    except (PricingError, OpenRouterError) as exc:
+        raise PricingError(f"{exc}; the running spending cap needs it") from None
 
 
 def kinds_first(planned: Sequence[PlannedRequest]) -> list[PlannedRequest]:
@@ -168,12 +253,14 @@ class _Session:
         echo: Callable[[str], None],
         free_left: int | None,
         refresh: Callable[[], int | None],
+        cap: SpendCap,
     ) -> None:
         self.client = client
         self.config = config
         self.echo = echo
         self.free_left = free_left
         self.refresh = refresh
+        self.cap = cap
         self.recorded = 0
         self.planned = 0
         self.exact = False
@@ -183,10 +270,6 @@ class _Session:
 
     def progress(self, recorded: int, planned: int, exact: bool) -> None:
         self.recorded, self.planned, self.exact = recorded, planned, exact
-
-    def _role(self, planned: PlannedRequest) -> RoleConfig:
-        models = self.config.models
-        return models.system if planned.role == "system" else models.judge
 
     def _spend_free_request(self) -> None:
         if self.free_left is None:
@@ -202,7 +285,9 @@ class _Session:
 
     def send_all(self, planned: Sequence[PlannedRequest]) -> None:
         for request in planned:
-            role = self._role(request)
+            role = self.config.models.role(request.role)
+            bound = self.cap.bound(role, request)
+            self.cap.check(bound)
             if is_free(role.model):
                 self._spend_free_request()
             label = request.tag.label(request.repeat)
@@ -234,6 +319,7 @@ class _Session:
             self.sent += 1
             self.recorded += 1
             self.echo(f"recorded {self.recorded}/{self.planned}  {label}")
+            self.cap.add(result.cost_usd, bound=bound)
 
 
 def _free_requests_left(
@@ -391,11 +477,14 @@ def _record(
     def refresh() -> int | None:
         return _free_requests_left(config, transport, echo)
 
+    cap = SpendCap(
+        config.settings.max_run_cost_usd, _cap_prices(plan, store, config, transport, now)
+    )
     store.cut_unfinished_lines()
     with ModelClient(
         Mode.RECORD, store, config, transport, limiter=limiter, now=now, sleep=sleep
     ) as client:
-        session = _Session(client, config, echo, free_left, refresh)
+        session = _Session(client, config, echo, free_left, refresh, cap)
         session.progress(counts.recorded, counts.total, counts.exact)
         try:
             system = kinds_first([p for p in to_record(plan, store) if p.role == "system"])
@@ -434,6 +523,16 @@ def _record(
             echo(CONTINUE_HINT.format(n=session.recorded))
             return RecordOutcome(
                 False, session.recorded, session.planned, session.sent, stopped=stopped
+            )
+        except SpendCapReached as exc:
+            echo(str(exc))
+            echo(
+                f"{session.recorded} of {session.planned} calls recorded; raise MAX_RUN_COST_USD "
+                "or rerun make record later to continue: each run may spend up to the limit, "
+                "and recorded calls are kept and skipped"
+            )
+            return RecordOutcome(
+                False, session.recorded, session.planned, session.sent, error=str(exc)
             )
         except TooManyFailures as exc:
             echo(f"stopped: {exc}")

@@ -573,3 +573,87 @@ def test_record_writes_only_into_the_given_cassettes_directory(ws, network):
 def test_the_record_docstring_says_a_429_without_a_reset_stops_at_once():
     for text in (recording.__doc__, cli.record_command.__doc__):
         assert "without a reset time" in " ".join(text.split())
+
+
+# --- the running spending cap ----------------------------------------------------------
+
+
+def paid_system(ws):
+    """Make the system model a paid one; the judge stays free."""
+    config = (ws / "config.yaml").read_text(encoding="utf-8")
+    (ws / "config.yaml").write_text(
+        config.replace("synthetic/system:free", "synthetic/system-paid"), encoding="utf-8"
+    )
+
+
+def test_the_cap_stops_before_a_call_could_pass_the_limit(ws, network, monkeypatch):
+    # The reviewer's probe B: two cheap recorded calls make the history estimate
+    # $0.0000, but later calls cost $0.05 each and the limit is $0.0001.
+    paid_system(ws)
+    prices = {"synthetic/system-paid": ("0.0001", "0.0001")}
+    tomorrow = datetime.now(UTC) + timedelta(hours=10)
+    override, _ = rate_limited(2, {"X-RateLimit-Reset": str(int(tomorrow.timestamp() * 1000))})
+    monkeypatch.setenv("MAX_RUN_COST_USD", "100")
+    network(SyntheticOpenRouter(cost=0.0, prices=prices, chat_override=override))
+    assert runner.invoke(app, args("record", ws)).exit_code == EXIT_STOPPED
+
+    monkeypatch.setenv("MAX_RUN_COST_USD", "0.0001")
+    router = network(SyntheticOpenRouter(cost=0.05, prices=prices))
+    result = runner.invoke(app, args("record", ws))
+    out = result.output
+    assert result.exit_code == 1
+    assert "estimated cost of the calls still to record: $0.00" in out  # the history guess
+    assert "spending cap: this run spent $0.0000 of MAX_RUN_COST_USD=$0.0001" in out
+    assert "the next call could cost up to $" in out
+    assert router.chat_bodies == []  # stopped before sending
+    assert "2 of 20 calls recorded" in out
+    assert "raise MAX_RUN_COST_USD or rerun make record later to continue" in out
+
+
+def test_the_cap_stops_when_real_costs_pass_the_published_bound(ws, network, monkeypatch):
+    paid_system(ws)
+    # Published prices far below what the calls really cost.
+    prices = {"synthetic/system-paid": ("0.0000000001", "0.0000000001")}
+    monkeypatch.setenv("MAX_RUN_COST_USD", "0.06")
+    router = network(SyntheticOpenRouter(cost=0.05, prices=prices))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 1
+    assert len(router.chat_bodies) == 2  # 0.05, then 0.10 > 0.06: stop
+    assert "spending cap: this run spent $0.1000 of MAX_RUN_COST_USD=$0.0600" in result.output
+    assert "cost more than its published-price bound" in result.output
+
+
+def test_free_calls_never_touch_the_cap(ws, network, monkeypatch):
+    monkeypatch.setenv("MAX_RUN_COST_USD", "0")
+    router = network(SyntheticOpenRouter(cost=0.0))
+    assert runner.invoke(app, args("record", ws)).exit_code == 0
+    assert "/api/v1/models" not in router.paths
+
+
+def test_a_paid_model_without_a_published_price_is_refused_before_any_call(
+    ws, network, monkeypatch
+):
+    paid_system(ws)
+    tomorrow = datetime.now(UTC) + timedelta(hours=10)
+    override, _ = rate_limited(2, {"X-RateLimit-Reset": str(int(tomorrow.timestamp() * 1000))})
+    monkeypatch.setenv("MAX_RUN_COST_USD", "100")
+    prices = {"synthetic/system-paid": ("0.0001", "0.0001")}
+    network(SyntheticOpenRouter(cost=0.0, prices=prices, chat_override=override))
+    assert runner.invoke(app, args("record", ws)).exit_code == EXIT_STOPPED
+    # Now the price list no longer has the model; the history alone passes the guard.
+    router = network(SyntheticOpenRouter(cost=0.0, prices={}))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 1
+    assert "no published price for: synthetic/system-paid" in result.output
+    assert "the running spending cap needs it" in result.output
+    assert router.chat_bodies == []
+
+
+def test_an_unknown_call_cost_counts_at_its_published_bound():
+    from llmeval.recording import SpendCap
+
+    cap = SpendCap(limit=1.0, prices={})
+    cap.add(None, bound=0.3)
+    cap.add(0.1, bound=0.3)
+    assert cap.spent == pytest.approx(0.4)
+    assert cap.unknown == 1

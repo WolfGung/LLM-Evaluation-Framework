@@ -122,6 +122,10 @@ class ModelsConfig(_Strict):
     judge_repeats: JudgeRepeats = "first"
     stability_cases: Annotated[tuple[str, ...], Field(min_length=1)] | None = None
 
+    def role(self, name: Literal["system", "judge"]) -> RoleConfig:
+        """The role config by name: `system` or `judge`."""
+        return self.system if name == "system" else self.judge
+
     @field_validator("stability_cases")
     @classmethod
     def _each_case_once(cls, value: tuple[str, ...] | None) -> tuple[str, ...] | None:
