@@ -3,9 +3,10 @@
 `labels/human.jsonl` holds labels the owner set by hand with `make label`.
 No test may create, change or delete it; tests of the labelling tool use
 files in `tmp_path`. This fixture takes a snapshot (`tests.owner_labels`:
-bytes, inode, modification time, and the directory's modification time)
-before the session and fails the session's last teardown if it differs
-afterwards. The snapshot itself is tested on temporary files only.
+bytes, inode, modification and change times, and the directory's
+modification time) before the session and fails the session's last teardown
+if it differs afterwards. The snapshot itself is tested on temporary files
+only.
 """
 
 from pathlib import Path

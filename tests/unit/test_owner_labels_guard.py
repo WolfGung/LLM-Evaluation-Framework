@@ -7,6 +7,7 @@ shows in the next snapshot however fast it happens.
 """
 
 import os
+import time
 
 from tests.owner_labels import snapshot
 
@@ -28,7 +29,7 @@ def test_an_untouched_file_or_a_missing_one_keeps_its_snapshot(tmp_path):
     path = labels_file(tmp_path, b'{"synthetic": 1}\n')
     assert snapshot(path) == snapshot(path)
     missing = tmp_path / "other" / "human.jsonl"
-    assert snapshot(missing) == snapshot(missing) == (None, None, None, None)
+    assert snapshot(missing) == snapshot(missing) == (None, None, None, None, None)
 
 
 def test_an_append_then_restore_is_caught(tmp_path):
@@ -61,3 +62,17 @@ def test_a_copy_swapped_in_with_the_old_time_is_caught(tmp_path):
     os.replace(copy, path)
     os.utime(path.parent, ns=(OLD, OLD))
     assert snapshot(path) != before  # another inode
+
+
+def test_a_restore_that_also_resets_the_modification_time_is_caught(tmp_path):
+    original = b'{"synthetic": 1}\n'
+    path = labels_file(tmp_path, original)
+    before = snapshot(path)
+    # The inode change time follows the kernel's coarse clock; let it tick.
+    time.sleep(0.05)
+    with path.open("ab") as handle:
+        handle.write(b'{"synthetic": 2}\n')
+    path.write_bytes(original)
+    os.utime(path, ns=(OLD, OLD))  # the modification time put back too
+    os.utime(path.parent, ns=(OLD, OLD))
+    assert snapshot(path) != before  # utime cannot set the inode change time
