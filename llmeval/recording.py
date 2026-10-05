@@ -309,6 +309,8 @@ class _Session:
         self.sent = 0
         self.skipped: list[tuple[str, str]] = []
         self.not_sent: list[tuple[str, str]] = []
+        # Keys of the calls skipped or not sent in this run.
+        self.missing: set[str] = set()
         self.failed: dict[CallTag, str] = {}
         self.proven_kinds: set[Kind] = set()
         # Different requests failing in a row: of unproven kinds, and with no
@@ -342,6 +344,8 @@ class _Session:
         reason = str(error)
         self.failed[request.tag] = reason
         self.skipped.append((label, reason))
+        if request.key is not None:
+            self.missing.add(request.key)
         self.echo(f"skipped {label}: {reason}")
         if error.status == 401:
             raise AccessDenied(
@@ -375,6 +379,8 @@ class _Session:
                 # Another repeat of this request failed in this run: do not ask again.
                 reason = f"an earlier repeat failed ({self.failed[request.tag]})"
                 self.not_sent.append((label, reason))
+                if request.key is not None:
+                    self.missing.add(request.key)
                 self.echo(f"not sent {label}: {reason}")
                 continue
             role = self.config.models.role(request.role)
@@ -655,9 +661,12 @@ def _record(
     _summarise_skips(session, echo)
     plan = full_plan(inputs, store)
     counts = count_plan(plan, store, models)
-    if counts.waiting:
-        wait = "wait" if counts.waiting > 1 else "waits"
-        echo(f"{plural(counts.waiting, 'judge call')} {wait} for answers that were skipped")
+    # Only judge calls that grade an answer this run skipped or did not send;
+    # the others wait for answers not reached yet (the upper-bound note).
+    blocked = sum(p.key is None and bool(session.missing & set(p.grades)) for p in plan)
+    if blocked:
+        wait = "wait" if blocked > 1 else "waits"
+        echo(f"{plural(blocked, 'judge call')} {wait} for answers that were skipped")
     if stopped is not None or error is not None:
         echo(hint)
         return RecordOutcome(

@@ -984,3 +984,14 @@ def test_the_cli_imports_without_fcntl():
     code = "import sys; sys.modules['fcntl'] = None; import llmeval.cli, llmeval.recording"
     done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
+
+
+def test_a_plain_quota_stop_says_nothing_about_skipped_answers(ws, network):
+    tomorrow = datetime.now(UTC) + timedelta(hours=10)
+    override, _ = rate_limited(5, {"X-RateLimit-Reset": str(int(tomorrow.timestamp() * 1000))})
+    network(SyntheticOpenRouter(chat_override=override))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == EXIT_STOPPED
+    # Judge calls wait for answers not reached yet, but none was skipped.
+    assert "wait for answers that were skipped" not in result.output
+    assert "waits for answers that were skipped" not in result.output
