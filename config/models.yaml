@@ -17,7 +17,10 @@
 #
 # Reasoning tokens are billed and count towards the answer length. The system
 # role turns reasoning off; the judge reasons a little, and its max_tokens
-# leaves room for that plus the verdict.
+# leaves room for that plus the verdict. In the first recording (2026-10-05)
+# the judge had max_tokens 1500, and its reasoning used the whole budget in
+# 13 of 154 judge calls. Finished calls used up to 1416 reasoning tokens
+# (p50 543, p95 1297). 4096 leaves room.
 
 system:                       # answers questions and triages tickets
   model: qwen/qwen3.8-27b:free
@@ -30,7 +33,7 @@ judge:                        # grades what rules cannot check
   model: nvidia/nemotron-3-super-120b-a12b:free
   temperature: 0
   seed: 7
-  max_tokens: 1500
+  max_tokens: 4096
   reasoning: {effort: low}
   structured_output: true
 

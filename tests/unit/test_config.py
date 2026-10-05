@@ -166,7 +166,9 @@ def test_repository_config_is_valid_and_free():
     assert config.judge.structured_output is True
     assert config.judge.seed is not None
     assert config.judge.reasoning is not None and config.judge.reasoning.effort == "low"
-    assert config.judge.max_tokens >= 1000
+    # The first recording (2026-10-05) ran out of budget at 1500 in 13 of 154
+    # judge calls; finished calls used up to 1416 reasoning tokens.
+    assert config.judge.max_tokens >= 4096
     assert config.judge.temperature == 0
     assert config.repeats == 3
     assert config.rpm == 18
