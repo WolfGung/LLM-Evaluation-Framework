@@ -2,13 +2,17 @@
 
 Every number in the README comes from results/, and results/ come from
 cassettes/: this test keeps that one chain. It replays the recorded run twice,
-in two processes with a different hash seed and time zone, into tmp_path.
-The two replays must be byte-identical (no wall-clock field, no set order, no
-local time), and they must equal the committed results/. Without a manifest
-the replay writes nothing, so results/ must hold no results either.
+in two processes with a different hash seed and time zone, into tmp_path,
+and runs `llmeval agreement` on each replay as make eval does. The two runs
+must be byte-identical (no wall-clock field, no set order, no local time),
+and they must equal the committed results/. Without a manifest the replay
+writes nothing, so results/ must hold no results either.
 
-`results/baseline.json` is not replay output (make baseline writes it from
-the results), so it is left out here.
+`results/judge-agreement.json` is part of the chain: `llmeval agreement`
+writes it from the replay, the committed `labels/sample.json` and the
+owner's committed `labels/human.jsonl` (read, never written; no file means
+"pending human labels"). `results/baseline.json` is not replay output (make
+baseline writes it from the results), so it is left out here.
 
 No model is called: replay needs no key and no network.
 """
@@ -29,34 +33,47 @@ FIX = "run make eval and commit results/"
 
 
 def replay_into(directory: Path, *, hash_seed: str, time_zone: str) -> dict[str, bytes]:
-    """Run `llmeval eval` on the repository's recording; return the files it wrote."""
+    """Run `llmeval eval`, then `llmeval agreement`, on the repository's
+    recording and labels; return the files they wrote."""
     env = {**os.environ, "PYTHONHASHSEED": hash_seed, "TZ": time_zone}
     for name in ("OPENROUTER_API_KEY", "LLMEVAL_MODE"):
         env.pop(name, None)
-    done = subprocess.run(
+    common = [
+        "--cassettes-dir",
+        str(ROOT / "cassettes"),
+        "--rubric",
+        str(ROOT / "rubrics" / "judge.md"),
+        "--results-dir",
+        str(directory),
+    ]
+    commands = [
         [
-            sys.executable,
-            "-m",
-            "llmeval",
             "eval",
             "--config",
             str(ROOT / "config" / "models.yaml"),
             "--datasets-dir",
             str(ROOT / "datasets"),
-            "--cassettes-dir",
-            str(ROOT / "cassettes"),
-            "--rubric",
-            str(ROOT / "rubrics" / "judge.md"),
-            "--results-dir",
-            str(directory),
+            *common,
         ],
-        cwd=ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert done.returncode == 0, done.stdout + done.stderr
+        [
+            "agreement",
+            "--sample",
+            str(ROOT / "labels" / "sample.json"),
+            "--labels",
+            str(ROOT / "labels" / "human.jsonl"),
+            *common,
+        ],
+    ]
+    for command in commands:
+        done = subprocess.run(
+            [sys.executable, "-m", "llmeval", *command],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert done.returncode == 0, done.stdout + done.stderr
     return {path.name: path.read_bytes() for path in sorted(directory.glob("*.json"))}
 
 

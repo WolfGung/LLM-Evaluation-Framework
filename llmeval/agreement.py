@@ -152,12 +152,12 @@ def standards(rubric: Rubric) -> str:
     minimums = [f"{name} at least {rubric.pass_rule[name]}" for name in rubric.criteria]
     rule = ", ".join(minimums[:-1]) + f" and {minimums[-1]}" if len(minimums) > 1 else minimums[0]
     return (
-        f"The owner answers one question per answer: {LABEL_QUESTION} The judge passes an "
-        f"answer when it scores {rule} (rubrics/judge.md). Both ask the same three things: "
-        "grounded is groundedness, answering the question or saying honestly that the "
-        "documents do not cover it is helpfulness, polite is tone. The owner's one decision "
-        "can be stricter: an answer that misses part of the question can score helpfulness 3 "
-        "and pass the judge, yet not be sent as is."
+        "The owner answers the question above for each answer. The judge passes an answer "
+        f"when it scores {rule} (rubrics/judge.md). Both ask the same three things: grounded "
+        "is groundedness, answering the question or saying honestly that the documents do "
+        "not cover it is helpfulness, polite is tone. The owner's one decision can be "
+        "stricter: an answer that misses part of the question can score helpfulness 3 and "
+        "pass the judge, yet not be sent as is."
     )
 
 

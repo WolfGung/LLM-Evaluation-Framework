@@ -34,6 +34,12 @@ def test_make_test_leaves_out_the_evaluation_and_make_eval_runs_it():
     assert any(step.endswith("llmeval eval") for step in targets["eval"])
 
 
+def test_make_eval_writes_the_judge_agreement_after_the_replay():
+    targets, _ = make_targets()
+    # The agreement reads the fresh results, so it comes after the replay.
+    assert targets["eval"][:2] == ["$(BIN)/llmeval eval", "$(BIN)/llmeval agreement"]
+
+
 def test_make_has_the_recording_targets():
     targets, phony = make_targets()
     for name in ("estimate", "status", "record"):

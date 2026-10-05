@@ -12,10 +12,13 @@ install:
 test:
 	$(BIN)/pytest -W error --ignore=tests/eval
 
-# Replay the recorded run: write results/, then compare every case with the
-# baseline. Without cassettes/manifest.json both say "pending first recorded run".
+# Replay the recorded run: write results/, then the judge's agreement with the
+# owner's labels (results/judge-agreement.json; "pending human labels" until
+# labels/human.jsonl has labels), then compare every case with the baseline.
+# Without cassettes/manifest.json all three say "pending first recorded run".
 eval:
 	$(BIN)/llmeval eval
+	$(BIN)/llmeval agreement
 	$(BIN)/pytest -W error tests/eval
 
 # Write results/baseline.json from the replay results in results/ and the

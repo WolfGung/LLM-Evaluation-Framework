@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "status": "pending human labels",
+  "note": "Agreement is measured on labels/sample.json, which oversamples judge failures so both classes are present; it is not the population rate.",
+  "question": "Would you send this answer to the customer as is? Pass if it is grounded in the shown documents, answers the question (or says honestly that the documents do not cover it), and is polite. Fail otherwise.",
+  "standards": "The owner answers the question above for each answer. The judge passes an answer when it scores groundedness at least 4, helpfulness at least 3 and tone at least 3 (rubrics/judge.md). Both ask the same three things: grounded is groundedness, answering the question or saying honestly that the documents do not cover it is helpfulness, polite is tone. The owner's one decision can be stricter: an answer that misses part of the question can score helpfulness 3 and pass the judge, yet not be sent as is.",
+  "judge_model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "rubric_sha256": "68d6910f30641b27ad22c6d98dfbf9d962457eb438ffeee2c3002e2981ae1e0e",
+  "sample": {
+    "size": 30,
+    "seed": 2026,
+    "judge_pass": 23,
+    "judge_fail": 7
+  },
+  "labelled": 0,
+  "agreed": 0,
+  "agreement_rate": null,
+  "kappa": null,
+  "kappa_note": "no labelled answers",
+  "confusion": {
+    "judge_pass": {
+      "human_pass": 0,
+      "human_fail": 0
+    },
+    "judge_fail": {
+      "human_pass": 0,
+      "human_fail": 0
+    }
+  },
+  "disagreements": [],
+  "stale": [],
+  "unjudged": []
+}
