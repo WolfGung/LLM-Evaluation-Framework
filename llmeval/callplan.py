@@ -263,15 +263,15 @@ def quota_lines(counts: PlanCounts, models: ModelsConfig) -> list[str]:
     minutes = math.ceil(calls / models.rpm)
     lines.append(
         f"free-model calls to record: {up_to(calls, not counts.exact)}: "
-        f"{_plural(at_low, 'day')} at {FREE_LIMITS.per_day} a day, "
-        f"{_plural(at_high, 'day')} at {FREE_LIMITS.per_day_with_credits} a day; "
-        f"about {_plural(minutes, 'minute')} of calls at rpm {models.rpm} "
+        f"{plural(at_low, 'day')} at {FREE_LIMITS.per_day} a day, "
+        f"{plural(at_high, 'day')} at {FREE_LIMITS.per_day_with_credits} a day; "
+        f"about {plural(minutes, 'minute')} of calls at rpm {models.rpm} "
         "if the daily quota allowed"
     )
     return lines
 
 
-def _plural(n: int, unit: str) -> str:
+def plural(n: int, unit: str) -> str:
     return f"{n} {unit}" if n == 1 else f"{n} {unit}s"
 
 

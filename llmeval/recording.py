@@ -67,6 +67,7 @@ from llmeval.callplan import (
     estimate_remaining_cost,
     full_plan,
     is_free,
+    plural,
     quota_lines,
     to_record,
     up_to,
@@ -554,11 +555,16 @@ def _record(
     if not session.sent and not session.skipped:
         echo("nothing left to record")
     if session.skipped:
-        echo(f"skipped {len(session.skipped)} calls (rerun make record to retry them):")
+        them = "them" if len(session.skipped) > 1 else "it"
+        echo(
+            f"skipped {plural(len(session.skipped), 'call')} "
+            f"(rerun make record to retry {them}):"
+        )
         for label, reason in session.skipped:
             echo(f"  {label}: {reason}")
     if counts.waiting:
-        echo(f"{counts.waiting} judge calls wait for answers that were skipped")
+        wait = "wait" if counts.waiting > 1 else "waits"
+        echo(f"{plural(counts.waiting, 'judge call')} {wait} for answers that were skipped")
     if counts.to_record or not counts.exact:
         echo(f"recorded {counts.recorded}/{counts.total}: not complete, no manifest written")
         return RecordOutcome(False, counts.recorded, counts.total, session.sent)

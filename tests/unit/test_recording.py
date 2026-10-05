@@ -662,3 +662,19 @@ def test_an_unknown_call_cost_counts_at_its_published_bound():
     cap.add(0.1, bound=0.3)
     assert cap.spent == pytest.approx(0.4)
     assert cap.unknown == 1
+
+
+def test_one_skipped_call_is_counted_in_the_singular(ws, network):
+    calls = {"n": 0}
+
+    def seventh_fails(request, body):
+        calls["n"] += 1
+        if calls["n"] == 7:
+            return httpx.Response(403, json={"error": {"message": "flagged by moderation"}})
+        return None
+
+    network(SyntheticOpenRouter(chat_override=seventh_fails))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 1
+    assert "skipped 1 call (rerun make record to retry it):" in result.output
+    assert "  rag-002/v1/1: /api/v1/chat/completions returned HTTP 403" in result.output
