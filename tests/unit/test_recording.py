@@ -995,3 +995,27 @@ def test_a_plain_quota_stop_says_nothing_about_skipped_answers(ws, network):
     # Judge calls wait for answers not reached yet, but none was skipped.
     assert "wait for answers that were skipped" not in result.output
     assert "waits for answers that were skipped" not in result.output
+
+
+def test_calls_tried_on_an_earlier_day_go_after_the_fresh_ones(tmp_path, network, monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
+    rows = unanswerable_rows(6)
+    ws = make_workspace(tmp_path, repeats=1, rag_rows=rows)
+    # Day 1: the probes, rag-002/v1 refused, rag-003 and rag-004 v1, then the quota.
+    network(SyntheticOpenRouter(chat_override=daily_quota(7, refused=[rows[1]["question"]])))
+    assert runner.invoke(app, args("record", ws)).exit_code == EXIT_STOPPED
+    # Day 2: rag-002/v1 sits before recorded calls of its kind, so it was tried
+    # before; it goes last, and the day-1 probes are picked among fresh calls.
+    network(SyntheticOpenRouter())
+    out = runner.invoke(app, args("record", ws)).output
+    progress = [line.split("  ")[1] for line in out.splitlines() if line.startswith("recorded ")]
+    assert progress[:8] == [
+        "rag-005/v1/0",
+        "rag-002/v2/0",
+        "rag-006/v1/0",
+        "rag-003/v2/0",
+        "rag-004/v2/0",
+        "rag-005/v2/0",
+        "rag-006/v2/0",
+        "rag-002/v1/0",
+    ]

@@ -23,7 +23,8 @@ The order of work:
 4. Pass 1: the system calls (rag and triage), skipping every key already in
    the cassettes. One call of each kind goes first (rag v1, rag v2, triage
    v1, triage v2), then the rest in plan order, so a broken prompt or config
-   shows on the first day of a recording spread over many.
+   shows on the first day of a recording spread over many. Calls an earlier
+   run tried and could not record go after the fresh ones (`todays_order`).
 5. Pass 2: the judge calls, planned again from the recorded answers, one
    grading and one pairwise question first. A judge key exists only once the
    answers it grades are recorded; identical answers share a grading and
@@ -233,6 +234,32 @@ def kinds_first(planned: Sequence[PlannedRequest]) -> list[PlannedRequest]:
     leaders = list(first.values())
     chosen = {id(request) for request in leaders}
     return leaders + [request for request in planned if id(request) not in chosen]
+
+
+def todays_order(
+    left: Sequence[PlannedRequest], plan: Sequence[PlannedRequest], store: CassetteStore
+) -> list[PlannedRequest]:
+    """The calls to send in this run: fresh calls first, one of each kind
+    leading (`kinds_first`), then the calls an earlier run already tried.
+
+    No state is stored: an unrecorded call that comes before a recorded call
+    of its kind in plan order was reached before and failed (earlier runs go
+    in plan order). Sending those last keeps a block of refused prompts from
+    using the day's quota before the fresh calls.
+    """
+    position = {id(request): index for index, request in enumerate(plan)}
+    last_recorded: dict[Kind, int] = {}
+    for index, request in enumerate(plan):
+        if request.key is not None and request.key in store:
+            last_recorded[kind_of(request)] = index
+    tried = [
+        request
+        for request in left
+        if position[id(request)] < last_recorded.get(kind_of(request), -1)
+    ]
+    tried_ids = {id(request) for request in tried}
+    fresh = [request for request in left if id(request) not in tried_ids]
+    return kinds_first(fresh) + tried
 
 
 @contextmanager
@@ -606,7 +633,9 @@ def _record(
         error: str | None = None
         hint = ""
         try:
-            system = kinds_first([p for p in to_record(plan, store) if p.role == "system"])
+            system = todays_order(
+                [p for p in to_record(plan, store) if p.role == "system"], plan, store
+            )
             if system:
                 echo(
                     f"pass 1: {len(system)} system calls to record; until their answers exist, "
@@ -619,8 +648,10 @@ def _record(
             session.prove(plan, store)
             # Judge calls whose answers were skipped have no key and wait; skipped
             # system calls are not asked twice in one run.
-            judge = kinds_first(
-                [p for p in to_record(plan, store) if p.role == "judge" and p.key is not None]
+            judge = todays_order(
+                [p for p in to_record(plan, store) if p.role == "judge" and p.key is not None],
+                plan,
+                store,
             )
             if judge:
                 echo(
