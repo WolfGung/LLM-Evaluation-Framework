@@ -537,6 +537,24 @@ def test_a_429_without_reset_carries_the_scrubbed_api_message(tmp_path):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_a_429_detail_is_one_line_with_collapsed_whitespace(tmp_path):
+    def limited(request: httpx.Request) -> httpx.Response:
+        key = request.headers["authorization"]
+        message = f"upstream\n\n   busy \t for {key}\n" + "y " * 300
+        return httpx.Response(429, json={"error": {"message": message}})
+
+    with (
+        make_client(Mode.RECORD, CassetteStore(tmp_path), httpx.MockTransport(limited)) as client,
+        pytest.raises(RateLimitedNoReset) as caught,
+    ):
+        ask(client)
+
+    detail = caught.value.detail
+    assert detail.startswith("upstream busy for Bearer [redacted] y y ")
+    assert "\n" not in detail and "  " not in detail
+    assert len(detail) <= 300
+
+
 def test_http_error_does_not_leak_the_key_or_write(tmp_path):
     def echo(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, json={"error": {"message": request.headers["authorization"]}})

@@ -261,8 +261,10 @@ class ModelClient:
             latency_ms = (self._timer() - started) * 1000
             if response.status_code != 429:
                 break
-            # Scrub first, then cut: a cut key would no longer match the scrubber.
-            detail = scrub(response_message(response), self._api_key)[:300] or None
+            # Scrub, collapse whitespace, then cut: a cut key would no longer
+            # match the scrubber, and the detail is printed on one line.
+            scrubbed = scrub(response_message(response), self._api_key)
+            detail = " ".join(scrubbed.split())[:300] or None
             self._sleep(
                 wait_or_stop(response.headers, now=self._now(), attempt=attempt, detail=detail)
             )
