@@ -21,9 +21,16 @@ Pavel Zhukov Atum, the author, labels a sample of judged answers by hand with `m
 
 <!-- agreement:start -->
 
-pending human labels
+| Judge's verdict | Author: pass | Author: fail |
+|---|---:|---:|
+| Judge: pass | 22 | 1 |
+| Judge: fail | 5 | 2 |
 
-Pavel Zhukov Atum, the author, labels 30 judged answers by hand, blind to the judge's verdict (make label): all 7 answers the judge failed and 23 it passed. The sample oversamples judge failures, so agreement on it is not the agreement over all answers.
+Percent agreement: 24 of 30 (80.0%). Cohen's kappa: 0.30. Disagreements: 6, listed in results/judge-agreement.json with the judge's reasons.
+
+Labelled: 30 of 30 sample answers.
+
+Pavel Zhukov Atum, the author, labelled 30 judged answers by hand, blind to the judge's verdict (make label): all 7 answers the judge failed and 23 it passed. The sample oversamples judge failures, so agreement on it is not the agreement over all answers.
 
 <!-- agreement:end -->
 
