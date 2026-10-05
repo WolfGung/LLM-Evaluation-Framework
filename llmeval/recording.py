@@ -370,23 +370,32 @@ def split_tried(
 
 
 @contextmanager
-def record_lock(cassettes_dir: Path) -> Iterator[None]:
+def record_lock(
+    cassettes_dir: Path, *, create: bool = True, work: str = "recording"
+) -> Iterator[None]:
     """Hold `<cassettes_dir>/.record.lock` for the whole run, or refuse at once.
 
     Two runs appending to the same cassette files would interleave lines and
     record calls twice. The lock is advisory (`flock`), released when the run
     ends or the process dies; the file itself stays and is git-ignored.
+    `llmeval prune` takes the same lock. With `create=False` (a prune dry
+    run, which changes nothing) a missing lock file is not created: then no
+    run holds it, because a record run creates the file before locking it.
+    `work` names the command in the message for a platform without locks.
     """
     try:
         import fcntl  # POSIX only; imported here so that other commands work anywhere
     except ImportError:
         raise RecordLocked(
-            "recording needs a POSIX system (Linux, macOS, or the Docker image) to lock the "
+            f"{work} needs a POSIX system (Linux, macOS, or the Docker image) to lock the "
             "cassettes directory; the other commands work here"
         ) from None
     path = Path(cassettes_dir) / LOCK_FILE
+    if not create and not path.exists():
+        yield
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as handle:
+    with path.open("a" if create else "r") as handle:
         try:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:

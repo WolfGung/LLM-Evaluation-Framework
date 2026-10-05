@@ -8,6 +8,9 @@
 - `replay_plan`: the calls `llmeval eval` replays for a manifest. `status`
   counts how many of them are missing, so a stale manifest does not read as
   a complete recording.
+- `unplanned`: the recorded entries the current plan no longer has (for
+  example the judge calls of an older judge config); `llmeval prune`
+  removes them.
 - `count_plan`: the counts by function, version and repeat, and how many are
   recorded. Counts are of distinct cassette keys: identical requests share
   one recording. A judge call has a key only once the answers it grades are
@@ -35,7 +38,7 @@ from typing import Literal
 import httpx
 
 from app.retrieval import BM25Index
-from llmeval.cassettes import CassetteStore, RunManifest, utc_now
+from llmeval.cassettes import CassetteEntry, CassetteStore, RunManifest, utc_now
 from llmeval.checks.judge import JUDGE_FUNCTION, PAIRWISE_FUNCTION, Rubric
 from llmeval.config import ModelsConfig, RoleConfig
 from llmeval.datasets import RagCase, TriageCase
@@ -124,6 +127,16 @@ def to_record(plan: Sequence[PlannedRequest], store: CassetteStore | None) -> li
             seen.add(p.key)
             left.append(p)
     return left
+
+
+def unplanned(plan: Sequence[PlannedRequest], store: CassetteStore) -> list[CassetteEntry]:
+    """The recorded entries whose key is not in `plan`, in file order.
+
+    A judge call still waiting for its answers has no key, so this list is
+    complete only when no judge call waits (`llmeval prune` checks that).
+    """
+    planned = {p.key for p in plan if p.key}
+    return [entry for entry in store if entry.key not in planned]
 
 
 @dataclass(frozen=True)

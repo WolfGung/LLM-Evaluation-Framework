@@ -13,6 +13,8 @@
   with OPENROUTER_API_KEY set, the free requests the key has left today.
 - `record`: record every planned call with the real API (needs the key),
   resumably and inside the free limits; see `llmeval.recording`.
+- `prune`: list the recorded entries the current plan no longer has, and
+  with `--yes` remove them; see `llmeval.prune`.
 - `retrieval`: the retrieval layer over the RAG dataset, offline. BM25 is
   deterministic, so this needs no model and no recording.
 
@@ -42,6 +44,7 @@ from llmeval.callplan import (
     plan_lines,
     quota_lines,
     replay_plan,
+    unplanned,
 )
 from llmeval.cassettes import (
     PENDING_RECORDED_RUN,
@@ -72,6 +75,7 @@ from llmeval.datasets import (
 from llmeval.openrouter import MissingAPIKey, OpenRouterError
 from llmeval.perf import Performance
 from llmeval.pricing import BudgetExceeded, PricingError, check_budget, format_usd
+from llmeval.prune import PruneRefused, prune
 from llmeval.quota import free_daily_quota
 from llmeval.recording import (
     EXIT_INTERRUPTED,
@@ -360,8 +364,11 @@ def status_command(
             typer.echo(line)
     for line in plan_lines(counts, loaded.models):
         typer.echo(line)
-    if outside := len(store) - counts.recorded:
-        typer.echo(f"cassette entries outside the current plan: {outside}")
+    if outside := len(unplanned(plan, store)):
+        typer.echo(
+            f"cassette entries outside the current plan: {outside} "
+            "(llmeval prune lists them; make prune removes them)"
+        )
     typer.echo(_quota_today(loaded))
     for line in quota_lines(counts, loaded.models):
         typer.echo(line)
@@ -467,6 +474,32 @@ def record_command(
         raise typer.Exit(code=EXIT_STOPPED)
     if not outcome.complete:
         raise typer.Exit(code=1)
+
+
+@app.command("prune")
+def prune_command(
+    yes: Annotated[
+        bool, typer.Option("--yes", help="Remove the listed entries. Without it nothing changes.")
+    ] = False,
+    config: ConfigOption = DEFAULT_MODELS_PATH,
+    datasets_dir: DatasetsOption = DATASETS_DIR,
+    cassettes_dir: CassettesOption = CASSETTES_DIR,
+    rubric: RubricOption = RUBRIC_PATH,
+) -> None:
+    """List the recorded entries the current plan no longer has; --yes removes them.
+
+    The plan is computed as record and status compute it. Prune refuses
+    while a record run holds the lock, when the config, a dataset, the
+    rubric or a cassette does not load, and while judge calls wait for their
+    answers. With --yes each affected cassette file is rewritten atomically;
+    a file left with no entries is deleted. The manifest is never changed.
+    Needs no key and calls nothing.
+    """
+    try:
+        _, inputs = _plan_inputs(config, datasets_dir, rubric)
+        prune(inputs, cassettes_dir, apply=yes, echo=typer.echo)
+    except (RecordLocked, PruneRefused, *PLAN_ERRORS) as exc:
+        raise _fail(str(exc)) from None
 
 
 @app.command("retrieval")
