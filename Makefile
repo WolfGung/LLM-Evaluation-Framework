@@ -13,7 +13,7 @@ test:
 	$(BIN)/pytest -W error --ignore=tests/eval
 
 # Replay the recorded run: write results/, then the judge's agreement with the
-# owner's labels (results/judge-agreement.json; "pending human labels" until
+# author's labels (results/judge-agreement.json; "pending human labels" until
 # labels/human.jsonl has labels), then compare every case with the baseline.
 # Without cassettes/manifest.json all three say "pending first recorded run".
 eval:
@@ -77,10 +77,10 @@ live:
 prune:
 	$(BIN)/llmeval prune --yes
 
-# The owner's labelling tool: shows each answer of labels/sample.json (the
+# The author's labelling tool: shows each answer of labels/sample.json (the
 # question, the documents the assistant was given, the answer; never the
-# judge's verdict) and appends the owner's pass or fail, with a comment, to
-# labels/human.jsonl. Only the owner runs it. Ctrl-C keeps every saved label;
+# judge's verdict) and appends the author's pass or fail, with a comment, to
+# labels/human.jsonl. Only the author runs it. Ctrl-C keeps every saved label;
 # run it again to go on. Ctrl-C makes llmeval exit with 130 after its own
 # message; make takes that as a clean stop. Any other error still fails.
 # Ctrl-C reaches the recipe's shell too: bash waits for llmeval and runs the

@@ -1,17 +1,17 @@
-"""How far the judge agrees with the owner's labels.
+"""How far the judge agrees with the author's labels.
 
-The judge is a measuring instrument, so it is checked against the owner's
+The judge is a measuring instrument, so it is checked against the author's
 own labels. `llmeval agreement` (also run by `make eval`) takes the labelled
 answers of `labels/sample.json`, compares the judge's verdict by the rubric's
-pass rule (`rule_pass` in the results) with the owner's label in
+pass rule (`rule_pass` in the results) with the author's label in
 `labels/human.jsonl`, and writes `results/judge-agreement.json`:
 
 - percent agreement (`agreed` of `labelled`, as `agreement_rate`) and Cohen's
   kappa (`cohen_kappa`), the agreement beyond what the two pass rates give
   by chance;
-- a 2x2 confusion: the judge's pass or fail by the owner's pass or fail;
+- a 2x2 confusion: the judge's pass or fail by the author's pass or fail;
 - the disagreements: case, version, the judge's scores and reasons, and the
-  owner's comment;
+  author's comment;
 - stale labels, never used: the sample now names another answer for the
   same case, version and repeat (its cassette key changed), the answer left
   the sample, or the results hold another answer than the sample. Labels of
@@ -21,13 +21,13 @@ pass rule (`rule_pass` in the results) with the owner's label in
 Agreement is measured on this sample, which oversamples judge failures so
 both classes are present; it is not the population rate.
 
-The two standards: the owner answers one question per answer
+The two standards: the author answers one question per answer
 (`labels.LABEL_QUESTION`): would you send it to the customer as is, that is,
 is it grounded in the shown documents, does it answer the question (or say
 honestly that the documents do not cover it), and is it polite. The judge
 passes an answer when its scores meet the rubric's minimums (groundedness 4,
 helpfulness 3, tone 3 in `rubrics/judge.md`). Both ask the same three things.
-The owner's single decision can be stricter: an answer that misses part of
+The author's single decision can be stricter: an answer that misses part of
 the question can score helpfulness 3 and pass the judge, yet not be sent as
 is.
 
@@ -127,7 +127,7 @@ class AgreementReport(Record):
 
     `status` is `pending human labels` (no usable label), `partial` or
     `complete` (every sample answer labelled). `confusion` is keyed by the
-    judge's verdict, then the owner's.
+    judge's verdict, then the author's.
     """
 
     schema_version: int = AGREEMENT_SCHEMA_VERSION
@@ -150,14 +150,14 @@ class AgreementReport(Record):
 
 
 def standards(rubric: Rubric) -> str:
-    """How the owner's question and the judge's pass rule line up."""
+    """How the author's question and the judge's pass rule line up."""
     minimums = [f"{name} at least {rubric.pass_rule[name]}" for name in rubric.criteria]
     rule = ", ".join(minimums[:-1]) + f" and {minimums[-1]}" if len(minimums) > 1 else minimums[0]
     return (
-        "The owner answers the question above for each answer. The judge passes an answer "
+        "The author answers the question above for each answer. The judge passes an answer "
         f"when it scores {rule} (rubrics/judge.md). Both ask the same three things: grounded "
         "is groundedness, answering the question or saying honestly that the documents do "
-        "not cover it is helpfulness, polite is tone. The owner's one decision can be "
+        "not cover it is helpfulness, polite is tone. The author's one decision can be "
         "stricter: an answer that misses part of the question can score helpfulness 3 and "
         "pass the judge, yet not be sent as is."
     )
@@ -173,7 +173,7 @@ def agreement_report(
     results: Sequence[FunctionResults],
     rubric: Rubric,
 ) -> AgreementReport:
-    """Compare the judge with the owner's labels on the sample answers."""
+    """Compare the judge with the author's labels on the sample answers."""
     runs = runs_by_answer(results)
     items = {item.ref: item for item in sample.items}
 

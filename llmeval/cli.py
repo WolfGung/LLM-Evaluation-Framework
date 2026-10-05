@@ -26,11 +26,11 @@
 - `gate`: compare the key rates of a results directory with the baseline,
   within the tolerances of `config/gate.yaml`; exit 1 on a regression. See
   `llmeval.gate`.
-- `sample`: write `labels/sample.json`, the judged answers the owner labels
+- `sample`: write `labels/sample.json`, the judged answers the author labels
   by hand; see `llmeval.labels`.
-- `label`: the owner's labelling tool (`make label`): shows each sample
-  answer blind and appends the owner's label to `labels/human.jsonl`.
-- `agreement`: the judge's agreement with the owner's labels on the sample,
+- `label`: the author's labelling tool (`make label`): shows each sample
+  answer blind and appends the author's label to `labels/human.jsonl`.
+- `agreement`: the judge's agreement with the author's labels on the sample,
   written to `results/judge-agreement.json`; see `llmeval.agreement`.
 
 The API key comes only from the environment and is never printed.
@@ -197,7 +197,7 @@ RubricOption = Annotated[Path, typer.Option(help="The judge rubric.")]
 ResultsOption = Annotated[Path, typer.Option(help="Directory with the replay results.")]
 BaselineOption = Annotated[Path, typer.Option(help="The baseline file.")]
 SampleOption = Annotated[Path, typer.Option("--sample", help="The label sample.")]
-LabelsOption = Annotated[Path, typer.Option("--labels", help="The owner's labels file.")]
+LabelsOption = Annotated[Path, typer.Option("--labels", help="The author's labels file.")]
 
 
 def _echo_notices(store: CassetteStore) -> None:
@@ -798,7 +798,7 @@ def sample_command(
     cassettes_dir: CassettesOption = CASSETTES_DIR,
     sample: SampleOption = SAMPLE_PATH,
 ) -> None:
-    """Write labels/sample.json: the judged answers the owner labels by hand.
+    """Write labels/sample.json: the judged answers the author labels by hand.
 
     Takes every judged answer of repeat 0 the judge failed, plus judge-passed
     answers drawn with a fixed seed in strata of prompt version and category,
@@ -848,7 +848,7 @@ def label_command(
         typer.Option(min=0, help="Wrap at this many columns (0: the terminal width, at most 100)."),
     ] = 0,
 ) -> None:
-    """The owner's labelling tool: label each sample answer pass or fail.
+    """The author's labelling tool: label each sample answer pass or fail.
 
     Shows the labelling question, then each unlabelled answer of
     labels/sample.json: the customer's question, the documents the assistant
@@ -941,12 +941,12 @@ def agreement_command(
     cassettes_dir: CassettesOption = CASSETTES_DIR,
     rubric: RubricOption = RUBRIC_PATH,
 ) -> None:
-    """Compare the judge's verdicts with the owner's labels; write judge-agreement.json.
+    """Compare the judge's verdicts with the author's labels; write judge-agreement.json.
 
     On the labelled answers of labels/sample.json: percent agreement and
     Cohen's kappa between the judge's verdict by the rubric's pass rule and
-    the owner's label, a 2x2 confusion, and every disagreement with the
-    judge's scores and reasons and the owner's comment. Writes
+    the author's label, a 2x2 confusion, and every disagreement with the
+    judge's scores and reasons and the author's comment. Writes
     judge-agreement.json into the results directory. Agreement is measured
     on this sample, which oversamples judge failures so both classes are
     present; it is not the population rate. A label of an answer that is no
