@@ -14,18 +14,26 @@ import json
 import re
 from pathlib import Path
 
+import httpx
 import pytest
+from pydantic import SecretStr
 
+from app.triage import triage
 from llmeval.baseline import CaseBaseline
-from llmeval.cassettes import MANIFEST_FILE
+from llmeval.cassettes import MANIFEST_FILE, CassetteStore
+from llmeval.client import ModelClient
+from llmeval.config import Config, Mode, Settings
+from llmeval.datasets import load_triage
 from tests.unit.test_eval_suite import (
     CASE,
     KNOWN_PRIORITY_FAILURE,
     MODELS,
     RAG_CASE,
     RIGHT,
+    ROOT,
     WRONG_PRIORITY,
     WRONG_TWICE,
+    NoWait,
     record_rag_with_judge,
     record_reply,
     run_eval_suite,
@@ -190,7 +198,6 @@ def categories_of(out_dir: Path, result: dict) -> list[str]:
     return found
 
 
-
 @pytest.mark.parametrize(
     ("baseline", "reply", "status", "expected"),
     [
@@ -250,3 +257,116 @@ def test_report_files_are_written_only_with_an_alluredir(ws):
     assert code == 0, out
     assert not list(ws.rglob("categories.json"))
     assert not list(ws.rglob("environment.properties"))
+
+
+# --- layer results ---------------------------------------------------------------
+
+LAYER_SUITE = "tests/eval/test_layers.py"
+TRIAGE_CASES = load_triage(ROOT / "datasets" / "triage.jsonl")
+
+
+def record_every_ticket(ws: Path, wrong: frozenset[str] = frozenset()) -> None:
+    """Record a synthetic reply to every triage case: its own labels, except a
+    wrong priority for the case ids in `wrong`."""
+    cases = {case.text: case for case in TRIAGE_CASES}
+
+    def reply(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        case = cases[body["messages"][-1]["content"]]
+        priority = str(case.priority)
+        if case.id in wrong:
+            priority = "urgent" if priority == "low" else "low"
+        labels = {
+            "category": str(case.category),
+            "priority": priority,
+            "order_id": case.order_id,
+            "summary": "Synthetic summary.",
+        }
+        return httpx.Response(
+            200,
+            json={
+                "id": "gen-synthetic",
+                "model": body["model"],
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "message": {"content": json.dumps(labels)},
+                    }
+                ],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 20, "cost": 0.0},
+            },
+        )
+
+    config = Config(models=MODELS, settings=Settings(api_key=SecretStr("synthetic-key-123")))
+    with ModelClient(
+        Mode.RECORD,
+        CassetteStore(ws / "cassettes"),
+        config,
+        httpx.MockTransport(reply),
+        limiter=NoWait(),
+    ) as client:
+        for case in TRIAGE_CASES:
+            triage(client, MODELS.system, case.text, "v1", case=case.id)
+
+
+def write_layer_baseline(ws: Path) -> None:
+    """A baseline where every triage v1 run passed both layers."""
+    write_baseline(ws, CaseBaseline(passed=True))
+    path = ws / "baseline.json"
+    data = json.loads(path.read_text("utf-8"))
+    data["functions"]["triage"]["v1"]["metrics"]["layers"] = {
+        "deterministic": 1.0,
+        "reference": 1.0,
+    }
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def layer_result(out_dir: Path, layer: str) -> dict:
+    (result,) = [r for r in results_of(out_dir) if labels(r, "feature") == [layer]]
+    return result
+
+
+def test_a_layer_drop_within_its_tolerance_passes_and_shows_the_rate(ws):
+    write_manifest(ws)
+    record_every_ticket(ws, wrong=frozenset({TRIAGE_CASES[0].id}))
+    write_layer_baseline(ws)
+    code, out, out_dir = run_with_allure(ws, suite=LAYER_SUITE)
+    assert code == 0, out
+    assert "2 passed" in out
+    result = layer_result(out_dir, "reference")
+    assert result["status"] == "passed"
+    assert result["name"] == "triage v1: reference layer, 97.5% of runs pass (39 of 40)"
+    assert labels(result, "epic") == ["triage"]
+    assert labels(result, "story") == ["pass rate"]
+    shown = attachments(out_dir, result)
+    assert "priority_match: 97.5% (39 of 40)" in shown["checks"].splitlines()
+    assert "category_match: 100.0% (40 of 40)" in shown["checks"].splitlines()
+    (failing,) = shown["failing runs"].splitlines()
+    assert failing.startswith(f"{TRIAGE_CASES[0].id} repeat 0: priority_match: ")
+
+
+def test_a_layer_drop_beyond_its_tolerance_is_a_regression(ws):
+    write_manifest(ws)
+    record_every_ticket(ws, wrong=frozenset(case.id for case in TRIAGE_CASES[:3]))
+    write_layer_baseline(ws)
+    code, out, out_dir = run_with_allure(ws, suite=LAYER_SUITE)
+    assert code == 1, out
+    result = layer_result(out_dir, "reference")
+    assert result["statusDetails"]["message"] == (
+        "Failed: regression: triage v1 reference layer 92.5% (37 of 40 runs), "
+        "baseline 100.0%, allowed drop 5.0 pp"
+    )
+    assert categories_of(out_dir, result) == [REGRESSION]
+    assert layer_result(out_dir, "deterministic")["status"] == "passed"
+
+
+def test_a_layer_without_a_baseline_is_pending_after_its_rate(ws):
+    write_manifest(ws)
+    record_every_ticket(ws)
+    code, out, out_dir = run_with_allure(ws, suite=LAYER_SUITE)
+    assert code == 0, out
+    result = layer_result(out_dir, "reference")
+    assert result["name"] == "triage v1: reference layer, 100.0% of runs pass (40 of 40)"
+    assert categories_of(out_dir, result) == [PENDING]
+    assert attachments(out_dir, result)["failing runs"] == "none"

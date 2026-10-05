@@ -31,7 +31,11 @@ UNRECORDED = "unrecorded"
 
 
 class Replay:
-    """Replays one case at a time from the recorded run."""
+    """Replays one case at a time from the recorded run.
+
+    A replay is deterministic, so each case and version is replayed once per
+    session: the per-case tests and the layer tests share the records.
+    """
 
     def __init__(self, manifest: RunManifest) -> None:
         self.config = load_config(CONFIG, env={})
@@ -41,9 +45,16 @@ class Replay:
         self.manifest = manifest
         self.client = ModelClient(Mode.REPLAY, CassetteStore(CASSETTES), self.config)
         self.judge = Judge(self.client, self.config.models.judge, load_rubric(ROOT / RUBRIC_PATH))
+        self._records: dict[tuple[str, str, str], CaseRecord] = {}
 
     def case(self, function: str, case, version: str) -> CaseRecord:
         """Replay one case; RAG answers are graded by the recorded judge too."""
+        key = (function, case.id, version)
+        if key not in self._records:
+            self._records[key] = self._replay(function, case, version)
+        return self._records[key]
+
+    def _replay(self, function: str, case, version: str) -> CaseRecord:
         options = {
             "repeats": self.manifest.repeats,
             "stability_cases": self.manifest.stability_cases,

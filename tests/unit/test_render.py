@@ -260,3 +260,10 @@ def test_broken_results_exit_1_with_one_line(ws, capsys):
     (ws / "results" / "triage-v1.json").write_text("{}", encoding="utf-8")
     assert run_main(ws, "--check") == 1
     assert "triage-v1.json: not valid results" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("rate", "text"), [(0.9551, "95.5%"), (0.8125, "81.3%"), (1.0, "100.0%"), (None, "—")]
+)
+def test_a_stored_rate_has_one_decimal_and_a_half_rounds_up(rate, text):
+    assert render.share(rate) == text

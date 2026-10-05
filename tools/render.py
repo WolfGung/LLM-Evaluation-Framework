@@ -77,6 +77,13 @@ def percent(count: int, total: int) -> str:
     return f"{_one_decimal(Decimal(count) * 100 / Decimal(total))}%"
 
 
+def share(rate: float | None) -> str:
+    """A stored rate (a share such as 0.9551) as a percentage with one decimal."""
+    if rate is None:
+        return NONE
+    return f"{_one_decimal(Decimal(str(rate)) * 100)}%"
+
+
 def seconds(ms: float | None) -> str:
     """Milliseconds as seconds with one decimal; a half rounds up."""
     if ms is None:
