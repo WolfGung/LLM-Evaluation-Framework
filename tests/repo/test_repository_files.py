@@ -1,8 +1,10 @@
 """Repository files that keep the evaluation honest: ignores, make targets, CI steps."""
 
+import shutil
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -93,6 +95,8 @@ def test_ci_replays_into_a_temporary_directory_and_runs_the_gate():
     start = commands.index("rc=0")
     # A failed replay ends the step: there is nothing to gate or compare.
     replay = commands.index('llmeval eval --results-dir "$REPLAY_DIR"')
+    # The judge agreement on the replay, as make eval writes it.
+    agreement = commands.index('llmeval agreement --results-dir "$REPLAY_DIR" || rc=1')
     # A failing gate still lets the per-case tests run; the step fails at the end.
     gate = commands.index('llmeval gate --results-dir "$REPLAY_DIR" || rc=1')
     cases = next(
@@ -101,7 +105,7 @@ def test_ci_replays_into_a_temporary_directory_and_runs_the_gate():
         if line.startswith("pytest -W error tests/eval") and line.endswith("|| rc=1")
     )
     end = commands.index("exit $rc")
-    assert start < replay < gate < cases < end
+    assert start < replay < agreement < gate < cases < end
 
 
 def test_a_half_written_manifest_and_the_record_lock_are_never_committed():
@@ -161,5 +165,24 @@ def test_the_label_lock_is_ignored_but_the_owner_labels_are_not():
 
 def test_make_label_runs_the_labelling_tool():
     targets, phony = make_targets()
-    assert targets["label"] == ["$(BIN)/llmeval label"]
+    assert targets["label"] == ["$(BIN)/llmeval label || [ $$? -eq 130 ]"]
     assert "label" in phony
+
+
+@pytest.mark.skipif(shutil.which("make") is None, reason="make is not installed")
+@pytest.mark.parametrize(("code", "make_fails"), [(0, False), (130, False), (1, True)])
+def test_make_label_takes_ctrl_c_as_a_clean_stop(tmp_path, code, make_fails):
+    # A stand-in for llmeval that exits with `code`: Ctrl-C (130) is a clean
+    # stop after the tool's own message, so make adds no "Error 130".
+    fake = tmp_path / "llmeval"
+    fake.write_text(f"#!/bin/sh\nexit {code}\n", encoding="utf-8")
+    fake.chmod(0o755)
+    done = subprocess.run(
+        ["make", "--no-print-directory", "label", f"BIN={tmp_path}"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert (done.returncode != 0) == make_fails, done.stdout + done.stderr
+    assert ("Error" in done.stderr) == make_fails

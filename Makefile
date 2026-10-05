@@ -68,9 +68,10 @@ prune:
 # question, the documents the assistant was given, the answer; never the
 # judge's verdict) and appends the owner's pass or fail, with a comment, to
 # labels/human.jsonl. Only the owner runs it. Ctrl-C keeps every saved label;
-# run it again to go on.
+# run it again to go on. Ctrl-C makes llmeval exit with 130 after its own
+# message; make takes that as a clean stop. Any other error still fails.
 label:
-	$(BIN)/llmeval label
+	$(BIN)/llmeval label || [ $$? -eq 130 ]
 
 lint:
 	$(BIN)/ruff check .
