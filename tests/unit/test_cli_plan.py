@@ -86,7 +86,7 @@ def test_estimate_prints_the_plan_the_quota_days_and_a_free_cost(tmp_path, netwo
     ) in out
     assert (
         "free-model limits (OpenRouter limits documentation, "
-        "https://openrouter.ai/docs/api-reference/limits, checked 2026-10-04"
+        "https://openrouter.ai/docs/api-reference/limits, checked 2026-10-05"
     ) in out
     assert "free-model calls to record: up to 20: 1 day at 50 a day, 1 day at 1000 a day" in out
     assert "estimated cost of the calls still to record: $0.00" in out
@@ -172,7 +172,7 @@ def test_status_without_a_key_still_prints_planned_and_recorded(tmp_path, networ
     ) in out
     assert (
         "free-model limits (OpenRouter limits documentation, "
-        "https://openrouter.ai/docs/api-reference/limits, checked 2026-10-04"
+        "https://openrouter.ai/docs/api-reference/limits, checked 2026-10-05"
     ) in out
 
 

@@ -233,12 +233,12 @@ def test_the_published_free_limits_carry_their_source_and_date():
     assert FREE_LIMITS.per_day == 50
     assert FREE_LIMITS.per_day_with_credits == 1000
     assert FREE_LIMITS.credits_usd == 10
-    assert FREE_LIMITS.checked == "2026-10-04"
+    assert FREE_LIMITS.checked == "2026-10-05"
     assert FREE_LIMITS.source == "OpenRouter limits documentation"
     assert FREE_LIMITS.url == "https://openrouter.ai/docs/api-reference/limits"
     assert FREE_LIMITS.describe() == (
         "free-model limits (OpenRouter limits documentation, "
-        "https://openrouter.ai/docs/api-reference/limits, checked 2026-10-04; "
+        "https://openrouter.ai/docs/api-reference/limits, checked 2026-10-05; "
         "published facts, not read live): 20 requests per minute; 50 requests per day, "
         "or 1000 per day once $10 of credits were ever bought"
     )

@@ -63,7 +63,7 @@ FREE_LIMITS = FreeLimits(
     per_day=50,
     per_day_with_credits=1000,
     credits_usd=10,
-    checked="2026-10-04",
+    checked="2026-10-05",
     source="OpenRouter limits documentation",
     url="https://openrouter.ai/docs/api-reference/limits",
 )

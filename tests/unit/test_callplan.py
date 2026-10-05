@@ -299,7 +299,7 @@ def test_the_quota_lines_give_days_with_the_source_and_date():
     lines = quota_lines(counts, plan_inputs.models)
     assert lines[0].startswith(
         "free-model limits (OpenRouter limits documentation, "
-        "https://openrouter.ai/docs/api-reference/limits, checked 2026-10-04; "
+        "https://openrouter.ai/docs/api-reference/limits, checked 2026-10-05; "
         "published facts, not read live): 20 requests per minute"
     )
     assert lines[1] == (

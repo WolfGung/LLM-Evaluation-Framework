@@ -85,7 +85,7 @@ A few dozen cases, one recording day, one knowledge base and one person's labels
 Python 3.12. Replay needs no key and no network.
 
 ```bash
-make install    # .venv with the package and its dev tools
+make install    # .venv with the package and its dev tools (PYTHON=python3 if your 3.12 has another name)
 make test       # unit, app and repository tests
 make eval       # replay the recording into results/, then compare every case with the baseline
 make gate       # the key rates of results/ against results/baseline.json
