@@ -2,10 +2,11 @@
 
 Synthetic data: the config, the datasets, every reply, quota number and
 cassette entry here are made up for the test (see `synthetic_openrouter`).
-Every cassette is written by the repository's own `record` command against an
-httpx MockTransport, never by hand and never from the network. Workspaces
-live in `tmp_path`; nothing touches the repository's `cassettes/` or
-`results/`.
+Every cassette entry is written by the repository's own `record` command
+against an httpx MockTransport, never from the network; a few tests damage a
+file on purpose (a broken or an unfinished line), and the label test builds
+one synthetic entry in memory. Workspaces live in `tmp_path`; nothing touches
+the repository's `cassettes/` or `results/`.
 """
 
 import fcntl
@@ -283,6 +284,28 @@ def test_without_fcntl_prune_says_it_needs_posix(ws, network, monkeypatch):
     result = runner.invoke(app, args("prune", ws))
     assert result.exit_code == 1
     assert "pruning needs a POSIX system (Linux, macOS, or the Docker image)" in result.output
+
+
+def test_an_entry_without_a_tag_is_listed_by_its_key():
+    from datetime import UTC, datetime
+
+    from llmeval.cassettes import CassetteEntry
+    from llmeval.prune import _label
+
+    moment = datetime(2026, 1, 1, tzinfo=UTC)
+    entry = CassetteEntry(
+        key="ab" * 32,
+        repeat=1,
+        request={"model": "synthetic/system:free", "messages": []},
+        response={"model": "synthetic/system:free", "content": "Synthetic."},
+        usage={"prompt_tokens": 1, "completion_tokens": 1},
+        cost_usd=0.0,
+        cost_source="provider",
+        latency_ms=1.0,
+        requested_at=moment,
+        recorded_at=moment,
+    )
+    assert _label(entry) == "key abababababab/1"
 
 
 def break_config(ws):

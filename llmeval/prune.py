@@ -54,7 +54,7 @@ class PruneOutcome:
     removed: Mapping[str, int]
 
 
-def entries(count: int) -> str:
+def _entries(count: int) -> str:
     return "1 entry" if count == 1 else f"{count} entries"
 
 
@@ -120,11 +120,8 @@ def prune(
         removed = store.remove({entry.key for entry in found})
         for name, count in removed.items():
             gone = "" if (store.root / name).exists() else " and deleted the file: no entries left"
-            echo(f"removed {entries(count)} from {name}{gone}")
-        echo(
-            f"removed {entries(sum(removed.values()))} in all; the cassettes are in git, so git "
-            "can bring them back"
-        )
+            echo(f"removed {_entries(count)} from {name}{gone}")
+        echo(f"removed {_entries(sum(removed.values()))} in all")
         if (store.root / MANIFEST_FILE).is_file():
             echo(
                 f"{MANIFEST_FILE} is unchanged: prune never edits it; llmeval status says whether "

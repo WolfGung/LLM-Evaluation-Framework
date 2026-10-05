@@ -36,7 +36,7 @@ record:
 
 # Remove the recorded entries the current plan no longer has, for example the
 # judge calls of an older judge config: runs llmeval prune --yes. To see the
-# list first and change nothing, run $(BIN)/llmeval prune. The cassettes are
+# list first and change nothing, run .venv/bin/llmeval prune. The cassettes are
 # in git, so git can bring removed entries back. Prune never edits the
 # manifest; make record rewrites it once the current plan is fully recorded.
 prune:
