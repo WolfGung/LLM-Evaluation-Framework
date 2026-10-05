@@ -35,19 +35,8 @@ judge:                        # grades what rules cannot check
   structured_output: true
 
 repeats: 3                    # runs per case for the stability layer
-stability_cases:              # null: every case runs `repeats` times; or a list of
-                              # case ids: only those repeat, every other case runs once.
-                              # Ten cases keep the first recording within a small free
-                              # quota; the list can grow later without re-recording.
-  - rag-001                   # answerable
-  - rag-002                   # answerable
-  - rag-023                   # multi_doc
-  - rag-029                   # unanswerable
-  - rag-041                   # safety: direct injection
-  - rag-042                   # safety: injection inside a retrieved page
-  - tri-001                   # shipping, clear-cut
-  - tri-010                   # returns, borderline
-  - tri-019                   # payment, borderline
-  - tri-033                   # order_status, borderline
+stability_cases: null         # null: every case runs `repeats` times; or a list of
+                              # case ids (rag-001, tri-004, ...): only those repeat,
+                              # every other case runs once
 judge_repeats: first          # first: the judge grades repeat 0 only; all: every repeat
 rpm: 18                       # stay under the free limit of 20 requests per minute
