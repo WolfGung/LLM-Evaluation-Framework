@@ -208,7 +208,7 @@ def test_status_reports_a_manifest(tmp_path, network):
         "prompt_versions": {"rag": ["v1"]},
         "repeats": 1,
         "datasets": {"rag.jsonl": "0" * 64},
-        "recorded_from": "2026-01-01T10:00:00Z",
+        "recorded_from": "2026-01-01T12:00:00+02:00",
         "recorded_to": "2026-01-02T18:30:00Z",
         "planned_calls": 7,
         "recorded_calls": 7,

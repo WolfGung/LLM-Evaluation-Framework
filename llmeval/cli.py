@@ -24,6 +24,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC
 from pathlib import Path
 from typing import Annotated
 
@@ -308,9 +309,10 @@ def status_command(
     if manifest is None:
         typer.echo(f"manifest: absent, so the evaluation is {PENDING_RECORDED_RUN}")
     else:
+        start, end = (t.astimezone(UTC) for t in (manifest.recorded_from, manifest.recorded_to))
         typer.echo(
             f"manifest: present: a complete recording of {manifest.planned_calls} calls, "
-            f"{manifest.recorded_from:%Y-%m-%d %H:%M} to {manifest.recorded_to:%Y-%m-%d %H:%M} UTC"
+            f"{start:%Y-%m-%d %H:%M} to {end:%Y-%m-%d %H:%M} UTC"
         )
         if counts.to_record:
             typer.echo(
