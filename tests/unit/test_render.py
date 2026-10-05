@@ -54,7 +54,10 @@ def record_run(ws, *results, manifest=None):
 def rag_v1():
     rag_001 = timed(syn.case_record("rag-001", (), (), judge="pass"), 800, 1200)
     attacked = syn.case_record("rag-047", ("safety/no_trap_leak",), (), category="safety")
-    return syn.function_results("rag", "v1", [rag_001, timed(attacked, 1000, 2550)])
+    # A safety case that fails a fact but no safety check: no safety failure.
+    resisted = syn.case_record("rag-048", ("reference/required_facts",), (), category="safety")
+    cases = [rag_001, timed(attacked, 1000, 2550), timed(resisted, 900, 1100)]
+    return syn.function_results("rag", "v1", cases)
 
 
 def triage_v1():
@@ -69,16 +72,16 @@ def block(ws):
 TABLE = """\
 | Metric | rag v1 | triage v1 |
 |---|---:|---:|
-| All checks | 75.0% | 100.0% |
+| All checks | 66.7% | 100.0% |
 | Retrieval layer | 100.0% | — |
 | Deterministic layer | 100.0% | 100.0% |
-| Reference layer | 100.0% | 100.0% |
-| Safety layer | 75.0% | — |
+| Reference layer | 83.3% | 100.0% |
+| Safety layer | 83.3% | — |
 | Judge layer | 100.0% | — |
-| Safety cases passed | 0 of 1 | — |
-| Stable cases | 50.0% | — |
-| Cost per run | $0.00 (free models) | $0.00 (free models) |
-| Latency p50 / p95 | 1.0 s / 2.6 s | 0.4 s / 0.4 s |"""
+| Safety cases with no safety failure | 1 of 2 | — |
+| Stable cases | 33.3% | — |
+| Cost (system + judge calls) | $0.00 (free models) | $0.00 (free models) |
+| Latency p50 / p95 (system calls) | 1.0 s / 2.6 s | 0.4 s / 0.4 s |"""
 
 
 def test_the_block_is_the_main_table_and_one_line_under_it(ws):
@@ -90,9 +93,11 @@ def test_the_block_is_the_main_table_and_one_line_under_it(ws):
     )
     assert block(ws) == (
         f"\n{TABLE}\n\n"
-        "Each column is one prompt version. Pass rates count every run: each case ran 2 times. "
-        "Recorded on 2026-01-01 (UTC) with synthetic/system:free (system) and "
-        "synthetic/judge:free (judge), 2 calls.\n\n"
+        "Each column is one prompt version. Each case ran 2 times; a layer counts the runs it "
+        "checks (the judge graded the first run of each judged case). A safety case has no "
+        "safety failure when every safety check passed on every run. Recorded on 2026-01-01 "
+        "(UTC) with synthetic/system:free (system) and synthetic/judge:free (judge), "
+        "2 calls.\n\n"
     )
 
 
@@ -134,7 +139,7 @@ def test_a_paid_run_shows_the_provider_cost(ws):
     )
     case = priced(syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS), 0.0012)
     record_run(ws, syn.function_results("triage", "v1", [case]), manifest=paid)
-    assert "| Cost per run | $0.0012 |" in block(ws)
+    assert "| Cost (system + judge calls) | $0.0012 |" in block(ws)
 
 
 def test_free_model_ids_with_a_reported_cost_show_the_cost(ws):
@@ -142,7 +147,7 @@ def test_free_model_ids_with_a_reported_cost_show_the_cost(ws):
     record_run(
         ws, syn.function_results("triage", "v1", [case]), manifest=syn.manifest({"triage": ("v1",)})
     )
-    assert "| Cost per run | $0.0012 |" in block(ws)
+    assert "| Cost (system + judge calls) | $0.0012 |" in block(ws)
 
 
 def test_unknown_costs_are_named_never_counted_as_zero(ws):
@@ -150,7 +155,7 @@ def test_unknown_costs_are_named_never_counted_as_zero(ws):
     record_run(
         ws, syn.function_results("triage", "v1", [case]), manifest=syn.manifest({"triage": ("v1",)})
     )
-    assert "| Cost per run | $0.00 known, 2 calls unknown |" in block(ws)
+    assert "| Cost (system + judge calls) | $0.00 known, 2 calls unknown |" in block(ws)
 
 
 def test_the_judge_cost_counts_in_the_cost_per_run(ws):
@@ -163,7 +168,7 @@ def test_the_judge_cost_counts_in_the_cost_per_run(ws):
         update={"models": {"system": "synthetic/system", "judge": "synthetic/judge"}}
     )
     record_run(ws, syn.function_results("rag", "v1", [graded]), manifest=paid)
-    assert "| Cost per run | $0.003 |" in block(ws)
+    assert "| Cost (system + judge calls) | $0.003 |" in block(ws)
 
 
 def test_a_stability_subset_is_named_in_the_line(ws):
@@ -172,7 +177,7 @@ def test_a_stability_subset_is_named_in_the_line(ws):
     )
     case = syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS)
     record_run(ws, syn.function_results("triage", "v1", [case]), manifest=subset)
-    assert "Pass rates count every run: 2 cases ran 3 times, the others once." in block(ws)
+    assert "2 cases ran 3 times, the others once; a layer counts the runs it checks." in block(ws)
 
 
 def test_one_repeat_is_once_and_several_days_are_a_range(ws):
@@ -182,7 +187,7 @@ def test_one_repeat_is_once_and_several_days_are_a_range(ws):
     case = syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS)
     record_run(ws, syn.function_results("triage", "v1", [case]), manifest=later)
     text = block(ws)
-    assert "each case ran once." in text
+    assert "Each case ran once; a layer counts the runs it checks." in text
     assert "Recorded from 2026-01-01 to 2026-01-03 (UTC)" in text
 
 
@@ -193,7 +198,39 @@ def test_ungraded_results_name_no_judge(ws):
     )
     text = block(ws)
     assert "with synthetic/system:free (system), 2 calls." in text
-    assert "judge" not in text
+    # Neither the judge model nor its grading is named (the cost row's label still is).
+    assert "synthetic/judge" not in text
+    assert "the judge graded" not in text
+    # No safety case in any column: neither the safety row nor its definition.
+    assert "safety" not in text.lower()
+
+
+def test_the_judge_grading_every_run_is_named_in_the_line(ws):
+    every = syn.manifest({"rag": ("v1",)}).model_copy(update={"judge_repeats": "all"})
+    record_run(
+        ws, syn.function_results("rag", "v1", [syn.case_record("rag-001", ())]), manifest=every
+    )
+    assert "(the judge graded every run of each judged case)" in block(ws)
+
+
+def test_the_pairwise_calls_are_said_to_be_in_no_column(ws):
+    versions = {"rag": ("v1", "v2")}
+    results = [
+        syn.function_results("rag", version, [syn.case_record("rag-001", (), judge="pass")])
+        for version in versions["rag"]
+    ]
+    record_run(
+        ws,
+        *results,
+        syn.pairwise_results([syn.pair_case("rag-001", "A", "B")]),
+        manifest=syn.manifest(versions),
+    )
+    assert "The pairwise judge calls are in no column." in block(ws)
+
+
+def test_without_pairwise_results_the_line_does_not_mention_them(ws):
+    record_run(ws, rag_v1(), triage_v1())
+    assert "pairwise" not in block(ws)
 
 
 @pytest.fixture

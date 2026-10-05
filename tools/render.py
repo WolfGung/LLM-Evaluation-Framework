@@ -13,21 +13,29 @@ without its results files is an error (run make eval), never "pending".
 
 The main table has one column per function and prompt version:
 
-- All checks and each layer: the share of runs that pass (every repeat of
-  every case counts once). A run passes a layer when every check of that
-  layer passes.
-- Safety cases passed: the safety cases that pass every check on every
-  repeat (what the baseline calls passed).
+- All checks: the share of runs (every repeat of every case) that pass
+  every check.
+- Each layer: the share of the runs the layer checks that pass all of its
+  checks. Retrieval and reference check only the cases with expected
+  documents or facts, and the judge grades the runs `judge_repeats` names
+  (the first run of each judged case by default).
+- Safety cases with no safety failure: the safety cases whose safety checks
+  all passed on every repeat. A safety case that misses a fact or runs too
+  long still resisted the attack. The row is left out when no column has a
+  safety case.
 - Stable cases: the share of repeated cases whose repeats agree on every
   rule-based check (`llmeval.stability`).
-- Cost per run: the cost the provider reported for the system and judge
-  calls of that version. Free model variants that reported no charge show
+- Cost (system + judge calls): the cost the provider reported for the
+  system calls and the judge's grades of that version, the total a client
+  pays for evaluating it. Free model variants that reported no charge show
   as `$0.00 (free models)`; a call without a reported cost is named, never
-  counted as zero.
-- Latency p50 / p95: of the system calls.
+  counted as zero. The pairwise judge calls compare two versions, so they
+  are in no column, and the line says so.
+- Latency p50 / p95 (system calls): of the system calls only.
 
-One line under the table says what a column is, how often each case ran,
-and the recording: dates, models and calls. Percentages and seconds have one
+One line under the table says what a column is, how often each case ran and
+which runs a layer counts, what "no safety failure" means, and the
+recording: dates, models and calls. Percentages and seconds have one
 decimal, and a half rounds up (`percent`, `seconds`); the page built by
 `tools.site` uses the same table.
 """
@@ -43,12 +51,12 @@ from datetime import UTC
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
-from llmeval.baseline import BaselineError, RunResults, case_baseline, load_run_results
+from llmeval.baseline import BaselineError, RunResults, load_run_results
 from llmeval.callplan import plural
 from llmeval.cassettes import PENDING_RECORDED_RUN, CassetteError, RunManifest, load_manifest
 from llmeval.perf import COST_PLACES
 from llmeval.pricing import format_usd
-from llmeval.results import LAYERS, FunctionResults
+from llmeval.results import LAYERS, CaseRecord, FunctionResults
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / "README.md"
@@ -60,6 +68,7 @@ END_MARKER = "<!-- results:end -->"
 # A cell with nothing to show: the layer or measure does not apply.
 NONE = "—"
 FREE_SUFFIX = ":free"
+SAFETY = "safety"  # the safety layer, and the RAG category of the attack cases
 
 
 class RenderError(ValueError):
@@ -121,12 +130,19 @@ def _layer_cell(result: FunctionResults, layer: str) -> str:
     return NONE if rate is None else percent(rate.passed, rate.total)
 
 
-def _safety_cases(result: FunctionResults) -> str:
-    cases = [record for record in result.cases if record.category == "safety"]
+def _safety_cases(result: FunctionResults) -> list[CaseRecord]:
+    return [record for record in result.cases if record.category == SAFETY]
+
+
+def _no_safety_failure(result: FunctionResults) -> str:
+    cases = _safety_cases(result)
     if not cases:
         return NONE
-    passed = sum(case_baseline(record).passed for record in cases)
-    return f"{passed} of {len(cases)}"
+    resisted = sum(
+        all(check.passed for run in record.runs for check in run.checks if check.layer == SAFETY)
+        for record in cases
+    )
+    return f"{resisted} of {len(cases)}"
 
 
 def _stable(result: FunctionResults) -> str:
@@ -155,8 +171,13 @@ def _latency(result: FunctionResults) -> str:
 def _runs(manifest: RunManifest) -> str:
     times = "once" if manifest.repeats == 1 else f"{manifest.repeats} times"
     if manifest.stability_cases is None:
-        return f"each case ran {times}"
+        return f"Each case ran {times}"
     return f"{plural(len(manifest.stability_cases), 'case')} ran {times}, the others once"
+
+
+def _graded(manifest: RunManifest) -> str:
+    runs = "the first run" if manifest.judge_repeats == "first" else "every run"
+    return f" (the judge graded {runs} of each judged case)"
 
 
 def _dates(manifest: RunManifest) -> str:
@@ -166,14 +187,27 @@ def _dates(manifest: RunManifest) -> str:
     return f"from {first.isoformat()} to {last.isoformat()} (UTC)"
 
 
-def _line(manifest: RunManifest, results: Sequence[FunctionResults]) -> str:
+def _line(manifest: RunManifest, run: RunResults) -> str:
+    results = run.functions
+    graded = any(result.judge_model for result in results)
     models = f"{manifest.models['system']} (system)"
-    if any(result.judge_model for result in results):
+    if graded:
         models += f" and {manifest.models['judge']} (judge)"
-    return (
-        f"Each column is one prompt version. Pass rates count every run: {_runs(manifest)}. "
+    judge = _graded(manifest) if graded else ""
+    sentences = [
+        "Each column is one prompt version.",
+        f"{_runs(manifest)}; a layer counts the runs it checks{judge}.",
+    ]
+    if any(_safety_cases(result) for result in results):
+        sentences.append(
+            "A safety case has no safety failure when every safety check passed on every run."
+        )
+    if run.pairwise:
+        sentences.append("The pairwise judge calls are in no column.")
+    sentences.append(
         f"Recorded {_dates(manifest)} with {models}, {plural(manifest.recorded_calls, 'call')}."
     )
+    return " ".join(sentences)
 
 
 def table(manifest: RunManifest, run: RunResults) -> Table:
@@ -189,12 +223,15 @@ def table(manifest: RunManifest, run: RunResults) -> Table:
         (f"{layer.capitalize()} layer", *(_layer_cell(r, layer) for r in results))
         for layer in _layers(results)
     ]
-    rows.append(("Safety cases passed", *(_safety_cases(r) for r in results)))
+    if any(_safety_cases(r) for r in results):
+        rows.append(
+            ("Safety cases with no safety failure", *(_no_safety_failure(r) for r in results))
+        )
     rows.append(("Stable cases", *(_stable(r) for r in results)))
-    rows.append(("Cost per run", *(_cost(r) for r in results)))
-    rows.append(("Latency p50 / p95", *(_latency(r) for r in results)))
+    rows.append(("Cost (system + judge calls)", *(_cost(r) for r in results)))
+    rows.append(("Latency p50 / p95 (system calls)", *(_latency(r) for r in results)))
     header = ("Metric", *(f"{r.function} {r.version}" for r in results))
-    return Table(header=header, rows=tuple(rows), line=_line(manifest, results))
+    return Table(header=header, rows=tuple(rows), line=_line(manifest, run))
 
 
 def markdown(main: Table) -> str:
