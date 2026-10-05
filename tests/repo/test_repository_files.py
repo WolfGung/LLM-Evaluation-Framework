@@ -75,12 +75,18 @@ def test_ci_replays_into_a_temporary_directory_and_runs_the_gate():
     # CI never rewrites the committed results/: the replay goes to the runner's temp.
     assert "REPLAY_DIR: ${{ runner.temp }}/" in eval_step
     commands = [line.strip() for line in eval_step.splitlines()]
+    start = commands.index("rc=0")
+    # A failed replay ends the step: there is nothing to gate or compare.
     replay = commands.index('llmeval eval --results-dir "$REPLAY_DIR"')
-    gate = commands.index('llmeval gate --results-dir "$REPLAY_DIR"')
+    # A failing gate still lets the per-case tests run; the step fails at the end.
+    gate = commands.index('llmeval gate --results-dir "$REPLAY_DIR" || rc=1')
     cases = next(
-        i for i, line in enumerate(commands) if line.startswith("pytest -W error tests/eval")
+        i
+        for i, line in enumerate(commands)
+        if line.startswith("pytest -W error tests/eval") and line.endswith("|| rc=1")
     )
-    assert replay < gate < cases
+    end = commands.index("exit $rc")
+    assert start < replay < gate < cases < end
 
 
 def test_a_half_written_manifest_and_the_record_lock_are_never_committed():

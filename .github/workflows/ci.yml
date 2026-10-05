@@ -36,16 +36,19 @@ jobs:
       # Replays the recorded run into a temporary directory (the committed
       # results/ stay untouched), runs the gate against the committed baseline
       # (key rates within config/gate.yaml), then compares each case with the
-      # baseline. A regression, a new safety failure, or a known failure that
-      # now passes without a baseline update fails the job. Green while
-      # pending (no manifest).
+      # baseline. A failed replay ends the step. The gate and the per-case
+      # tests both run, and the step fails if either failed: a regression, a
+      # new safety failure, a missing case, or a known failure that now passes
+      # without a baseline update. Green while pending (no manifest).
       - name: Eval
         env:
           REPLAY_DIR: ${{ runner.temp }}/replay
         run: |
+          rc=0
           llmeval eval --results-dir "$REPLAY_DIR"
-          llmeval gate --results-dir "$REPLAY_DIR"
-          pytest -W error tests/eval --alluredir=allure-results
+          llmeval gate --results-dir "$REPLAY_DIR" || rc=1
+          pytest -W error tests/eval --alluredir=allure-results || rc=1
+          exit $rc
 
       - name: Upload Allure results
         if: always()
