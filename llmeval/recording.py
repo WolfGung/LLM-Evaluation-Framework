@@ -25,8 +25,10 @@ loses nothing and a rerun continues where it stopped. The client keeps to the
 configured requests per minute (`rpm`). A 429 with a short reset waits and
 retries (at most three times); a 429 with a later reset, or without a reset
 time, stops the run at once: a wait is never guessed. Every stop prints
-`recorded X/Y` and how to continue. Exit codes of the command: 0 complete,
-75 stopped on the free quota or a rate limit (rerun later), 1 an error.
+`recorded X/Y` and how to continue; after a 429 without a reset time the key
+endpoint is read once more to say whether the daily quota is the cause. Exit
+codes of the command: 0 complete, 75 stopped on the free quota or a rate
+limit (rerun later), 1 an error.
 """
 
 from __future__ import annotations
@@ -56,7 +58,7 @@ from llmeval.config import Config, Mode, RoleConfig
 from llmeval.datasets import file_sha256
 from llmeval.openrouter import OpenRouterError, require_key
 from llmeval.pricing import check_budget
-from llmeval.quota import FreeQuotaUsed, QuotaExhausted, free_daily_quota
+from llmeval.quota import FreeQuotaUsed, QuotaExhausted, RateLimitedNoReset, free_daily_quota
 from llmeval.runner import PlannedRequest
 
 # sysexits EX_TEMPFAIL: a temporary failure; rerunning later continues.
@@ -169,6 +171,32 @@ def _free_requests_left(
     return quota.remaining
 
 
+def _daily_quota_hint(config: Config, transport: httpx.BaseTransport | None) -> str:
+    """After a 429 without a reset time: read the key once more to say whether
+    the daily free quota is the cause."""
+    try:
+        quota = free_daily_quota(config.settings.api_key, transport=transport)
+    except OpenRouterError as exc:
+        return (
+            f"the key endpoint could not be read ({exc}), so it is unknown whether the daily "
+            "quota is used up: rerun later"
+        )
+    if quota is None or quota.remaining is None:
+        return (
+            "the key endpoint does not report free requests, so it is unknown whether the "
+            "daily quota is used up: rerun later"
+        )
+    if quota.remaining > 0:
+        return (
+            f"the key still has {quota.remaining} free requests today, so this is not the "
+            "daily quota: rerun in a few minutes"
+        )
+    return (
+        "the key has no free requests left today, so this is the daily quota: "
+        "rerun after the daily reset"
+    )
+
+
 def build_manifest(
     inputs: PlanInputs,
     plan: Sequence[PlannedRequest],
@@ -239,7 +267,8 @@ def record_all(
         "a 429 without a reset time stops the run at once"
     )
     free_left = None
-    if counts.free_to_record:
+    calls_free_models = counts.free_to_record > 0
+    if calls_free_models:
         free_left = _free_requests_left(config, transport, echo)
         if free_left is not None and free_left < counts.free_to_record:
             echo(
@@ -278,11 +307,13 @@ def record_all(
             echo(str(stopped))
             if not session.exact:
                 echo(UPPER_BOUND_NOTE)
-            if type(exc) is QuotaExhausted and exc.reset_at is None:
+            if isinstance(exc, RateLimitedNoReset):
                 echo(
                     "HTTP 429 came without a reset time, so the run stopped at once "
                     "instead of guessing a wait"
                 )
+                if calls_free_models:
+                    echo(_daily_quota_hint(config, transport))
             echo(CONTINUE_HINT.format(n=session.recorded))
             return RecordOutcome(
                 False, session.recorded, session.planned, session.sent, stopped=stopped

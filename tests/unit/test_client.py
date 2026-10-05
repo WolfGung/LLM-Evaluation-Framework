@@ -18,7 +18,7 @@ from llmeval.cassettes import CallTag, CassetteStore, request_key
 from llmeval.client import CallResult, MissingRecording, ModelClient, build_request
 from llmeval.config import Config, Mode, ModelsConfig, ReasoningConfig, RoleConfig, Settings
 from llmeval.openrouter import MissingAPIKey, OpenRouterError
-from llmeval.quota import QuotaExhausted, RateLimiter
+from llmeval.quota import QuotaExhausted, RateLimitedNoReset, RateLimiter
 
 FAKE_KEY = "synthetic-test-key-0123456789abcdef"
 MODEL = "vendor-a/small:free"
@@ -513,6 +513,27 @@ def test_daily_429_stops_and_writes_nothing(tmp_path):
     ):
         ask(client)
 
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_429_without_reset_carries_the_scrubbed_api_message(tmp_path):
+    def limited(request: httpx.Request) -> httpx.Response:
+        message = (
+            f"model is temporarily rate-limited upstream for {request.headers['authorization']}; "
+            + "x" * 400
+        )
+        return httpx.Response(429, json={"error": {"message": message}})
+
+    with (
+        make_client(Mode.RECORD, CassetteStore(tmp_path), httpx.MockTransport(limited)) as client,
+        pytest.raises(RateLimitedNoReset) as caught,
+    ):
+        ask(client)
+
+    detail = caught.value.detail
+    assert detail.startswith("model is temporarily rate-limited upstream for Bearer [redacted]; ")
+    assert len(detail) == 300  # scrubbed first, then cut
+    assert FAKE_KEY not in str(caught.value)
     assert list(tmp_path.iterdir()) == []
 
 

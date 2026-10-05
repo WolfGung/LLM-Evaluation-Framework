@@ -227,15 +227,90 @@ def test_a_daily_429_stops_cleanly_and_a_rerun_continues(ws, network):
     assert load_manifest(ws / "cassettes").planned_calls == ALL_CALLS
 
 
-def test_a_429_without_a_reset_time_stops_at_once(ws, network):
-    override, state = rate_limited(3, {})
-    network(SyntheticOpenRouter(chat_override=override))
+def upstream_limited(after):
+    """A chat override: answer `after` calls, then HTTP 429 without reset headers
+    and with the provider's message (which echoes the key, to test the scrub)."""
+    state = {"answered": 0, "limited": 0}
+
+    def override(request, body):
+        if state["answered"] < after:
+            state["answered"] += 1
+            return None
+        state["limited"] += 1
+        message = (
+            f"qwen is temporarily rate-limited upstream ({request.headers['authorization']}). "
+            "Please retry shortly."
+        )
+        return httpx.Response(429, json={"error": {"message": message}})
+
+    return override, state
+
+
+def test_a_429_without_a_reset_time_stops_at_once_and_is_not_the_daily_quota(ws, network):
+    override, state = upstream_limited(3)
+    network(SyntheticOpenRouter(remaining=47, chat_override=override))
     result = runner.invoke(app, args("record", ws))
+    out = result.output
     assert result.exit_code == EXIT_STOPPED
     assert state["limited"] == 1  # no retry, no guessed wait
-    assert "rerun later (the API gave no reset time)" in result.output
-    assert "HTTP 429 came without a reset time, so the run stopped at once" in result.output
+    assert "daily quota reached" not in out
+    assert (
+        "rate limited: HTTP 429 without a reset time (API: qwen is temporarily rate-limited "
+        "upstream (Bearer [redacted]). Please retry shortly.); 3 of 20 calls recorded; rerun later"
+    ) in out
+    assert "HTTP 429 came without a reset time, so the run stopped at once" in out
+    # The key endpoint is read again: 47 at the start, 3 used since.
+    assert (
+        "the key still has 44 free requests today, so this is not the daily quota: "
+        "rerun in a few minutes"
+    ) in out
+    assert FAKE_KEY not in out
     assert len(CassetteStore(ws / "cassettes")) == 3
+
+
+def test_after_a_429_without_reset_a_zero_key_count_points_at_the_daily_reset(ws, network):
+    router = SyntheticOpenRouter(remaining=10)
+
+    def override(request, body):
+        if len(router.chat_bodies) < 2:
+            return None
+        router.remaining = 0  # the quota ran out elsewhere meanwhile
+        return httpx.Response(429, json={"error": {"message": "rate limited"}})
+
+    router.chat_override = override
+    network(router)
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == EXIT_STOPPED
+    assert (
+        "the key has no free requests left today, so this is the daily quota: "
+        "rerun after the daily reset"
+    ) in result.output
+
+
+def test_after_a_429_without_reset_an_unreadable_key_endpoint_is_said_plainly(ws, network):
+    router = SyntheticOpenRouter(remaining=10)
+    reads = {"key": 0}
+
+    def handler(request):
+        if request.url.path.endswith("/key"):
+            reads["key"] += 1
+            if reads["key"] > 1:
+                return httpx.Response(503, json={"error": {"message": "key service down"}})
+        return router(request)
+
+    def override(request, body):
+        if len(router.chat_bodies) < 2:
+            return None
+        return httpx.Response(429, json={"error": {"message": "rate limited"}})
+
+    router.chat_override = override
+    network(handler)
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == EXIT_STOPPED
+    assert (
+        "the key endpoint could not be read (/api/v1/key returned HTTP 503: key service down), "
+        "so it is unknown whether the daily quota is used up: rerun later"
+    ) in result.output
 
 
 def test_a_used_up_key_stops_before_the_first_call(ws, network):

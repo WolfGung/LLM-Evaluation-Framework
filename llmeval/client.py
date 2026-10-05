@@ -38,6 +38,7 @@ from llmeval.openrouter import (
     http_client,
     read_json,
     require_key,
+    response_message,
     scrub,
     send,
 )
@@ -260,7 +261,11 @@ class ModelClient:
             latency_ms = (self._timer() - started) * 1000
             if response.status_code != 429:
                 break
-            self._sleep(wait_or_stop(response.headers, now=self._now(), attempt=attempt))
+            # Scrub first, then cut: a cut key would no longer match the scrubber.
+            detail = scrub(response_message(response), self._api_key)[:300] or None
+            self._sleep(
+                wait_or_stop(response.headers, now=self._now(), attempt=attempt, detail=detail)
+            )
 
         data = read_json(response, api_key=self._api_key)
         answer = _parse_answer(data, body["model"], self._api_key)

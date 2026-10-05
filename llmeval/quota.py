@@ -137,8 +137,12 @@ class QuotaExhausted(RuntimeError):
         """The same error with the run's progress, for the final message."""
         return type(self)(self.reset_at, recorded, needed)
 
+    def _what(self) -> str:
+        """What stopped the run (the first part of the message)."""
+        return self.headline
+
     def _message(self) -> str:
-        parts = [self.headline]
+        parts = [self._what()]
         if self.recorded is not None and self.needed is not None:
             parts.append(f"{self.recorded} of {self.needed} calls recorded")
         if self.reset_at is None:
@@ -152,6 +156,30 @@ class RateLimitRetriesExhausted(QuotaExhausted):
     """Short per-minute waits did not help; the run stops the same way."""
 
     headline = f"rate limited after {MAX_RETRIES} retries"
+
+
+class RateLimitedNoReset(QuotaExhausted):
+    """HTTP 429 without a reset time: the run stops at once instead of guessing a wait.
+
+    This is not necessarily the daily quota (a provider can be rate-limited
+    upstream for a few minutes), so the message says only what is known and
+    keeps the API's own words in `detail` (scrubbed of the key by the client).
+    """
+
+    headline = "rate limited: HTTP 429 without a reset time"
+    no_reset_hint = "rerun later"
+
+    def __init__(
+        self, detail: str | None = None, recorded: int | None = None, needed: int | None = None
+    ) -> None:
+        self.detail = detail
+        super().__init__(None, recorded, needed)
+
+    def _what(self) -> str:
+        return f"{self.headline} (API: {self.detail})" if self.detail else self.headline
+
+    def with_progress(self, recorded: int, needed: int) -> RateLimitedNoReset:
+        return RateLimitedNoReset(self.detail, recorded, needed)
 
 
 class FreeQuotaUsed(QuotaExhausted):
@@ -187,17 +215,20 @@ def parse_rate_limit(headers: Mapping[str, str]) -> RateLimit:
     )
 
 
-def wait_or_stop(headers: Mapping[str, str], *, now: datetime, attempt: int) -> float:
+def wait_or_stop(
+    headers: Mapping[str, str], *, now: datetime, attempt: int, detail: str | None = None
+) -> float:
     """Decide what to do after HTTP 429.
 
     Returns the seconds to wait before retrying when the limit resets soon
     (the per-minute limit). Raises `QuotaExhausted` when it resets later (the
-    daily quota) or the reset time is unknown, and `RateLimitRetriesExhausted`
-    after `MAX_RETRIES` short waits.
+    daily quota), `RateLimitedNoReset` (with the API's message, `detail`)
+    when the reset time is unknown, and `RateLimitRetriesExhausted` after
+    `MAX_RETRIES` short waits.
     """
     limit = parse_rate_limit(headers)
     if limit.reset_at is None:
-        raise QuotaExhausted(None)
+        raise RateLimitedNoReset(detail)
     wait = (limit.reset_at - now).total_seconds()
     if wait > MAX_SHORT_WAIT_S:
         raise QuotaExhausted(limit.reset_at)

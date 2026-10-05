@@ -16,6 +16,7 @@ from llmeval.quota import (
     FreeQuota,
     FreeQuotaUsed,
     QuotaExhausted,
+    RateLimitedNoReset,
     RateLimiter,
     free_daily_quota,
     free_daily_remaining,
@@ -138,9 +139,26 @@ def test_long_reset_stops_the_run():
     assert "rerun after 2026-01-02 00:00 UTC" in str(caught.value)
 
 
-def test_missing_reset_stops_the_run():
-    with pytest.raises(QuotaExhausted, match="no reset time"):
+def test_missing_reset_stops_the_run_without_calling_it_the_daily_quota():
+    with pytest.raises(RateLimitedNoReset) as caught:
         wait_or_stop({}, now=NOW, attempt=0)
+
+    assert isinstance(caught.value, QuotaExhausted)  # it still stops the run at once
+    assert str(caught.value) == "rate limited: HTTP 429 without a reset time; rerun later"
+    assert "daily quota" not in str(caught.value)
+
+
+def test_a_429_without_reset_keeps_what_the_api_said():
+    with pytest.raises(RateLimitedNoReset) as caught:
+        wait_or_stop({}, now=NOW, attempt=0, detail="temporarily rate-limited upstream")
+
+    error = caught.value.with_progress(recorded=3, needed=20)
+    assert isinstance(error, RateLimitedNoReset)
+    assert error.detail == "temporarily rate-limited upstream"
+    assert str(error) == (
+        "rate limited: HTTP 429 without a reset time (API: temporarily rate-limited upstream); "
+        "3 of 20 calls recorded; rerun later"
+    )
 
 
 def test_retries_are_limited_and_say_so():

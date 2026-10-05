@@ -109,7 +109,7 @@ def read_json(response: httpx.Response, *, api_key: str | None = None) -> dict[s
     path = response.request.url.path
     if response.is_error:
         # Scrub first, then cut: a cut key would no longer match the scrubber.
-        detail = scrub(_error_detail(response), api_key)[:300] or response.reason_phrase
+        detail = scrub(response_message(response), api_key)[:300] or response.reason_phrase
         raise OpenRouterError(
             f"{path} returned HTTP {response.status_code}: {detail}", response.status_code
         )
@@ -126,7 +126,9 @@ def get_json(client: httpx.Client, path: str, *, api_key: str | None = None) -> 
     return read_json(send(client, "GET", path, api_key=api_key), api_key=api_key)
 
 
-def _error_detail(response: httpx.Response) -> str:
+def response_message(response: httpx.Response) -> str:
+    """The API's error message in a response, or its raw text. Not scrubbed:
+    callers scrub it before they cut or show it."""
     try:
         error = response.json().get("error", {})
         message = error.get("message") if isinstance(error, dict) else error
