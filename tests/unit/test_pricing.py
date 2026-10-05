@@ -21,6 +21,7 @@ from llmeval.pricing import (
     estimate_cost,
     estimate_prompt_tokens,
     fetch_prices,
+    format_usd,
 )
 
 MODELS = {
@@ -141,3 +142,26 @@ def test_budget_guard_stops_above_the_limit():
     assert "1.25" in str(caught.value)
     assert "MAX_RUN_COST_USD" in str(caught.value)
     assert caught.value.estimate == 1.25
+
+
+
+@pytest.mark.parametrize(
+    ("amount", "text"),
+    [
+        (1.0, "$1.00"),
+        (0.5, "$0.50"),
+        (12.345, "$12.345"),
+        (0.0001, "$0.0001"),
+        (0.000025, "$0.000025"),
+        (0.0, "$0.00"),
+    ],
+)
+def test_usd_amounts_show_their_real_value(amount, text):
+    assert format_usd(amount) == text
+
+
+def test_a_sub_cent_limit_is_shown_as_it_is():
+    with pytest.raises(BudgetExceeded) as caught:
+        check_budget(0.002, limit=0.0001)
+
+    assert "exceeds MAX_RUN_COST_USD=$0.0001" in str(caught.value)

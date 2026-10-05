@@ -63,7 +63,7 @@ from llmeval.datasets import (
 )
 from llmeval.openrouter import MissingAPIKey, OpenRouterError
 from llmeval.perf import Performance
-from llmeval.pricing import BudgetExceeded, PricingError, check_budget
+from llmeval.pricing import BudgetExceeded, PricingError, check_budget, format_usd
 from llmeval.quota import free_daily_quota
 from llmeval.recording import EXIT_STOPPED, PlanMismatch, RecordLocked, record_all
 from llmeval.results import RESULTS_DIR, FunctionResults, PairwiseResults
@@ -185,7 +185,7 @@ def _unstable_lines(stability: Stability | None) -> list[str]:
         for case in stability.unstable[:MAX_UNSTABLE_LINES]
     ]
     if (more := len(stability.unstable) - MAX_UNSTABLE_LINES) > 0:
-        lines.append(f"  and {more} more unstable cases")
+        lines.append(f"  and {more} more unstable {'case' if more == 1 else 'cases'}")
     return lines
 
 
@@ -313,7 +313,7 @@ def estimate_command(
         check_budget(estimate.usd, limit)
     except BudgetExceeded as exc:
         raise _fail(f"refused: {exc}") from None
-    typer.echo(f"spend limit MAX_RUN_COST_USD: ${limit:.2f}; the estimate is within it")
+    typer.echo(f"spend limit MAX_RUN_COST_USD: {format_usd(limit)}; the estimate is within it")
 
 
 @app.command("status")

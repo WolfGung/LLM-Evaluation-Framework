@@ -26,6 +26,14 @@ CHARS_PER_TOKEN = 3
 TOKENS_PER_MESSAGE = 4
 
 
+def format_usd(amount: float) -> str:
+    """A USD amount with at least 2 and at most 6 decimals, so that a sub-cent
+    limit such as 0.0001 does not print as $0.00."""
+    text = f"{amount:.6f}".rstrip("0")
+    whole, _, fraction = text.partition(".")
+    return f"${whole}.{fraction.ljust(2, '0')}"
+
+
 class PricingError(RuntimeError):
     """A price is missing or unusable, so no honest cost can be given."""
 
@@ -35,7 +43,7 @@ class BudgetExceeded(RuntimeError):
 
     def __init__(self, estimate: float, limit: float) -> None:
         super().__init__(
-            f"estimated cost ${estimate:.4f} exceeds MAX_RUN_COST_USD=${limit:.2f}; "
+            f"estimated cost ${estimate:.4f} exceeds MAX_RUN_COST_USD={format_usd(limit)}; "
             "nothing was sent. Lower the plan or raise the limit."
         )
         self.estimate = estimate

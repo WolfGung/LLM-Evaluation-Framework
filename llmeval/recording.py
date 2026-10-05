@@ -96,6 +96,7 @@ from llmeval.pricing import (
     estimate_cost,
     estimate_prompt_tokens,
     fetch_prices,
+    format_usd,
 )
 from llmeval.quota import FreeQuotaUsed, QuotaExhausted, RateLimitedNoReset, free_daily_quota
 from llmeval.runner import PlannedRequest
@@ -155,9 +156,9 @@ class SpendCap:
     def check(self, bound: float) -> None:
         if bound and self.spent + bound > self.limit:
             raise SpendCapReached(
-                f"spending cap: this run spent ${self.spent:.4f} of "
-                f"MAX_RUN_COST_USD=${self.limit:.4f}; the next call could cost up to "
-                f"${bound:.4f}, so the run stopped before it"
+                f"spending cap: this run spent {format_usd(self.spent)} of "
+                f"MAX_RUN_COST_USD={format_usd(self.limit)}; the next call could cost up to "
+                f"{format_usd(bound)}, so the run stopped before it"
             )
 
     def add(self, cost: float | None, *, bound: float) -> None:
@@ -167,8 +168,8 @@ class SpendCap:
         self.spent += cost
         if self.spent > self.limit:
             raise SpendCapReached(
-                f"spending cap: this run spent ${self.spent:.4f} of "
-                f"MAX_RUN_COST_USD=${self.limit:.4f}; the last call cost more than its "
+                f"spending cap: this run spent {format_usd(self.spent)} of "
+                f"MAX_RUN_COST_USD={format_usd(self.limit)}; the last call cost more than its "
                 "published-price bound, so the run stopped"
             )
 
@@ -525,7 +526,7 @@ def _record(
     echo(estimate.headline())
     limit = config.settings.max_run_cost_usd
     check_budget(estimate.usd, limit)
-    echo(f"spend limit MAX_RUN_COST_USD: ${limit:.2f}; the estimate is within it")
+    echo(f"spend limit MAX_RUN_COST_USD: {format_usd(limit)}; the estimate is within it")
     for line in quota_lines(counts, models):
         echo(line)
     echo(

@@ -424,3 +424,5 @@ def test_eval_lists_at_most_ten_unstable_cases_with_their_flips():
     assert len(lines) == 11
     assert lines[-1] == "  and 2 more unstable cases"
     assert _unstable_lines(None) == []
+    eleven = Stability(repeated=20, stable=9, stable_share=0.45, unstable=unstable[:11])
+    assert _unstable_lines(eleven)[-1] == "  and 1 more unstable case"

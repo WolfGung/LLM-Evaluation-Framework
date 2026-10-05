@@ -613,8 +613,9 @@ def test_the_cap_stops_before_a_call_could_pass_the_limit(ws, network, monkeypat
     result = runner.invoke(app, args("record", ws))
     out = result.output
     assert result.exit_code == 1
+    assert "spend limit MAX_RUN_COST_USD: $0.0001; the estimate is within it" in out
     assert "system (synthetic/system-paid): $0.0000 for 10 calls" in out  # the history guess
-    assert "spending cap: this run spent $0.0000 of MAX_RUN_COST_USD=$0.0001" in out
+    assert "spending cap: this run spent $0.00 of MAX_RUN_COST_USD=$0.0001" in out
     assert "the next call could cost up to $" in out
     assert router.chat_bodies == []  # stopped before sending
     assert "2 of 20 calls recorded" in out
@@ -630,7 +631,7 @@ def test_the_cap_stops_when_real_costs_pass_the_published_bound(ws, network, mon
     result = runner.invoke(app, args("record", ws))
     assert result.exit_code == 1
     assert len(router.chat_bodies) == 2  # 0.05, then 0.10 > 0.06: stop
-    assert "spending cap: this run spent $0.1000 of MAX_RUN_COST_USD=$0.0600" in result.output
+    assert "spending cap: this run spent $0.10 of MAX_RUN_COST_USD=$0.06" in result.output
     assert "cost more than its published-price bound" in result.output
 
 
