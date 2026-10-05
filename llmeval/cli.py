@@ -5,24 +5,51 @@
   recorded run" and writes nothing. It always replays, whatever LLMEVAL_MODE
   says: recording (with the budget guard and the free-quota handling) is
   `make record`.
+- `estimate`: the call plan (by function, version, repeat and judge), the
+  free-quota arithmetic and the estimated cost of the calls still to record.
+  Refuses (exit 1) above MAX_RUN_COST_USD. Needs no key; for a paid model
+  without recorded costs it reads the public price list.
+- `status`: calls planned and recorded, whether the manifest is there, and,
+  with OPENROUTER_API_KEY set, the free requests the key has left today.
 - `retrieval`: the retrieval layer over the RAG dataset, offline. BM25 is
   deterministic, so this needs no model and no recording.
+
+The API key comes only from the environment and is never printed.
 """
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Annotated
 
+import httpx
 import typer
 
 from app.assistant import DEFAULT_K
 from app.retrieval import search
-from llmeval.cassettes import CassetteError, CassetteStore, load_manifest
+from llmeval.callplan import (
+    PlanInputs,
+    count_plan,
+    estimate_remaining_cost,
+    full_plan,
+    plan_lines,
+    quota_lines,
+)
+from llmeval.cassettes import PENDING_RECORDED_RUN, CassetteError, CassetteStore, load_manifest
 from llmeval.checks.judge import RUBRIC_PATH, RubricError, load_rubric
 from llmeval.checks.retrieval import retrieval_recall
 from llmeval.client import MissingRecording, ModelClient
-from llmeval.config import DEFAULT_MODELS_PATH, ConfigError, Mode, load_config
+from llmeval.config import (
+    DEFAULT_MODELS_PATH,
+    Config,
+    ConfigError,
+    Mode,
+    check_stability_cases,
+    load_config,
+)
 from llmeval.datasets import (
     DATASETS_DIR,
     RAG_PATH,
@@ -31,9 +58,12 @@ from llmeval.datasets import (
     load_rag,
     load_triage,
 )
+from llmeval.openrouter import OpenRouterError
 from llmeval.perf import Performance
+from llmeval.pricing import BudgetExceeded, PricingError, check_budget
+from llmeval.quota import free_daily_quota
 from llmeval.results import RESULTS_DIR, FunctionResults, PairwiseResults
-from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, run
+from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, run, versions_of
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -45,6 +75,56 @@ app = typer.Typer(
 def _fail(message: str) -> typer.Exit:
     typer.echo(message, err=True)
     return typer.Exit(code=1)
+
+
+@dataclass(frozen=True)
+class Network:
+    """How the commands reach the API: the real network unless a test swaps it."""
+
+    transport: httpx.BaseTransport | None = None
+    limiter: object | None = None
+    sleep: Callable[[float], None] = field(default=time.sleep)
+
+
+def _network() -> Network:
+    return Network()
+
+
+# Errors a planning command reports in one line (exit code 1).
+PLAN_ERRORS = (
+    CassetteError,
+    ConfigError,
+    DatasetError,
+    RubricError,
+    PricingError,
+    OpenRouterError,
+    OSError,
+)
+
+ConfigOption = Annotated[Path, typer.Option("--config", help="Model config file.")]
+DatasetsOption = Annotated[Path, typer.Option(help="Directory with the datasets.")]
+CassettesOption = Annotated[Path, typer.Option(help="Recorded calls.")]
+RubricOption = Annotated[Path, typer.Option(help="The judge rubric.")]
+
+
+def _dataset_paths(datasets_dir: Path) -> dict[str, Path]:
+    return {"rag": datasets_dir / "rag.jsonl", "triage": datasets_dir / "triage.jsonl"}
+
+
+def _plan_inputs(config: Path, datasets_dir: Path, rubric: Path) -> tuple[Config, PlanInputs]:
+    """The config (with the environment) and what the full recording covers."""
+    loaded = load_config(config)
+    paths = _dataset_paths(datasets_dir)
+    rag_cases, triage_cases = load_rag(paths["rag"]), load_triage(paths["triage"])
+    check_stability_cases(loaded.models, {case.id for case in (*rag_cases, *triage_cases)})
+    inputs = PlanInputs(
+        models=loaded.models,
+        rag_cases=rag_cases,
+        triage_cases=triage_cases,
+        rubric=load_rubric(rubric),
+        versions={function: versions_of(function) for function in EVAL_FUNCTIONS},
+    )
+    return loaded, inputs
 
 
 def _line(result: FunctionResults) -> str:
@@ -164,6 +244,101 @@ def eval_command(
         for line in block:
             typer.echo(line)
         typer.echo(f"  wrote {path}")
+
+
+@app.command("estimate")
+def estimate_command(
+    config: ConfigOption = DEFAULT_MODELS_PATH,
+    datasets_dir: DatasetsOption = DATASETS_DIR,
+    cassettes_dir: CassettesOption = CASSETTES_DIR,
+    rubric: RubricOption = RUBRIC_PATH,
+) -> None:
+    """Print the call plan, the free-quota arithmetic and the estimated cost.
+
+    Refuses (exit 1) when the cost of the calls still to record is above
+    MAX_RUN_COST_USD (default 1.00). `:free` model ids cost $0.00.
+    """
+    try:
+        loaded, inputs = _plan_inputs(config, datasets_dir, rubric)
+        store = CassetteStore(cassettes_dir)
+        plan = full_plan(inputs, store)
+        counts = count_plan(plan, store, loaded.models)
+        for line in plan_lines(counts, loaded.models) + quota_lines(counts, loaded.models):
+            typer.echo(line)
+        estimate = estimate_remaining_cost(
+            plan, store, loaded.models, transport=_network().transport
+        )
+    except PLAN_ERRORS as exc:
+        raise _fail(str(exc)) from None
+    for line in estimate.lines:
+        typer.echo(f"  {line}")
+    typer.echo(estimate.headline())
+    limit = loaded.settings.max_run_cost_usd
+    try:
+        check_budget(estimate.usd, limit)
+    except BudgetExceeded as exc:
+        raise _fail(f"refused: {exc}") from None
+    typer.echo(f"spend limit MAX_RUN_COST_USD: ${limit:.2f}; the estimate is within it")
+
+
+@app.command("status")
+def status_command(
+    config: ConfigOption = DEFAULT_MODELS_PATH,
+    datasets_dir: DatasetsOption = DATASETS_DIR,
+    cassettes_dir: CassettesOption = CASSETTES_DIR,
+    rubric: RubricOption = RUBRIC_PATH,
+) -> None:
+    """Calls planned and recorded, the manifest, and the free quota left today.
+
+    The free quota is read from GET /api/v1/key only when OPENROUTER_API_KEY
+    is set; the key itself is never printed.
+    """
+    try:
+        loaded, inputs = _plan_inputs(config, datasets_dir, rubric)
+        manifest = load_manifest(cassettes_dir)
+        store = CassetteStore(cassettes_dir)
+        plan = full_plan(inputs, store)
+    except PLAN_ERRORS as exc:
+        raise _fail(str(exc)) from None
+    counts = count_plan(plan, store, loaded.models)
+    typer.echo(f"cassettes: {cassettes_dir}")
+    if manifest is None:
+        typer.echo(f"manifest: absent, so the evaluation is {PENDING_RECORDED_RUN}")
+    else:
+        typer.echo(
+            f"manifest: present: a complete recording of {manifest.planned_calls} calls, "
+            f"{manifest.recorded_from:%Y-%m-%d %H:%M} to {manifest.recorded_to:%Y-%m-%d %H:%M} UTC"
+        )
+        if counts.to_record:
+            typer.echo(
+                "  the current plan is not fully recorded; make eval replays the manifest's plan"
+            )
+    for line in plan_lines(counts, loaded.models):
+        typer.echo(line)
+    if outside := len(store) - counts.recorded:
+        typer.echo(f"cassette entries outside the current plan: {outside}")
+    typer.echo(_quota_today(loaded))
+    for line in quota_lines(counts, loaded.models):
+        typer.echo(line)
+
+
+def _quota_today(loaded: Config) -> str:
+    """The live free-quota line: read from the key endpoint when a key is set."""
+    if loaded.settings.api_key is None:
+        return (
+            "free quota today: OPENROUTER_API_KEY is not set, so the remaining free requests "
+            "are not read"
+        )
+    try:
+        quota = free_daily_quota(loaded.settings.api_key, transport=_network().transport)
+    except OpenRouterError as exc:
+        return f"free quota today: not read ({exc})"
+    if quota is None:
+        return "free quota today: the key endpoint did not report free_model_daily_requests"
+    return (
+        f"free quota today (GET /api/v1/key, read live): used {quota.used}, "
+        f"limit {quota.limit}, remaining {quota.remaining}"
+    )
 
 
 @app.command("retrieval")
