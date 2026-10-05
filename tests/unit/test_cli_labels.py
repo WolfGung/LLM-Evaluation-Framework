@@ -170,13 +170,21 @@ def test_label_goes_on_where_it_stopped(recording):
     assert "Labelled so far: 1 of 3. To label now: 2." in " ".join(result.output.split())
     assert "Item 1 of 3" not in result.output
     assert "Item 2 of 3" in result.output and "Item 3 of 3" in result.output
-    assert result.output.rstrip().endswith(
-        "Saved 2 labels this time. Labelled so far: 3 of 3. Every sample answer is labelled."
+    labels_path = recording.root / "labels" / "human.jsonl"
+    next_step = (
+        f"Next: make eval, then commit {labels_path} and results/judge-agreement.json together."
     )
+    assert result.output.splitlines()[-2:] == [
+        "Saved 2 labels this time. Labelled so far: 3 of 3. Every sample answer is labelled.",
+        next_step,
+    ]
     again = runner.invoke(app, label_args(recording), input="")
     assert again.exit_code == 0
     assert "Item" not in again.output
-    assert "Labelled so far: 3 of 3. Nothing to label now." in again.output
+    assert again.output.splitlines()[-2:] == [
+        "Labelled so far: 3 of 3. Nothing to label now.",
+        next_step,
+    ]
 
 
 def test_label_stops_at_the_end_of_the_input_and_keeps_the_saved_labels(recording):

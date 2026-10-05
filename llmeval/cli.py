@@ -762,8 +762,11 @@ def label_command(
     )
     if not items:
         raise _fail("no sample answer can be shown: see above")
+    next_step = f"Next: make eval, then commit {labels} and results/judge-agreement.json together."
     if not todo:
         typer.echo(f"Labelled so far: {done} of {chosen.size}. Nothing to label now.")
+        if done == chosen.size:
+            typer.echo(next_step)
         return
     typer.echo("")
     outcome = label_session(
@@ -782,6 +785,7 @@ def label_command(
         raise typer.Exit(code=EXIT_INTERRUPTED)
     if done == chosen.size:
         typer.echo(f"{summary} Every sample answer is labelled.")
+        typer.echo(next_step)
     else:
         typer.echo(f"{summary} Run make label to go on.")
 

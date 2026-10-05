@@ -16,6 +16,7 @@ from app.retrieval import Hit
 from llmeval.cassettes import CassetteStore
 from llmeval.config import load_models_config
 from llmeval.labels import (
+    CRITERIA_REMINDER,
     LABEL_QUESTION,
     LABELER,
     HumanLabel,
@@ -98,16 +99,26 @@ def test_an_item_shows_the_counter_question_documents_and_answer_and_nothing_els
     item = items[1]
     text = render_item(item, total=30, width=72)
     lines = text.splitlines()
+    assert lines[0] == "=" * 72  # a heavy line between items
     assert "Item 2 of 30" in lines
     assert all(len(line) <= 72 for line in lines)
+    # The question again, right above the answer.
+    assert lines[lines.index("Answer") - 1] == f"Question: {item.question}"
+    # The criteria, last, right above the prompt.
+    assert words("\n".join(lines[-2:])) == CRITERIA_REMINDER
+    assert CRITERIA_REMINDER == (
+        "Send as is? Grounded in the shown documents · answers, or says honestly they don't "
+        "cover it · polite"
+    )
     assert words(item.question) in words(text)
     assert words(item.answer) in words(text)
     for number, hit in enumerate(item.documents, start=1):
         title, _, body = hit.text.partition("\n\n")
         assert f"  [{number}] {hit.doc_id}: {title}" in lines
         assert words(body) in words(text)
-    # The tool's own lines (the shown material is indented by four spaces or more).
-    own = "\n".join(line for line in lines if not line.startswith("    ")).lower()
+    # The tool's own lines (the shown material is indented by four spaces or
+    # more, or follows "Question: ").
+    own = "\n".join(line for line in lines if not line.startswith(("    ", "Question: "))).lower()
     for word in NOT_SHOWN:
         assert word not in own
     assert "v1" not in own and "v2" not in own and "answerable" not in own
@@ -159,6 +170,7 @@ def test_the_intro_asks_the_labelling_question_and_says_how_to_stop():
         "To change a saved label, delete its line in labels/human.jsonl and run make label "
         "again." in words(text)
     )
+    assert "Comments are published with the results: write them in English." in words(text)
     assert "1 sample answer cannot be shown" in words(text)
     assert "rag-001 v2 repeat 0: the answer is not in the cassettes" in words(text)
     for word in NOT_SHOWN:
@@ -219,6 +231,24 @@ def test_a_session_saves_pass_and_fail_with_the_comment_labeler_and_time(recordi
     ]
     assert "Item 3 of 3" in shown  # the skipped item was shown, and nothing saved
     assert "Skipped" in shown
+    assert "Saved: pass.\n\n" in shown and "Saved: fail.\n\n" in shown
+    assert script.asked == [
+        "[1/3] Label (p pass, f fail, s skip, q quit)",
+        "Comment for PASS (optional; Enter saves, b goes back)",
+        "[2/3] Label (p pass, f fail, s skip, q quit)",
+        "Comment for FAIL (optional; Enter saves, b goes back)",
+        "[3/3] Label (p pass, f fail, s skip, q quit)",
+    ]
+
+
+def test_the_label_prompt_takes_whole_words_too(recording, tmp_path):
+    items, _ = items_of(recording)
+    script = Script("Pass", "", " FAIL ", "", "skip")
+    outcome, _ = run_session(items, tmp_path / "human.jsonl", script)
+    assert (outcome.saved, outcome.reason) == (2, "done")
+    assert [label.label for label in load_labels(tmp_path / "human.jsonl")] == ["pass", "fail"]
+    outcome, _ = run_session(items[2:], tmp_path / "human.jsonl", Script("quit"))
+    assert outcome.reason == "quit"
 
 
 def test_the_comment_prompt_names_the_choice_and_offers_a_way_back(recording, tmp_path):
@@ -259,7 +289,7 @@ def test_a_comment_with_control_characters_is_asked_again(recording, tmp_path, t
 
 def test_an_unknown_key_is_asked_again(recording, tmp_path):
     items, _ = items_of(recording, ("rag-001", "v1"))
-    script = Script("x", "", "pass", "f", "Invents a fee.")
+    script = Script("x", "", "maybe", "f", "Invents a fee.")
     outcome, shown = run_session(items, tmp_path / "human.jsonl", script)
     assert outcome.saved == 1
     assert load_labels(tmp_path / "human.jsonl")[0].label == "fail"

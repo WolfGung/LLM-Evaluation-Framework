@@ -74,7 +74,12 @@ LABEL_QUESTION = (
     "shown documents, answers the question (or says honestly that the documents do not "
     "cover it), and is polite. Fail otherwise."
 )
-LABEL_PROMPT = "Label (p pass, f fail, s skip, q quit)"
+# A one-line reminder of the question, right above each label prompt.
+CRITERIA_REMINDER = (
+    "Send as is? Grounded in the shown documents · answers, or says honestly they don't "
+    "cover it · polite"
+)
+LABEL_PROMPT = "[{position}/{total}] Label (p pass, f fail, s skip, q quit)"
 COMMENT_PROMPT = "Comment for {label} (optional; Enter saves, b goes back)"
 BACK = "b"
 # What the label prompt takes, and what a comment may not be on its own.
@@ -497,7 +502,8 @@ def render_intro(
         ),
         "",
         *wrap(
-            f"To change a saved label, delete its line in {labels_path} and run make label again.",
+            f"To change a saved label, delete its line in {labels_path} and run make label "
+            "again. Comments are published with the results: write them in English.",
             width,
         ),
     ]
@@ -513,8 +519,9 @@ def render_intro(
 
 
 def render_item(item: LabelItem, *, total: int, width: int) -> str:
-    """One answer to label: the counter, the question, the documents and the answer."""
-    lines = ["-" * max(width, MIN_WIDTH), f"Item {item.position} of {total}", ""]
+    """One answer to label: the counter, the question, the documents, the
+    question again and the answer, then the criteria in one line."""
+    lines = ["=" * max(width, MIN_WIDTH), f"Item {item.position} of {total}", ""]
     lines += ["Question", *wrap(item.question, width, "    "), ""]
     if item.documents:
         lines += [f"Documents the assistant was given ({len(item.documents)})", ""]
@@ -524,7 +531,14 @@ def render_item(item: LabelItem, *, total: int, width: int) -> str:
     else:
         lines += ["Documents the assistant was given: none matched the question", ""]
     answer = wrap(item.answer, width, "    ") if item.answer.strip() else ["    (empty answer)"]
-    lines += ["Answer", *answer, ""]
+    again = textwrap.wrap(
+        f"Question: {item.question}",
+        width=max(width, MIN_WIDTH),
+        subsequent_indent=" " * len("Question: "),
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    lines += [*again, "Answer", *answer, "", *wrap(CRITERIA_REMINDER, width)]
     return "\n".join(lines)
 
 
@@ -541,10 +555,11 @@ def utc_now() -> datetime:
     return datetime.now(UTC).replace(microsecond=0)
 
 
-def _ask_label(ask: Callable[[str], str], echo: Callable[[str], None]) -> str:
+def _ask_label(ask: Callable[[str], str], echo: Callable[[str], None], prompt: str) -> str:
+    """p, f, s or q; the whole words pass, fail, skip and quit count too."""
     while True:
-        choice = ask(LABEL_PROMPT).strip().lower()
-        if choice in ("p", "f", "s", "q"):
+        choice = LABEL_KEYS.get(ask(prompt).strip().lower())
+        if choice is not None:
             return choice
         echo("Type p, f, s or q.")
 
@@ -591,8 +606,9 @@ def label_session(
     try:
         for item in items:
             echo(render_item(item, total=total, width=width))
+            prompt = LABEL_PROMPT.format(position=item.position, total=total)
             while True:
-                choice = _ask_label(ask, echo)
+                choice = _ask_label(ask, echo, prompt)
                 if choice == "q":
                     return SessionOutcome(saved=saved, reason="quit")
                 if choice == "s":
@@ -617,6 +633,7 @@ def label_session(
                 )
                 saved += 1
                 echo(f"Saved: {value}.")
+                echo("")
                 break
     except (KeyboardInterrupt, EOFError):
         echo("")
