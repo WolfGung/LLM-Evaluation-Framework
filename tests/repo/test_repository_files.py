@@ -55,6 +55,12 @@ def test_make_has_the_recording_targets():
     assert {"test", "eval", "estimate", "status", "record", "prune", "lint"} <= phony
 
 
+def test_make_live_runs_the_live_evaluation():
+    targets, phony = make_targets()
+    assert targets["live"] == ["$(BIN)/llmeval live"]
+    assert "live" in phony
+
+
 def test_make_has_the_baseline_and_gate_targets():
     targets, phony = make_targets()
     assert targets["baseline"] == ["$(BIN)/llmeval baseline"]

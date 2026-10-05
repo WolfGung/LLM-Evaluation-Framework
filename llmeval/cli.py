@@ -13,6 +13,10 @@
   with OPENROUTER_API_KEY set, the free requests the key has left today.
 - `record`: record every planned call with the real API (needs the key),
   resumably and inside the free limits; see `llmeval.recording`.
+- `live`: evaluate with fresh calls to the models (needs the key) and write
+  the results to the git-ignored `results-live/`; nothing is recorded, and
+  `results/` stays as it is. `gate --results-dir results-live` then compares
+  them with the baseline: the drift since the recording.
 - `prune`: list the recorded entries the current plan no longer has, and
   with `--yes` remove them; see `llmeval.prune`.
 - `retrieval`: the retrieval layer over the RAG dataset, offline. BM25 is
@@ -36,6 +40,7 @@ from __future__ import annotations
 
 import contextlib
 import shutil
+import tempfile
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -124,11 +129,11 @@ from llmeval.labels import (
     unlabelled,
     write_sample,
 )
-from llmeval.openrouter import MissingAPIKey, OpenRouterError
+from llmeval.openrouter import MissingAPIKey, OpenRouterError, require_key
 from llmeval.perf import Performance
 from llmeval.pricing import BudgetExceeded, PricingError, check_budget, format_usd
 from llmeval.prune import PruneRefused, prune
-from llmeval.quota import free_daily_quota
+from llmeval.quota import QuotaExhausted, free_daily_quota
 from llmeval.recording import (
     EXIT_INTERRUPTED,
     EXIT_STOPPED,
@@ -136,7 +141,7 @@ from llmeval.recording import (
     RecordLocked,
     record_all,
 )
-from llmeval.results import RESULTS_DIR, FunctionResults, PairwiseResults
+from llmeval.results import LIVE_RESULTS_DIR, RESULTS_DIR, FunctionResults, PairwiseResults
 from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, prompt_sha256, run, versions_of
 from llmeval.stability import Stability
 
@@ -530,6 +535,105 @@ def record_command(
         raise typer.Exit(code=EXIT_STOPPED)
     if not outcome.complete:
         raise typer.Exit(code=1)
+
+
+@app.command("live")
+def live_command(
+    config: ConfigOption = DEFAULT_MODELS_PATH,
+    datasets_dir: DatasetsOption = DATASETS_DIR,
+    rubric: RubricOption = RUBRIC_PATH,
+    results_dir: Annotated[
+        Path, typer.Option(help="Where the live results go.")
+    ] = LIVE_RESULTS_DIR,
+) -> None:
+    """Evaluate with fresh calls to the models; write results-live/. Needs OPENROUTER_API_KEY.
+
+    Every case of the call plan runs again against the API, judge and
+    pairwise calls included. Nothing is read from or written to the
+    cassettes, and results/ stays as it is. The budget guard runs first:
+    nothing is sent above MAX_RUN_COST_USD. With free models, the key must
+    have enough free requests left today for the whole run (GET
+    /api/v1/key), or nothing is sent. The run keeps to the configured rpm
+    and waits out a 429 with a short reset time. Any other failed call
+    stops it, and nothing is written: live results are complete or absent.
+    Compare them with the baseline with llmeval gate --results-dir
+    results-live.
+    """
+    net = _network()
+    try:
+        loaded, inputs = _plan_inputs(config, datasets_dir, rubric)
+        require_key(loaded.settings.api_key)
+        plan = full_plan(inputs, None)
+        counts = count_plan(plan, None, loaded.models)
+        estimate = estimate_remaining_cost(plan, None, loaded.models, transport=net.transport)
+    except (MissingAPIKey, *PLAN_ERRORS) as exc:
+        raise _fail(str(exc)) from None
+    for line in estimate.lines:
+        typer.echo(f"  {line}")
+    typer.echo(estimate.headline())
+    limit = loaded.settings.max_run_cost_usd
+    try:
+        check_budget(estimate.usd, limit)
+    except BudgetExceeded as exc:
+        raise _fail(f"refused: {exc}") from None
+    typer.echo(f"spend limit MAX_RUN_COST_USD: {format_usd(limit)}; the estimate is within it")
+    if counts.free_to_record:
+        try:
+            quota = free_daily_quota(loaded.settings.api_key, transport=net.transport)
+        except OpenRouterError as exc:
+            raise _fail(str(exc)) from None
+        if quota is None or quota.remaining is None:
+            typer.echo("free requests left today: not reported, so a 429 is the stop")
+        elif quota.remaining < counts.free_to_record:
+            raise _fail(
+                f"refused: a live run sends up to {counts.free_to_record} free-model requests, "
+                f"and the key has {quota.remaining} left today (GET /api/v1/key); "
+                "nothing was sent"
+            )
+        else:
+            typer.echo(f"free requests left today (GET /api/v1/key): {quota.remaining}")
+    typer.echo(
+        f"live run: up to {plural(counts.total, 'call')}, at most {loaded.models.rpm} per "
+        "minute; nothing is recorded"
+    )
+    try:
+        with (
+            tempfile.TemporaryDirectory() as scratch,
+            ModelClient(
+                Mode.LIVE,
+                CassetteStore(scratch),
+                loaded,
+                net.transport,
+                limiter=net.limiter,
+                sleep=net.sleep,
+            ) as client,
+        ):
+            outcome = run(
+                client,
+                loaded.models.system,
+                judge=loaded.models.judge,
+                rubric=inputs.rubric,
+                mode=Mode.LIVE,
+                cassettes_dir=scratch,
+                results_dir=results_dir,
+                live_results_dir=results_dir,
+                rag_cases=inputs.rag_cases,
+                triage_cases=inputs.triage_cases,
+                dataset_paths=_dataset_paths(datasets_dir),
+                versions=inputs.versions,
+                repeats=loaded.models.repeats,
+                stability_cases=loaded.models.stability_cases,
+                judge_repeats=loaded.models.judge_repeats,
+            )
+    except (OpenRouterError, QuotaExhausted) as exc:
+        raise _fail(f"live run stopped: {exc}; nothing written to {results_dir}") from None
+    blocks = [_result_lines(result) for result in outcome.results]
+    blocks += [_pairwise_lines(result) for result in outcome.pairwise]
+    for block, path in zip(blocks, outcome.written, strict=True):
+        for line in block:
+            typer.echo(line)
+        typer.echo(f"  wrote {path}")
+    typer.echo(f"compare with the baseline: llmeval gate --results-dir {results_dir}")
 
 
 @app.command("prune")

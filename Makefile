@@ -2,7 +2,7 @@ PYTHON ?= python3.12
 VENV ?= .venv
 BIN := $(VENV)/bin
 
-.PHONY: install test eval baseline gate readme docs estimate status record prune label lint
+.PHONY: install test eval baseline gate readme docs estimate status record live prune label lint
 
 install:
 	$(PYTHON) -m venv $(VENV)
@@ -59,6 +59,15 @@ status:
 # stops it cleanly (exit code 130); every recorded call is kept.
 record:
 	$(BIN)/llmeval record
+
+# Run every case again against the API (needs OPENROUTER_API_KEY) and write
+# the results to results-live/, which git ignores: nothing is recorded, and
+# results/ stays as it is. The budget guard runs first, and with free models
+# the key must have enough free requests left today for the whole run. Then
+# .venv/bin/llmeval gate --results-dir results-live shows the drift since the
+# recording.
+live:
+	$(BIN)/llmeval live
 
 # Remove the recorded entries the current plan no longer has, for example the
 # judge calls of an older judge config: runs llmeval prune --yes. To see the
