@@ -17,8 +17,8 @@ from llmeval.cassettes import CassetteStore, RunManifest
 from llmeval.checks.judge import RUBRIC_PATH, Judge, load_rubric
 from llmeval.client import ModelClient
 from llmeval.config import Mode, load_config
-from llmeval.results import CaseRecord
-from llmeval.runner import run_rag, run_triage
+from llmeval.results import CaseRecord, PairwiseCaseRecord
+from llmeval.runner import compare_case, run_rag, run_triage
 from tests.eval.report import REGRESSION, STRICT_XPASS
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -53,6 +53,11 @@ class Replay:
         if key not in self._records:
             self._records[key] = self._replay(function, case, version)
         return self._records[key]
+
+    def pairwise(self, case, versions: tuple[str, str]) -> PairwiseCaseRecord:
+        """Replay the judge's comparison of two versions' answers (repeat 0) to one RAG case."""
+        answers = tuple(self.case("rag", case, version).runs[0].output for version in versions)
+        return compare_case(self.judge, case, answers, versions)
 
     def _replay(self, function: str, case, version: str) -> CaseRecord:
         options = {

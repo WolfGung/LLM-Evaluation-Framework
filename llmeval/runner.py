@@ -581,6 +581,22 @@ def evaluate(
     )
 
 
+def compare_case(
+    judge: Judge,
+    case: RagCase,
+    answers: tuple[str, str],
+    versions: tuple[str, str],
+    *,
+    index: BM25Index | None = None,
+) -> PairwiseCaseRecord:
+    """Compare two versions' answers to one case (both orders), with the
+    documents the first version retrieved; the eval suite replays one case at
+    a time with it."""
+    _, hits = assistant.prepare(case.question, versions[0], index=index)
+    result = judge.compare(case.question, hits, *answers, case=case.id, versions=versions)
+    return PairwiseCaseRecord.of(case.id, case.category, case.question, answers, result, versions)
+
+
 def compare_versions(
     judge: Judge,
     cases: Sequence[RagCase],
@@ -597,16 +613,17 @@ def compare_versions(
         result.version: {record.id: record.runs[0].output for record in result.cases}
         for result in (first, second)
     }
-    records = []
-    for case in cases:
-        if not judged(case):
-            continue
-        _, hits = assistant.prepare(case.question, versions[0], index=index)
-        pair = (answers[versions[0]][case.id], answers[versions[1]][case.id])
-        result = judge.compare(case.question, hits, *pair, case=case.id, versions=versions)
-        records.append(
-            PairwiseCaseRecord.of(case.id, case.category, case.question, pair, result, versions)
+    records = [
+        compare_case(
+            judge,
+            case,
+            (answers[versions[0]][case.id], answers[versions[1]][case.id]),
+            versions,
+            index=index,
         )
+        for case in cases
+        if judged(case)
+    ]
     return PairwiseResults(
         function="rag",
         versions=versions,

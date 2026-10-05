@@ -34,7 +34,14 @@ from app.retrieval import default_index
 from llmeval.baseline import PENDING_BASELINE, explain
 from llmeval.cassettes import PENDING_RECORDED_RUN, CassetteError, RunManifest, load_manifest
 from llmeval.datasets import RagCase, TriageCase
-from llmeval.results import LAYERS, CaseRecord, JudgeRecord, Rate
+from llmeval.results import (
+    LAYERS,
+    CaseRecord,
+    JudgeRecord,
+    PairwiseCaseRecord,
+    PairwiseOrderRecord,
+    Rate,
+)
 from tools import render
 
 TITLE_WORDS = 12
@@ -121,8 +128,7 @@ def judge_text(repeat: int, judge: JudgeRecord) -> str:
     """The judge's verdict on one answer and its reasons, or why it is invalid."""
     if judge.scores is None:
         return (
-            f"repeat {repeat}: invalid verdict ({judge.error}): {judge.detail}\n"
-            f"reply: {judge.raw}"
+            f"repeat {repeat}: invalid verdict ({judge.error}): {judge.detail}\nreply: {judge.raw}"
         )
     scores = ", ".join(f"{criterion} {score}" for criterion, score in judge.scores.items())
     rule = "passes" if judge.rule_pass else "fails"
@@ -224,6 +230,56 @@ def show_layer(
     ]
     _attach_text("\n".join(checks), "checks")
     _attach_text("\n".join(failing) or "none", "failing runs")
+
+
+# --- pairwise comparison -----------------------------------------------------------
+
+PAIRWISE_FEATURE = "pairwise comparison"
+OUTCOMES = {
+    "tie": "a tie in both orders",
+    "inconsistent": "inconsistent: the preference changed with the position",
+    "identical": "identical answers: the judge is not asked",
+    "invalid": "an invalid verdict",
+}
+
+
+def show_pairwise(case: RagCase, versions: tuple[str, str]) -> None:
+    """What is known before the replay of a comparison."""
+    first, second = versions
+    allure.dynamic.epic("rag")
+    allure.dynamic.feature(PAIRWISE_FEATURE)
+    allure.dynamic.story(case.category)
+    allure.dynamic.parameter("case", case.id)
+    allure.dynamic.parameter("pair", f"{first} vs {second}")
+    allure.dynamic.title(f"{case.id}: {first} vs {second}")
+    allure.dynamic.description(
+        f"The judge compares the answers of {first} and {second} to this question "
+        "(repeat 0) twice, with their positions swapped. A preference counts only when both "
+        "orders agree. A preference is a measurement, so this test fails only when the replay "
+        "misses a call; the gate checks position consistency against the baseline."
+    )
+    _attach_text(case.question, "question")
+
+
+def order_text(order: PairwiseOrderRecord) -> str:
+    """One order's verdict: the letter, the version it names, and the reasons."""
+    if order.preferred is None:
+        return f"invalid verdict ({order.error}): {order.detail}\nreply: {order.raw}"
+    if order.preferred == "tie":
+        return f"preferred: tie\nreasons: {order.reasons}"
+    return f"preferred: {order.preferred}, which is {order.winner}\nreasons: {order.reasons}"
+
+
+def show_comparison(record: PairwiseCaseRecord) -> None:
+    """The replayed comparison: the outcome, both answers and both orders."""
+    first, second = record.answers
+    outcome = OUTCOMES.get(record.outcome, f"{record.outcome} preferred in both orders")
+    allure.dynamic.title(f"{record.id}: {first} vs {second}, {outcome}")
+    allure.dynamic.tag(record.outcome)
+    for version, answer in record.answers.items():
+        _attach_text(answer, f"answer {version}")
+    for number, order in enumerate(record.orders, start=1):
+        _attach_text(order_text(order), f"order {number}: {order.shown_as_a} shown as A")
 
 
 # --- categories and environment ------------------------------------------------

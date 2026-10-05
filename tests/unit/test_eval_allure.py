@@ -18,12 +18,15 @@ import httpx
 import pytest
 from pydantic import SecretStr
 
+from app.assistant import prepare
 from app.triage import triage
 from llmeval.baseline import CaseBaseline
 from llmeval.cassettes import MANIFEST_FILE, CassetteStore
+from llmeval.checks.judge import RUBRIC_PATH, Judge, load_rubric
 from llmeval.client import ModelClient
 from llmeval.config import Config, Mode, Settings
 from llmeval.datasets import load_triage
+from llmeval.runner import run_rag
 from tests.unit.test_eval_suite import (
     CASE,
     KNOWN_PRIORITY_FAILURE,
@@ -370,3 +373,134 @@ def test_a_layer_without_a_baseline_is_pending_after_its_rate(ws):
     assert result["name"] == "triage v1: reference layer, 100.0% of runs pass (40 of 40)"
     assert categories_of(out_dir, result) == [PENDING]
     assert attachments(out_dir, result)["failing runs"] == "none"
+
+
+# --- pairwise comparison -----------------------------------------------------------
+
+PAIRWISE_SUITE = "tests/eval/test_pairwise_eval.py"
+ANSWERS = {"v1": "Synthetic answer one [kb-returns].", "v2": "Synthetic answer two [kb-returns]."}
+
+
+def completion(body: dict, content: str) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "id": "gen-synthetic",
+            "model": body["model"],
+            "choices": [{"index": 0, "finish_reason": "stop", "message": {"content": content}}],
+            "usage": {"prompt_tokens": 100, "completion_tokens": 20, "cost": 0.0},
+        },
+    )
+
+
+def record_comparison(ws: Path, preferences: tuple[str, str], answers=ANSWERS) -> None:
+    """Record RAG_CASE answered by v1 and v2 (repeat 0), graded, and compared:
+    `preferences` are the judge's picks with v1 shown as A, then v2 shown as A."""
+    manifest = {
+        "models": {"system": MODELS.system.model, "judge": MODELS.judge.model},
+        "prompt_versions": {"rag": ["v1", "v2"]},
+        "repeats": 1,
+        "datasets": {"rag.jsonl": "0" * 64},
+        "recorded_from": "2026-01-01T10:00:00Z",
+        "recorded_to": "2026-01-01T10:01:00Z",
+        "planned_calls": 6,
+        "recorded_calls": 6,
+        "judge_repeats": "first",
+    }
+    (ws / "cassettes" / MANIFEST_FILE).write_text(json.dumps(manifest), encoding="utf-8")
+    grade = {"groundedness": 5, "helpfulness": 5, "tone": 5, "pass": True, "reasons": "Fine."}
+
+    def reply_for(version: str):
+        def reply(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            schema = (body.get("response_format") or {}).get("json_schema", {}).get("name")
+            if schema == "pairwise_verdict":
+                shown_a = body["messages"][-1]["content"].split('<answer id="A">\n', 1)[1]
+                first = shown_a.startswith(answers["v1"])
+                pick = preferences[0] if first else preferences[1]
+                return completion(
+                    body, json.dumps({"preferred": pick, "reasons": f"Picked {pick}."})
+                )
+            if schema is not None:
+                return completion(body, json.dumps(grade))
+            return completion(body, answers[version])
+
+        return reply
+
+    config = Config(models=MODELS, settings=Settings(api_key=SecretStr("synthetic-key-123")))
+    records = {}
+    for version in ("v1", "v2"):
+        with ModelClient(
+            Mode.RECORD,
+            CassetteStore(ws / "cassettes"),
+            config,
+            httpx.MockTransport(reply_for(version)),
+            limiter=NoWait(),
+        ) as client:
+            judge = Judge(client, MODELS.judge, load_rubric(ROOT / RUBRIC_PATH))
+            records[version] = run_rag(
+                client, MODELS.system, [RAG_CASE], version, repeats=1, judge=judge
+            )
+    with ModelClient(
+        Mode.RECORD,
+        CassetteStore(ws / "cassettes"),
+        config,
+        httpx.MockTransport(reply_for("v1")),
+        limiter=NoWait(),
+    ) as client:
+        judge = Judge(client, MODELS.judge, load_rubric(ROOT / RUBRIC_PATH))
+        pair = (records["v1"][0].runs[0].output, records["v2"][0].runs[0].output)
+        _, hits = prepare(RAG_CASE.question, "v1")
+        judge.compare(RAG_CASE.question, hits, *pair, case=RAG_CASE.id, versions=("v1", "v2"))
+
+
+def test_a_comparison_shows_both_orders_and_never_fails_on_a_preference(ws):
+    record_comparison(ws, ("A", "A"))  # each order picks the answer shown first
+    code, out, out_dir = run_with_allure(ws, "-k", RAG_CASE.id, suite=PAIRWISE_SUITE)
+    assert code == 0, out
+    result = only_result(out_dir)
+    assert result["status"] == "passed"
+    assert result["name"] == (
+        f"{RAG_CASE.id}: v1 vs v2, inconsistent: the preference changed with the position"
+    )
+    assert labels(result, "epic") == ["rag"]
+    assert labels(result, "feature") == ["pairwise comparison"]
+    assert labels(result, "story") == ["answerable"]
+    assert labels(result, "tag") == ["inconsistent"]
+    assert parameters(result) == {"case": f"'{RAG_CASE.id}'", "pair": "'v1 vs v2'"}
+    shown = attachments(out_dir, result)
+    assert list(shown) == [
+        "question",
+        "answer v1",
+        "answer v2",
+        "order 1: v1 shown as A",
+        "order 2: v2 shown as A",
+    ]
+    assert shown["answer v2"] == ANSWERS["v2"]
+    assert shown["order 1: v1 shown as A"] == "preferred: A, which is v1\nreasons: Picked A."
+    assert shown["order 2: v2 shown as A"] == "preferred: A, which is v2\nreasons: Picked A."
+
+
+def test_a_consistent_preference_is_named_in_the_title(ws):
+    record_comparison(ws, ("B", "A"))  # v2 in both orders
+    code, out, out_dir = run_with_allure(ws, "-k", RAG_CASE.id, suite=PAIRWISE_SUITE)
+    assert code == 0, out
+    assert only_result(out_dir)["name"] == f"{RAG_CASE.id}: v1 vs v2, v2 preferred in both orders"
+
+
+def test_identical_answers_are_not_compared(ws):
+    same = {"v1": ANSWERS["v1"], "v2": ANSWERS["v1"]}
+    record_comparison(ws, ("A", "A"), answers=same)
+    code, out, out_dir = run_with_allure(ws, "-k", RAG_CASE.id, suite=PAIRWISE_SUITE)
+    assert code == 0, out
+    result = only_result(out_dir)
+    assert result["name"] == f"{RAG_CASE.id}: v1 vs v2, identical answers: the judge is not asked"
+    assert list(attachments(out_dir, result)) == ["question", "answer v1", "answer v2"]
+
+
+def test_one_recorded_version_has_nothing_to_compare(ws):
+    write_rag_manifest(ws)
+    code, out, out_dir = run_with_allure(ws, "-k", RAG_CASE.id, suite=PAIRWISE_SUITE)
+    assert code == 0, out
+    assert "nothing to compare" in out
+    assert categories_of(out_dir, only_result(out_dir)) == [PENDING]
