@@ -331,9 +331,9 @@ class CostEstimate:
     spent_unknown: int
     lines: tuple[str, ...]
 
-    def headline(self) -> str:
+    def headline(self, calls: str = "the calls still to record") -> str:
         amount = "$0.00" if self.usd == 0 else f"${self.usd:.4f}"
-        return f"estimated cost of the calls still to record: {amount}"
+        return f"estimated cost of {calls}: {amount}"
 
 
 def _prompt_tokens(planned: PlannedRequest, system: RoleConfig) -> int:

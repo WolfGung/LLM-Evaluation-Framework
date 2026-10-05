@@ -586,7 +586,7 @@ def live_command(
         raise _fail(str(exc)) from None
     for line in estimate.lines:
         typer.echo(f"  {line}")
-    typer.echo(estimate.headline())
+    typer.echo(estimate.headline("the calls of this live run"))
     limit = loaded.settings.max_run_cost_usd
     try:
         check_budget(estimate.usd, limit)
@@ -645,7 +645,8 @@ def live_command(
     except (OpenRouterError, QuotaExhausted) as exc:
         reason = str(exc)
         if isinstance(exc, RateLimitedNoReset) and backoff.stop is not None:
-            reason = "; ".join((reason, *backoff.stop))
+            # The backoff's own reason and the key's hint say it all, with one rerun hint.
+            reason = "; ".join(backoff.stop)
         raise _fail(f"live run stopped: {reason}; nothing written to {results_dir}") from None
     blocks = [_result_lines(result) for result in outcome.results]
     blocks += [_pairwise_lines(result) for result in outcome.pairwise]

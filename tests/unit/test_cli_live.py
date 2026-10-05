@@ -90,6 +90,8 @@ def test_live_calls_every_case_again_and_writes_only_results_live(ws, network):
     assert sorted(p.name for p in (ws / "cassettes").iterdir()) == [".gitkeep"]
     assert not (ws / "results").exists()
     out = result.output
+    assert "estimated cost of the calls of this live run: $0.00" in out
+    assert "still to record" not in out
     assert "spend limit MAX_RUN_COST_USD: $1.00; the estimate is within it" in out
     assert "free requests left today (GET /api/v1/key): 1000" in out
     assert f"live run: up to {ALL_CALLS} calls, at most 18 per minute; nothing is recorded" in out
@@ -207,12 +209,14 @@ def test_an_upstream_429_that_persists_stops_the_live_run_after_four_waits(ws, n
     out = result.output
     assert result.exit_code == 1
     assert sleeps == [30, 60, 120, 240]
-    assert "live run stopped:" in out
-    assert (
-        "HTTP 429 without a reset time came back after 4 waits (30 s, 60 s, 120 s and 240 s; "
-        "7.5 minutes in all), so the run stopped"
-    ) in out
-    assert f"nothing written to {ws / 'results-live'}" in out
+    stop = next(line for line in out.splitlines() if line.startswith("live run stopped:"))
+    assert stop == (
+        "live run stopped: HTTP 429 without a reset time came back after 4 waits (30 s, 60 s, "
+        "120 s and 240 s; 7.5 minutes in all), so the run stopped; the key still has 1000 free "
+        "requests today, so this is not the daily quota: rerun in a few minutes; nothing written "
+        f"to {ws / 'results-live'}"
+    )
+    assert stop.count("HTTP 429") == 1 and stop.count("rerun") == 1
     assert not (ws / "results-live").exists()
 
 
