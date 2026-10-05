@@ -298,12 +298,13 @@ def test_the_quota_lines_give_days_with_the_source_and_date():
     counts = count_plan(full_plan(plan_inputs, None), None, plan_inputs.models)
     lines = quota_lines(counts, plan_inputs.models)
     assert lines[0].startswith(
-        "free-model limits (OpenRouter limits documentation, checked 2026-10-04; "
+        "free-model limits (OpenRouter limits documentation, "
+        "https://openrouter.ai/docs/api-reference/limits, checked 2026-10-04; "
         "published facts, not read live): 20 requests per minute"
     )
     assert lines[1] == (
         "free-model calls to record: up to 22: 1 day at 50 a day, 1 day at 1000 a day; "
-        "about 2 minutes of calls at rpm 18"
+        "about 2 minutes of calls at rpm 18 if the daily quota allowed"
     )
 
 
@@ -327,7 +328,9 @@ def test_one_minute_is_singular():
     plan_inputs = inputs()
     counts = count_plan(full_plan(plan_inputs, None), None, plan_inputs.models)
     few = dataclasses.replace(counts, free_to_record=10)
-    assert quota_lines(few, plan_inputs.models)[1].endswith("about 1 minute of calls at rpm 18")
+    assert quota_lines(few, plan_inputs.models)[1].endswith(
+        "about 1 minute of calls at rpm 18 if the daily quota allowed"
+    )
 
 
 # --- cost -------------------------------------------------------------------------

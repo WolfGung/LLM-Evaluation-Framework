@@ -403,3 +403,24 @@ def test_the_performance_line_says_n_a_without_calls():
         "  judge calls 0, latency p50 n/a, p95 n/a, mean tokens in n/a out n/a, cost $0.000000"
     )
     assert "None" not in line
+
+
+def test_eval_lists_at_most_ten_unstable_cases_with_their_flips():
+    from llmeval.cli import _unstable_lines
+    from llmeval.stability import Stability, UnstableCase
+
+    unstable = [
+        UnstableCase(
+            id=f"tri-{n:03d}",
+            category="payment",
+            checks={"reference/priority_match": [True, False]} if n % 2 else {},
+            labels={} if n % 2 else {"category": ["payment", "shipping"]},
+        )
+        for n in range(1, 13)
+    ]
+    lines = _unstable_lines(Stability(repeated=20, stable=8, stable_share=0.4, unstable=unstable))
+    assert lines[0] == "  unstable tri-001: reference/priority_match"
+    assert lines[1] == "  unstable tri-002: category"
+    assert len(lines) == 11
+    assert lines[-1] == "  and 2 more unstable cases"
+    assert _unstable_lines(None) == []

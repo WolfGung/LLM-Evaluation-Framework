@@ -84,7 +84,10 @@ def test_estimate_prints_the_plan_the_quota_days_and_a_free_cost(tmp_path, netwo
         "total: 12 system calls + up to 8 judge calls = up to 20 distinct calls; "
         "recorded 0, to record up to 20"
     ) in out
-    assert "free-model limits (OpenRouter limits documentation, checked 2026-10-04" in out
+    assert (
+        "free-model limits (OpenRouter limits documentation, "
+        "https://openrouter.ai/docs/api-reference/limits, checked 2026-10-04"
+    ) in out
     assert "free-model calls to record: up to 20: 1 day at 50 a day, 1 day at 1000 a day" in out
     assert "estimated cost of the calls still to record: $0.00" in out
     assert "spend limit MAX_RUN_COST_USD: $1.00; the estimate is within it" in out
@@ -167,7 +170,10 @@ def test_status_without_a_key_still_prints_planned_and_recorded(tmp_path, networ
         "free quota today: OPENROUTER_API_KEY is not set, so the remaining free requests "
         "are not read"
     ) in out
-    assert "free-model limits (OpenRouter limits documentation, checked 2026-10-04" in out
+    assert (
+        "free-model limits (OpenRouter limits documentation, "
+        "https://openrouter.ai/docs/api-reference/limits, checked 2026-10-04"
+    ) in out
 
 
 def test_status_with_a_key_reads_the_live_quota_and_never_prints_the_key(

@@ -455,8 +455,12 @@ def _record(
     plan = full_plan(inputs, store)
     counts = count_plan(plan, store, models)
     estimate = estimate_remaining_cost(plan, store, models, transport=transport, now=now)
+    for line in estimate.lines:
+        echo(f"  {line}")
     echo(estimate.headline())
-    check_budget(estimate.usd, config.settings.max_run_cost_usd)
+    limit = config.settings.max_run_cost_usd
+    check_budget(estimate.usd, limit)
+    echo(f"spend limit MAX_RUN_COST_USD: ${limit:.2f}; the estimate is within it")
     for line in quota_lines(counts, models):
         echo(line)
     echo(

@@ -68,6 +68,7 @@ from llmeval.quota import free_daily_quota
 from llmeval.recording import EXIT_STOPPED, PlanMismatch, RecordLocked, record_all
 from llmeval.results import RESULTS_DIR, FunctionResults, PairwiseResults
 from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, run, versions_of
+from llmeval.stability import Stability
 
 app = typer.Typer(
     no_args_is_help=True,
@@ -172,8 +173,25 @@ def _perf_line(label: str, perf: Performance) -> str:
     )
 
 
+MAX_UNSTABLE_LINES = 10
+
+
+def _unstable_lines(stability: Stability | None) -> list[str]:
+    """The unstable cases and what flipped, at most `MAX_UNSTABLE_LINES` of them."""
+    if stability is None:
+        return []
+    lines = [
+        f"  unstable {case.id}: {', '.join([*case.checks, *case.labels])}"
+        for case in stability.unstable[:MAX_UNSTABLE_LINES]
+    ]
+    if (more := len(stability.unstable) - MAX_UNSTABLE_LINES) > 0:
+        lines.append(f"  and {more} more unstable cases")
+    return lines
+
+
 def _result_lines(result: FunctionResults) -> list[str]:
-    lines = [_line(result), _perf_line("system", result.summary.performance)]
+    lines = [_line(result), *_unstable_lines(result.summary.stability)]
+    lines.append(_perf_line("system", result.summary.performance))
     if result.summary.judge is not None:
         lines.append(_perf_line("judge", result.summary.judge.performance))
     return lines

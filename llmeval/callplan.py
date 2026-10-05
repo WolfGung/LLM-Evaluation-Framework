@@ -16,6 +16,9 @@
   model role: `$0.00` for a `:free` model id; else the highest recorded
   `usage.cost` per call of that model, if any call is recorded; else the
   published prices, every call at its full token budget (an upper bound).
+  The recorded-cost figure is a guess from past calls, not a bound: later
+  calls can cost more. `llmeval record` therefore also keeps a running
+  spending cap (`llmeval.recording.SpendCap`).
 """
 
 from __future__ import annotations
@@ -262,7 +265,8 @@ def quota_lines(counts: PlanCounts, models: ModelsConfig) -> list[str]:
         f"free-model calls to record: {up_to(calls, not counts.exact)}: "
         f"{_plural(at_low, 'day')} at {FREE_LIMITS.per_day} a day, "
         f"{_plural(at_high, 'day')} at {FREE_LIMITS.per_day_with_credits} a day; "
-        f"about {_plural(minutes, 'minute')} of calls at rpm {models.rpm}"
+        f"about {_plural(minutes, 'minute')} of calls at rpm {models.rpm} "
+        "if the daily quota allowed"
     )
     return lines
 

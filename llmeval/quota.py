@@ -41,10 +41,11 @@ class FreeLimits:
     credits_usd: int
     checked: str
     source: str
+    url: str
 
     def describe(self) -> str:
         return (
-            f"free-model limits ({self.source}, checked {self.checked}; "
+            f"free-model limits ({self.source}, {self.url}, checked {self.checked}; "
             f"published facts, not read live): {self.per_minute} requests per minute; "
             f"{self.per_day} requests per day, or {self.per_day_with_credits} per day once "
             f"${self.credits_usd} of credits were ever bought"
@@ -62,6 +63,7 @@ FREE_LIMITS = FreeLimits(
     credits_usd=10,
     checked="2026-10-04",
     source="OpenRouter limits documentation",
+    url="https://openrouter.ai/docs/api-reference/limits",
 )
 
 

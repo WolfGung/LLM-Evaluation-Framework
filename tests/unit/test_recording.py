@@ -108,6 +108,10 @@ def test_record_runs_two_passes_and_writes_the_manifest(ws, network):
         "triage.jsonl": file_sha256(ws / "datasets" / "triage.jsonl"),
     }
     assert f"every planned call is recorded ({ALL_CALLS}); wrote" in out
+    # The cost per role and the limit, as estimate prints them.
+    assert "  system (synthetic/system:free): $0.00 for 12 calls (a :free model id)" in out
+    assert "  judge (synthetic/judge:free): $0.00 for up to 8 calls (a :free model id)" in out
+    assert "spend limit MAX_RUN_COST_USD: $1.00; the estimate is within it" in out
     assert not (ws / "results").exists()  # recording writes no results
 
 
@@ -178,6 +182,7 @@ def test_the_budget_guard_runs_before_any_model_call(ws, network, monkeypatch):
     assert result.exit_code == 1
     assert "refused: estimated cost $" in result.output
     assert "exceeds MAX_RUN_COST_USD=$0.10; nothing was sent" in result.output
+    assert "from the published prices (GET /api/v1/models)" in result.output  # per role
     assert router.paths == ["/api/v1/models"]  # prices only, no model call
     assert router.chat_bodies == []
 
@@ -602,7 +607,7 @@ def test_the_cap_stops_before_a_call_could_pass_the_limit(ws, network, monkeypat
     result = runner.invoke(app, args("record", ws))
     out = result.output
     assert result.exit_code == 1
-    assert "estimated cost of the calls still to record: $0.00" in out  # the history guess
+    assert "system (synthetic/system-paid): $0.0000 for 10 calls" in out  # the history guess
     assert "spending cap: this run spent $0.0000 of MAX_RUN_COST_USD=$0.0001" in out
     assert "the next call could cost up to $" in out
     assert router.chat_bodies == []  # stopped before sending
