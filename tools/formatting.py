@@ -48,13 +48,6 @@ def seconds(ms: float | None) -> str:
     return f"{decimal(Decimal(str(ms)) / 1000)} s"
 
 
-def count_of(count: int, total: int) -> str:
-    """`count` of `total`, with the percentage when there is a total: "20 of 38 (52.6%)"."""
-    if not total:
-        return f"{count} of {total}"
-    return f"{count} of {total} ({percent(count, total)})"
-
-
 @dataclass(frozen=True)
 class Table:
     """A table: a header, rows of cells, and an optional line under it.

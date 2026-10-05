@@ -1,13 +1,19 @@
-"""The published page: the README results table and a link to the Allure report.
+"""The published page: the README's generated blocks and a link to the Allure report.
 
     python -m tools.site                  # writes site/index.html
     python -m tools.site --out page.html  # somewhere else
 
 The CI workflow builds this page on a push to main, puts the Allure report
 of the same run next to it under `report/`, and publishes both on GitHub
-Pages. The table is the one in README.md (`tools.render.table`), read from
-`results/` and `cassettes/manifest.json` only, so the same files give the
-same page. Without a recorded run the page says `pending first recorded run`.
+Pages. The page shows the blocks the README shows, from the same parts
+(`tools.render` and `tools.sections`): the main table, the pairwise
+comparison and the judge's agreement with the owner's labels. They are read
+from `results/` and `cassettes/manifest.json` only, so the same files give
+the same page. Without a recorded run each section says `pending first
+recorded run`.
+
+The page also says how to read the report: Allure's Behaviors tab groups the
+per-case tests by layer, so its counts are tests, not layer pass rates.
 """
 
 from __future__ import annotations
@@ -19,13 +25,25 @@ from html import escape
 from pathlib import Path
 
 from llmeval.cassettes import PENDING_RECORDED_RUN
-from tools.render import CASSETTES, RESULTS, ROOT, RenderError, Table, load, table
+from tools import sections
+from tools.formatting import Part, Table
+from tools.render import CASSETTES, RESULTS, ROOT, RenderError, Sources, recorded, table
 
 SITE = ROOT / "site" / "index.html"
 # Where the Allure report sits next to the page.
 REPORT = "report/"
-TITLE = "LLM-Evaluation-Framework"
-SUMMARY = "Evaluate LLM features the way a test engineer evaluates ordinary code."
+TITLE = "LLM Evaluation Framework"
+SUMMARY = (
+    "Layered evaluation of two LLM features, a support assistant and a ticket triage, "
+    "replayed from recorded calls to free models, so it runs in CI at no cost."
+)
+MAIN_CAPTION = "Each prompt version of both functions, layer by layer"
+BEHAVIORS = (
+    "Allure's Behaviors tab groups the per-case tests by function and layer, and lists a "
+    "passing case under every layer it was checked on. Its counts are tests, not layer pass "
+    'rates: the layer tests (story "pass rate") give each layer\'s rate, as the table above '
+    "does."
+)
 
 # Colours on white: #1f2933 text 14.8:1, #1a56db links 6.2:1, #cbd2d9 for lines only.
 STYLE = """\
@@ -44,7 +62,7 @@ STYLE = """\
     td { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }"""
 
 
-def _table_html(main: Table) -> list[str]:
+def _table_html(main: Table, caption: str) -> list[str]:
     header = "".join(f'<th scope="col">{escape(cell)}</th>' for cell in main.header)
     rows = [
         f'<tr><th scope="row">{escape(row[0])}</th>'
@@ -52,24 +70,44 @@ def _table_html(main: Table) -> list[str]:
         + "</tr>"
         for row in main.rows
     ]
-    return [
+    lines = [
         '<div class="scroll">',
         "<table>",
-        "<caption>Each prompt version of both functions, layer by layer</caption>",
+        f"<caption>{escape(caption)}</caption>",
         f"<thead><tr>{header}</tr></thead>",
         "<tbody>",
         *rows,
         "</tbody>",
         "</table>",
         "</div>",
-        f"<p>{escape(main.line)}</p>",
     ]
+    if main.line:
+        lines.append(f"<p>{escape(main.line)}</p>")
+    return lines
+
+
+def _parts_html(parts: Sequence[Part]) -> list[str]:
+    lines: list[str] = []
+    for part in parts:
+        if isinstance(part, Table):
+            lines += _table_html(part, part.caption)
+        elif isinstance(part, str):
+            lines.append(f"<p>{escape(part)}</p>")
+        else:
+            level = part.level + 1  # the page's own h1 and h2 come first
+            lines.append(f"<h{level}>{escape(part.text)}</h{level}>")
+    return lines
 
 
 def build(results_dir: Path = RESULTS, cassettes_dir: Path = CASSETTES) -> str:
     """The page's HTML, from the results files and the manifest."""
-    loaded = load(results_dir, cassettes_dir)
-    body = [f"<p>{PENDING_RECORDED_RUN}</p>"] if loaded is None else _table_html(table(*loaded))
+    run = recorded(Sources(results_dir=results_dir, cassettes_dir=cassettes_dir))
+    if run is None:
+        main = pairwise = agreement = [f"<p>{PENDING_RECORDED_RUN}</p>"]
+    else:
+        main = _table_html(table(run.manifest, run.run), MAIN_CAPTION)
+        pairwise = _parts_html(sections.pairwise(run))
+        agreement = _parts_html(sections.agreement(run))
     lines = [
         "<!doctype html>",
         '<html lang="en">',
@@ -82,13 +120,18 @@ def build(results_dir: Path = RESULTS, cassettes_dir: Path = CASSETTES) -> str:
         "<body>",
         "<main>",
         f"<h1>{TITLE}</h1>",
-        f"<p>{SUMMARY}</p>",
+        f"<p>{escape(SUMMARY)}</p>",
         "<h2>Results of the recorded run</h2>",
-        *body,
+        *main,
+        "<h2>The two RAG prompt versions, compared by the judge</h2>",
+        *pairwise,
+        "<h2>Can the judge be trusted?</h2>",
+        *agreement,
         "<h2>The full report</h2>",
         f'<p><a href="{REPORT}">Allure report</a>: every case by function, layer and category, '
         "with the answers, the failed checks, the judge's verdicts and the pairwise "
         "comparison.</p>",
+        f"<p>{escape(BEHAVIORS)}</p>",
         "</main>",
         "</body>",
         "</html>",

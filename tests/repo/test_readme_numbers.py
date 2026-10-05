@@ -43,6 +43,12 @@ def test_the_readme_has_one_results_block():
     assert block_names(text).count("results") == 1
 
 
+def test_the_readme_shows_the_pairwise_comparison_and_the_judge_agreement():
+    names = block_names(README.read_text(encoding="utf-8"))
+    assert names.count("pairwise") == 1, "README.md needs one pairwise block"
+    assert names.count("agreement") == 1, "README.md needs one agreement block"
+
+
 @pytest.mark.parametrize("path", FILES, ids=name)
 def test_the_generated_blocks_are_rendered_from_results(path):
     text = path.read_text(encoding="utf-8")
