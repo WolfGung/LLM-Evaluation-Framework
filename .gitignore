@@ -23,5 +23,8 @@ allure-report/
 # Live-mode results: not reproducible from cassettes, never committed
 results-live/
 
+# A manifest being written (record renames it into place when complete)
+cassettes/.manifest.json.partial
+
 # Local secrets
 .env

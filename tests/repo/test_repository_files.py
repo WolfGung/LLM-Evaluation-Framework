@@ -46,3 +46,8 @@ def test_ci_runs_tests_and_the_evaluation_as_separate_steps():
     assert "--ignore=tests/eval" in test_step
     assert "pytest -W error tests/eval" in eval_step
     assert "${{ secrets" not in workflow  # replay only: no key in CI
+
+
+def test_a_half_written_manifest_is_never_committed():
+    ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+    assert "cassettes/.manifest.json.partial" in ignored
