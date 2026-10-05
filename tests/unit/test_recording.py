@@ -1019,3 +1019,37 @@ def test_calls_tried_on_an_earlier_day_go_after_the_fresh_ones(tmp_path, network
         "rag-006/v2/0",
         "rag-002/v1/0",
     ]
+
+
+
+def test_a_failed_grading_holds_back_only_requests_with_the_same_body(
+    tmp_path, network, monkeypatch
+):
+    # With judge_repeats: all, the gradings of repeats 0 and 1 share a tag but
+    # grade different answers, so they are different requests.
+    monkeypatch.setenv("OPENROUTER_API_KEY", FAKE_KEY)
+    ws = make_workspace(tmp_path, repeats=2, judge_repeats="all")
+    answers = {"n": 0}
+
+    def numbered(body):
+        if judge_body(body) or body["messages"][-1]["content"].startswith("Synthetic:"):
+            return None
+        answers["n"] += 1
+        return f"Answer number {answers['n']}: 30 days [kb-returns]."
+
+    first_answer = "Answer number 1: 30 days [kb-returns]."
+
+    def fail_one_grading(request, body):
+        user = body["messages"][-1]["content"]
+        if judge_body(body) and user.startswith("Grade the answer") and first_answer in user:
+            return httpx.Response(400, json={"error": {"message": "bad grading request"}})
+        return None
+
+    router = network(SyntheticOpenRouter(content=numbered, chat_override=fail_one_grading))
+    result = runner.invoke(app, args("record", ws))
+    out = result.output
+    assert "skipped rag-001:judge/v1/0: /api/v1/chat/completions returned HTTP 400" in out
+    assert "not sent" not in out
+    recorded = {entry.tag.label(entry.repeat) for entry in CassetteStore(ws / "cassettes")}
+    assert "rag-001:judge/v1/1" in recorded and "rag-001:judge/v1/0" not in recorded
+    assert len(router.chat_bodies) == len(recorded)

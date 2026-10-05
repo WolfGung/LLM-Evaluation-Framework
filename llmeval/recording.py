@@ -35,8 +35,8 @@ The order of work:
 
 A request the API refuses or fails (for example a moderation 403 on one
 prompt) is skipped with its reason and the run goes on. Failures are counted
-per distinct request (its cassette tag: case, version, function): the other
-repeats of a failed request are not sent in this run, so one refused prompt
+per distinct request body (`body_id`): the other repeats of a failed request,
+which send the same body, are not sent in this run, so one refused prompt
 costs one request, not `repeats`. Skipped and not-sent calls are listed at the
 end of every run, also when a stop ends it, and the next run asks them again.
 Three stops guard against a broken setup:
@@ -90,8 +90,8 @@ from llmeval.callplan import (
     to_record,
     up_to,
 )
-from llmeval.cassettes import CallTag, CassetteStore, RunManifest, utc_now, write_manifest
-from llmeval.client import ModelClient
+from llmeval.cassettes import CassetteStore, RunManifest, request_key, utc_now, write_manifest
+from llmeval.client import ModelClient, build_role_request
 from llmeval.config import Config, Mode, RoleConfig
 from llmeval.datasets import file_sha256
 from llmeval.openrouter import OpenRouterError, require_key
@@ -217,6 +217,16 @@ def _cap_prices(
 Kind = tuple[str, str, str]
 
 
+def body_id(request: PlannedRequest, role: RoleConfig) -> str:
+    """What identifies a request's body across repeats: its key at repeat 0.
+
+    The repeats of a system call send the same body; two gradings with
+    `judge_repeats: all` grade different answers, so their bodies differ.
+    """
+    body = build_role_request(list(request.messages), role, request.response_format)
+    return request_key(body, 0)
+
+
 def kind_of(request: PlannedRequest) -> Kind:
     """A request's kind: its function, prompt version (or version pair) and role.
 
@@ -338,7 +348,7 @@ class _Session:
         self.not_sent: list[tuple[str, str]] = []
         # Keys of the calls skipped or not sent in this run.
         self.missing: set[str] = set()
-        self.failed: dict[CallTag, str] = {}
+        self.failed: dict[str, str] = {}
         self.proven_kinds: set[Kind] = set()
         # Different requests failing in a row: of unproven kinds, and with no
         # response or a 5xx (an outage).
@@ -366,10 +376,12 @@ class _Session:
                 return
         self.free_left -= 1
 
-    def _fail(self, request: PlannedRequest, label: str, error: OpenRouterError) -> None:
+    def _fail(
+        self, request: PlannedRequest, body: str, label: str, error: OpenRouterError
+    ) -> None:
         """Skip a failed request and stop the run when failures look like a broken setup."""
         reason = str(error)
-        self.failed[request.tag] = reason
+        self.failed[body] = reason
         self.skipped.append((label, reason))
         if request.key is not None:
             self.missing.add(request.key)
@@ -402,15 +414,16 @@ class _Session:
     def send_all(self, planned: Sequence[PlannedRequest]) -> None:
         for request in planned:
             label = request.tag.label(request.repeat)
-            if request.tag in self.failed:
+            role = self.config.models.role(request.role)
+            body = body_id(request, role)
+            if body in self.failed:
                 # Another repeat of this request failed in this run: do not ask again.
-                reason = f"an earlier repeat failed ({self.failed[request.tag]})"
+                reason = f"an earlier repeat failed ({self.failed[body]})"
                 self.not_sent.append((label, reason))
                 if request.key is not None:
                     self.missing.add(request.key)
                 self.echo(f"not sent {label}: {reason}")
                 continue
-            role = self.config.models.role(request.role)
             bound = self.cap.bound(role, request)
             self.cap.check(bound)
             if is_free(role.model):
@@ -425,7 +438,7 @@ class _Session:
                 )
             except OpenRouterError as exc:
                 # The message is already scrubbed of the key (llmeval.openrouter).
-                self._fail(request, label, exc)
+                self._fail(request, body, label, exc)
                 continue
             self.proven_kinds.add(kind_of(request))
             self.unproven_failures = self.outage_failures = 0

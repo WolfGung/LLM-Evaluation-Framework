@@ -141,12 +141,15 @@ class SyntheticOpenRouter:
       the endpoint leaves the field out); each answered chat call uses one;
     - `chat_override`: called before the normal reply; a response it returns
       is sent instead (for 429s and errors), None means answer normally;
-    - `cost`: the `usage.cost` of every chat reply (None: the field is absent).
+    - `cost`: the `usage.cost` of every chat reply (None: the field is absent);
+    - `content`: called for each answered chat call; a text it returns
+      replaces the fixed reply (None keeps it).
     """
 
     remaining: int | None = 1000
     cost: float | None = 0.0
     chat_override: Handler | None = None
+    content: Callable[[dict[str, Any]], str | None] | None = None
     prices: dict[str, tuple[str, str]] = field(default_factory=dict)
     chat_bodies: list[dict[str, Any]] = field(default_factory=list)
     paths: list[str] = field(default_factory=list)
@@ -174,6 +177,7 @@ class SyntheticOpenRouter:
         self.chat_bodies.append(body)
         if self.remaining is not None:
             self.remaining -= 1
+        text = (self.content(body) if self.content else None) or reply_for(body)
         usage: dict[str, Any] = {"prompt_tokens": 120, "completion_tokens": 30}
         if self.cost is not None:
             usage["cost"] = self.cost
@@ -183,7 +187,7 @@ class SyntheticOpenRouter:
                 "id": f"gen-synthetic-{len(self.chat_bodies)}",
                 "model": body["model"],
                 "choices": [
-                    {"index": 0, "finish_reason": "stop", "message": {"content": reply_for(body)}}
+                    {"index": 0, "finish_reason": "stop", "message": {"content": text}}
                 ],
                 "usage": usage,
             },
