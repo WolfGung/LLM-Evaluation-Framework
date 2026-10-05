@@ -13,7 +13,7 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
-from llmeval import cli
+from llmeval import cli, recording
 from llmeval.checks.judge import RUBRIC_PATH
 from llmeval.cli import app
 from tests.unit.synthetic_judge import ROOT
@@ -45,9 +45,15 @@ def ws(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def network(monkeypatch):
+def sleeps():
+    """The seconds of every wait the run asked for, in order (nothing really waits)."""
+    return []
+
+
+@pytest.fixture
+def network(monkeypatch, sleeps):
     def use(router):
-        net = cli.Network(httpx.MockTransport(router), limiter=NoWait(), sleep=lambda _: None)
+        net = cli.Network(httpx.MockTransport(router), limiter=NoWait(), sleep=sleeps.append)
         monkeypatch.setattr(cli, "_network", lambda: net)
         return router
 
@@ -157,12 +163,96 @@ def test_a_failed_call_stops_the_live_run_and_nothing_is_written(ws, network):
     assert FAKE_KEY not in everything_under(ws)
 
 
-def test_a_429_without_a_reset_time_stops_the_live_run(ws, network):
+BUSY_REPLY = {"error": {"message": "Provider returned error"}}
+BUSY = "upstream provider busy (HTTP 429, API: Provider returned error)"
+
+
+def test_an_upstream_429_waits_as_recording_does_and_the_run_completes(ws, network, sleeps):
+    tries = {"n": 0}
+
+    def busy_twice(request, body):
+        tries["n"] += 1
+        return httpx.Response(429, json=BUSY_REPLY) if tries["n"] in (2, 3) else None
+
+    router = network(SyntheticOpenRouter(chat_override=busy_twice))
+    result = live(ws)
+    out = result.output
+    assert result.exit_code == 0, out
+    assert sleeps == [30, 60]
+    assert f"{BUSY}; waiting 30 s, then retrying (1 of 4)" in out
+    assert f"{BUSY}; waiting 60 s, then retrying (2 of 4)" in out
+    assert len(router.chat_bodies) == ALL_CALLS
+    assert sorted(p.name for p in (ws / "results-live").iterdir()) == LIVE_FILES
+
+
+def test_a_success_resets_the_live_backoff(ws, network, sleeps):
+    tries = {"n": 0}
+
+    def two_calls_busy_once(request, body):
+        tries["n"] += 1
+        return httpx.Response(429, json=BUSY_REPLY) if tries["n"] in (2, 6) else None
+
+    network(SyntheticOpenRouter(chat_override=two_calls_busy_once))
+    result = live(ws)
+    assert result.exit_code == 0, result.output
+    assert sleeps == [30, 30]
+
+
+def test_an_upstream_429_that_persists_stops_the_live_run_after_four_waits(ws, network, sleeps):
     def busy(request, body):
-        return httpx.Response(429, json={"error": {"message": "Provider returned error"}})
+        return httpx.Response(429, json=BUSY_REPLY)
 
     network(SyntheticOpenRouter(chat_override=busy))
     result = live(ws)
+    out = result.output
     assert result.exit_code == 1
-    assert "live run stopped:" in result.output
+    assert sleeps == [30, 60, 120, 240]
+    assert "live run stopped:" in out
+    assert (
+        "HTTP 429 without a reset time came back after 4 waits (30 s, 60 s, 120 s and 240 s; "
+        "7.5 minutes in all), so the run stopped"
+    ) in out
+    assert f"nothing written to {ws / 'results-live'}" in out
     assert not (ws / "results-live").exists()
+
+
+def test_after_a_429_without_reset_a_zero_key_count_stops_the_live_run_at_once(ws, network, sleeps):
+    def quota_gone(request, body):
+        router.remaining = 0
+        return httpx.Response(429, json=BUSY_REPLY)
+
+    router = network(SyntheticOpenRouter(chat_override=quota_gone))
+    result = live(ws)
+    out = result.output
+    assert result.exit_code == 1
+    assert sleeps == []
+    assert "stopped at once" in out
+    assert "the key has no free requests left today, so this is the daily quota" in out
+    assert not (ws / "results-live").exists()
+
+
+def test_a_429_without_reset_on_a_paid_model_stops_the_live_run_at_once(
+    ws, network, sleeps, monkeypatch
+):
+    config = (ws / "config.yaml").read_text(encoding="utf-8")
+    (ws / "config.yaml").write_text(
+        config.replace("synthetic/system:free", "synthetic/system-paid"), encoding="utf-8"
+    )
+    monkeypatch.setenv("MAX_RUN_COST_USD", "100")
+
+    def busy(request, body):
+        return httpx.Response(429, json=BUSY_REPLY)
+
+    prices = {"synthetic/system-paid": ("0.0001", "0.0001")}
+    network(SyntheticOpenRouter(prices=prices, chat_override=busy))
+    result = live(ws)
+    assert result.exit_code == 1
+    assert sleeps == []
+    assert "live run stopped:" in result.output
+
+
+def test_the_live_docstring_says_an_upstream_429_waits_as_recording_does():
+    flat = " ".join(cli.live_command.__doc__.split())
+    waits = [f"{wait} s" for wait in recording.UPSTREAM_BACKOFF_S]
+    assert f"{', '.join(waits[:-1])} and {waits[-1]}" in flat
+    assert "without a reset time" in flat

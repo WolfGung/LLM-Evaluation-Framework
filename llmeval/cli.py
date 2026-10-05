@@ -133,12 +133,14 @@ from llmeval.openrouter import MissingAPIKey, OpenRouterError, require_key
 from llmeval.perf import Performance
 from llmeval.pricing import BudgetExceeded, PricingError, check_budget, format_usd
 from llmeval.prune import PruneRefused, prune
-from llmeval.quota import QuotaExhausted, free_daily_quota
+from llmeval.quota import QuotaExhausted, RateLimitedNoReset, free_daily_quota
 from llmeval.recording import (
     EXIT_INTERRUPTED,
     EXIT_STOPPED,
     PlanMismatch,
     RecordLocked,
+    UpstreamBackoff,
+    WaitingModel,
     record_all,
 )
 from llmeval.results import LIVE_RESULTS_DIR, RESULTS_DIR, FunctionResults, PairwiseResults
@@ -554,10 +556,12 @@ def live_command(
     nothing is sent above MAX_RUN_COST_USD. With free models, the key must
     have enough free requests left today for the whole run (GET
     /api/v1/key), or nothing is sent. The run keeps to the configured rpm
-    and waits out a 429 with a short reset time. Any other failed call
-    stops it, and nothing is written: live results are complete or absent.
-    Compare them with the baseline with llmeval gate --results-dir
-    results-live.
+    and waits out a 429 with a short reset time. After a 429 without a reset
+    time on a free model it waits as make record does (30 s, 60 s, 120 s and
+    240 s, sending the call again after each wait) while the key has free
+    requests left. Any other failed call stops it, and nothing is written:
+    live results are complete or absent. Compare them with the baseline
+    with llmeval gate --results-dir results-live.
     """
     net = _network()
     try:
@@ -596,6 +600,7 @@ def live_command(
         f"live run: up to {plural(counts.total, 'call')}, at most {loaded.models.rpm} per "
         "minute; nothing is recorded"
     )
+    backoff = UpstreamBackoff.for_config(loaded, net.transport, net.sleep, typer.echo)
     try:
         with (
             tempfile.TemporaryDirectory() as scratch,
@@ -609,7 +614,7 @@ def live_command(
             ) as client,
         ):
             outcome = run(
-                client,
+                WaitingModel(client, backoff),
                 loaded.models.system,
                 judge=loaded.models.judge,
                 rubric=inputs.rubric,
@@ -626,7 +631,10 @@ def live_command(
                 judge_repeats=loaded.models.judge_repeats,
             )
     except (OpenRouterError, QuotaExhausted) as exc:
-        raise _fail(f"live run stopped: {exc}; nothing written to {results_dir}") from None
+        reason = str(exc)
+        if isinstance(exc, RateLimitedNoReset) and backoff.stop is not None:
+            reason = "; ".join((reason, *backoff.stop))
+        raise _fail(f"live run stopped: {reason}; nothing written to {results_dir}") from None
     blocks = [_result_lines(result) for result in outcome.results]
     blocks += [_pairwise_lines(result) for result in outcome.pairwise]
     for block, path in zip(blocks, outcome.written, strict=True):

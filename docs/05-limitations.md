@@ -26,7 +26,7 @@ Each case ran 3 times. The judge graded 40 answers of each rag version, and comp
 - **Changes to the inputs.** A cassette key is a hash of the whole request: prompt, documents, model, parameters and, for the judge, the rubric. Any change to a prompt, the knowledge base, the search or the config makes new keys, and replay fails with "no recording for …" instead of reusing old answers. The price is a new recording after every such change.
 - **Production latency and cost.** The latencies are those of free, shared endpoints on one day. The cost is zero because the default models are free variants. A paid model, another provider or a busy day gives other numbers.
 - **The provider behind a model id.** OpenRouter may serve one model id from different providers. The record keeps the model that answered, not the provider or its hardware.
-- **Free-tier limits.** Free variants are limited per minute and per day ([docs/06](06-tools-and-versions.md)). A full live run needs more requests than the smaller daily allowance holds, and `make live` refuses to start when the key's free requests left today cannot cover the run.
+- **Free-tier limits.** Free variants are limited per minute and per day ([docs/06](06-tools-and-versions.md)). A full live run needs more requests than the smaller daily allowance holds, and `make live` refuses to start when the key's free requests left today cannot cover the run. When the shared free capacity is busy (HTTP 429 without a reset time), a live run waits and retries as recording does, while the key has free requests left. If the provider is still busy after the last wait, the run stops and writes nothing; start it again later.
 
 ## Where trust in the judge ends
 

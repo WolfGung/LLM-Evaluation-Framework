@@ -76,7 +76,8 @@ minutes in all) and sends the same call again. A recorded call starts the
 next 429 at the first wait. The run stops at once when the key has no free
 requests left (the daily quota), when the endpoint does not say, and for a
 paid model; it stops when the last wait did not help. Every try keeps the
-rpm limit and the spending cap. Ctrl-C stops the run cleanly at any point, a
+rpm limit and the spending cap. `make live` waits the same way
+(`UpstreamBackoff`, through `WaitingModel`). Ctrl-C stops the run cleanly at any point, a
 wait included. Every stop prints how many calls are recorded and how to
 continue, and after a 429 without a reset time it says whether the daily
 quota is the cause. Exit codes of the command: 0 complete, 75 stopped on the
@@ -440,6 +441,103 @@ class RecordOutcome:
     interrupted: bool = False
 
 
+class UpstreamBackoff:
+    """After HTTP 429 without a reset time on a free-model call: wait and try again, or stop.
+
+    Shared by `make record` (`_Session`) and `make live` (`WaitingModel`).
+    It waits only while the key endpoint reports free requests left (then the
+    429 is upstream capacity, not the daily quota), and at most
+    `UPSTREAM_BACKOFF_S` times since the last call that succeeded (`reset`).
+    A paid model stops at once: the free-request count says nothing about it.
+    When it stops, `stop` holds the reason and the key's hint.
+    """
+
+    def __init__(
+        self,
+        read_key: Callable[[], KeyReading],
+        sleep: Callable[[float], None],
+        echo: Callable[[str], None],
+        on_reading: Callable[[int], None] | None = None,
+    ) -> None:
+        self.read_key = read_key
+        self.sleep = sleep
+        self.echo = echo
+        self.on_reading = on_reading
+        self.waits = 0
+        self.stop: tuple[str, str] | None = None
+
+    @classmethod
+    def for_config(
+        cls,
+        config: Config,
+        transport: httpx.BaseTransport | None,
+        sleep: Callable[[float], None],
+        echo: Callable[[str], None],
+        on_reading: Callable[[int], None] | None = None,
+    ) -> UpstreamBackoff:
+        """A backoff that reads the free requests left from `GET /api/v1/key`."""
+        return cls(lambda: _read_key(config, transport), sleep, echo, on_reading)
+
+    def reset(self) -> None:
+        """A call succeeded: the next 429 starts at the first wait again."""
+        self.waits = 0
+
+    def wait_or_stop(self, error: RateLimitedNoReset, role: RoleConfig) -> None:
+        """Wait before the next try of `role`'s call, or re-raise `error`."""
+        if not is_free(role.model):
+            raise error
+        reading = self.read_key()
+        if reading.remaining is not None and self.on_reading is not None:
+            self.on_reading(reading.remaining)
+        if reading.remaining is None:
+            self.stop = (NO_RESET_UNKNOWN, reading.hint)
+        elif reading.remaining <= 0:
+            self.stop = (NO_RESET_STOPPED, reading.hint)
+        elif self.waits >= len(UPSTREAM_BACKOFF_S):
+            self.stop = (NO_RESET_GAVE_UP, reading.hint)
+        else:
+            wait = UPSTREAM_BACKOFF_S[self.waits]
+            self.waits += 1
+            # The detail is already scrubbed of the key, collapsed and cut (llmeval.client).
+            api = f", API: {error.detail}" if error.detail else ""
+            self.echo(
+                f"upstream provider busy (HTTP 429{api}); waiting {wait} s, then retrying "
+                f"({self.waits} of {len(UPSTREAM_BACKOFF_S)})"
+            )
+            self.sleep(wait)
+            return
+        raise error
+
+
+class WaitingModel:
+    """A `ChatModel` that sends every call through `client` and waits out
+    upstream 429s with `backoff`, as recording does (used by `make live`)."""
+
+    def __init__(self, client: ModelClient, backoff: UpstreamBackoff) -> None:
+        self.client = client
+        self.backoff = backoff
+
+    def complete(
+        self,
+        messages: Sequence[Mapping[str, Any]],
+        *,
+        role: RoleConfig,
+        response_format: Mapping[str, Any] | None = None,
+        repeat: int = 0,
+        tag: Any = None,
+    ) -> CallResult:
+        while True:
+            try:
+                result = self.client.complete(
+                    messages, role=role, response_format=response_format, repeat=repeat, tag=tag
+                )
+            except RateLimitedNoReset as exc:
+                self.backoff.wait_or_stop(exc, role)
+                continue
+            self.backoff.reset()
+            return result
+
+
 class _Session:
     """Sends planned calls one at a time and keeps the progress count."""
 
@@ -461,12 +559,8 @@ class _Session:
         self.free_left = free_left
         self.refresh = refresh
         self.cap = cap
-        self.read_key = read_key
-        self.sleep = sleep
-        # Waits after a 429 without a reset time since the last recorded call,
-        # and why such a 429 stopped the run: (the reason, the key's hint).
-        self.busy_waits = 0
-        self.no_reset_stop: tuple[str, str] | None = None
+        # Waits after a 429 without a reset time since the last recorded call.
+        self.backoff = UpstreamBackoff(read_key, sleep, echo, on_reading=self._note_free_left)
         self.recorded = 0
         self.planned = 0
         self.exact = False
@@ -483,6 +577,14 @@ class _Session:
         # response or a 5xx (an outage).
         self.unproven_failures = 0
         self.outage_failures = 0
+
+    @property
+    def no_reset_stop(self) -> tuple[str, str] | None:
+        """Why a 429 without a reset time stopped the run: (the reason, the key's hint)."""
+        return self.backoff.stop
+
+    def _note_free_left(self, remaining: int) -> None:
+        self.free_left = remaining
 
     def progress(self, recorded: int, planned: int, exact: bool) -> None:
         self.recorded, self.planned, self.exact = recorded, planned, exact
@@ -559,39 +661,7 @@ class _Session:
                     tag=request.tag,
                 )
             except RateLimitedNoReset as exc:
-                self._wait_or_stop(exc, role)
-
-    def _wait_or_stop(self, error: RateLimitedNoReset, role: RoleConfig) -> None:
-        """Wait before the next try of a free-model call, or re-raise `error`.
-
-        The run waits only while the key endpoint reports free requests left
-        (then the 429 is upstream capacity, not the daily quota), and at most
-        `UPSTREAM_BACKOFF_S` times since the last recorded call. A paid model
-        stops at once: the free-request count says nothing about it.
-        """
-        if not is_free(role.model):
-            raise error
-        reading = self.read_key()
-        if reading.remaining is not None:
-            self.free_left = reading.remaining
-        if reading.remaining is None:
-            self.no_reset_stop = (NO_RESET_UNKNOWN, reading.hint)
-        elif reading.remaining <= 0:
-            self.no_reset_stop = (NO_RESET_STOPPED, reading.hint)
-        elif self.busy_waits >= len(UPSTREAM_BACKOFF_S):
-            self.no_reset_stop = (NO_RESET_GAVE_UP, reading.hint)
-        else:
-            wait = UPSTREAM_BACKOFF_S[self.busy_waits]
-            self.busy_waits += 1
-            # The detail is already scrubbed of the key, collapsed and cut (llmeval.client).
-            api = f", API: {error.detail}" if error.detail else ""
-            self.echo(
-                f"upstream provider busy (HTTP 429{api}); waiting {wait} s, then retrying "
-                f"({self.busy_waits} of {len(UPSTREAM_BACKOFF_S)})"
-            )
-            self.sleep(wait)
-            return
-        raise error
+                self.backoff.wait_or_stop(exc, role)
 
     def send_all(
         self,
@@ -621,7 +691,8 @@ class _Session:
                 self._fail(request, body, label, exc)
                 continue
             self.proven_kinds.add(kind_of(request))
-            self.unproven_failures = self.outage_failures = self.busy_waits = 0
+            self.unproven_failures = self.outage_failures = 0
+            self.backoff.reset()
             if result.key != request.key:
                 raise PlanMismatch(
                     f"{request.tag.label(request.repeat)}: the request sent does not match "
