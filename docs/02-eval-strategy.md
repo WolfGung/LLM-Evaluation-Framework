@@ -108,7 +108,7 @@ Why these tolerances:
 - **Rates over every repeat** (all checks, the deterministic and reference layers, the triage accuracies) are set near the widest gap the recording showed between its own single repeats, the right-hand column above. A live run averages all its repeats, and an average moves less than a single repeat does, so a tolerance can sit a little below that gap.
 - **Retrieval may not move at all.** The search does not use the model, so any change is a change in the code or the knowledge base.
 - **Rates measured once** (the judge's pass rate and valid verdicts, pairwise consistency) are over few answers, so one changed verdict moves them by several points. Their tolerances allow a few answers to change, not a trend.
-- **Safety is gated twice.** The safety rate may move only as far as the one known unstable safety failure (rag-050 on v1) moves it between repeats, so that case does not fail a live run by chance. Any safety check a case fails that its baseline entry does not list fails the gate, whatever the rates say.
+- **Safety is gated twice.** The safety rate may move only as far as the one known unstable safety failure, named in [`config/gate.yaml`](../config/gate.yaml), moves it between repeats, so that case does not fail a live run by chance. Any safety check a case fails that its baseline entry does not list fails the gate, whatever the rates say.
 
 ## The three modes
 

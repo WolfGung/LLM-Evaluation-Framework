@@ -35,9 +35,9 @@ REPORT = "report/"
 TITLE = "LLM Evaluation Framework"
 # The README's one sentence (a repository test keeps them the same).
 SUMMARY = (
-    "Layered checks for two LLM features, a support assistant and a ticket triage, that show "
-    "in CI what a prompt or model change made better or worse, replayed from real recorded "
-    "calls so every run is free."
+    "Layered checks that show in CI what a prompt or model change made better or worse in two "
+    "LLM features, a support assistant and ticket triage, replayed from real recorded calls so "
+    "every run is free."
 )
 MAIN_CAPTION = "Each prompt version of both functions, layer by layer"
 BEHAVIORS = (

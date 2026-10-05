@@ -1,6 +1,6 @@
 # LLM Evaluation Framework
 
-Layered checks for two LLM features, a support assistant and a ticket triage, that show in CI what a prompt or model change made better or worse, replayed from real recorded calls so every run is free.
+Layered checks that show in CI what a prompt or model change made better or worse in two LLM features, a support assistant and ticket triage, replayed from real recorded calls so every run is free.
 
 [![CI](https://github.com/WolfGung/LLM-Evaluation-Framework/actions/workflows/ci.yml/badge.svg)](https://github.com/WolfGung/LLM-Evaluation-Framework/actions/workflows/ci.yml)
 [![live report](https://img.shields.io/badge/live%20report-GitHub%20Pages-brightgreen)](https://wolfgung.github.io/LLM-Evaluation-Framework/)
@@ -26,11 +26,13 @@ Each column is one prompt version. Each case ran 3 times; each layer's rate is o
 
 <!-- results:end -->
 
+How to read the table: rag is the support assistant (retrieval-augmented generation: it searches the knowledge base, then answers), and triage turns a ticket into JSON. Retrieval: the search found the expected documents. Deterministic: rules a program can decide, such as valid JSON, citations, forbidden claims and length. Reference: the required facts, or the expected category, priority and order id. Safety: nothing leaked and no attack worked. Judge: a second model graded the answer as grounded, helpful and polite. Stable cases: every repeat got the same verdicts. p50 / p95: half the calls were faster than the first figure, and 95 percent were faster than the second.
+
 ## What this shows
 
-- **Catch regressions when you change a prompt or a model.** Every case is compared with an accepted baseline. A case that breaks fails the build, a case that the change fixes is flagged until the baseline is updated on purpose, and a gate holds the key rates. The table above compares two prompt versions of the same two features.
+- **Catch regressions when you change a prompt or a model.** Every case is compared with an accepted baseline. A case that breaks fails the build. A case that the change fixes also fails the build until the baseline is updated on purpose, so improvements are reviewed too. A gate fails the build when a key rate drops by more than its tolerance. The table above compares two prompt versions of the same two features.
 - **Test a chatbot against prompt injection and data leaks.** Rules check every answer for a customer's personal data, internal notes, the system prompt and an instruction planted in a document. Dedicated cases attack the assistant directly ([docs/04](docs/04-safety-cases.md)).
-- **Know when an LLM judge can be trusted.** The judge is compared with a person's blind labels, with Cohen's kappa. It is asked twice with the answers swapped, checked for a taste for longer answers, and comes from a different vendor than the model it grades ([docs/03](docs/03-judge-validation.md)).
+- **Know when an LLM judge can be trusted.** The judge's verdicts are compared with a person's blind labels, with percent agreement and Cohen's kappa (agreement beyond chance). When it compares two versions, it is asked twice with the answers swapped. It is checked for a bias toward longer answers, and it comes from a different vendor than the model it grades ([docs/03](docs/03-judge-validation.md)).
 - **Keep evaluation in CI without paying for every run.** Every model call, the judge's included, was recorded once from free models. CI replays the recording offline, with no key, and gets the same result every time. A live run, started by hand, measures the drift since the recording.
 
 ## The two prompt versions, compared by the judge
@@ -69,7 +71,7 @@ How the sample is drawn, the judge's grades, and its position and length checks:
 
 ## What evaluation cannot tell you
 
-A few dozen cases, one recording day, one knowledge base and one person's labels can show a difference between two prompts. They cannot prove an assistant safe, measure a rate to the decimal, or see a model change after the recording. The detectors match the wordings their authors foresaw, and the judge is trusted only as far as its agreement with a person goes. [docs/05](docs/05-limitations.md) lists every known limit, detector by detector.
+A few dozen cases, one recording day, one knowledge base and one person's labels can show a difference between two prompts. They cannot prove an assistant safe, measure a rate to the decimal, or see a model change after the recording. The detectors match the wordings their authors foresaw, and the judge is trusted only as far as its agreement with a person goes. [docs/05](docs/05-limitations.md) lists the limits a reader of these results should know, detector by detector; each check's docstring has the full list.
 
 ## How to run
 
@@ -116,7 +118,7 @@ datasets/ ─► runner ─► ModelClient ─► OpenRouter          (record, l
    retrieval ─► deterministic ─► reference ─► safety ─► judge    (+ stability, performance)
                ▼
            results/ ─► baseline and gate ─► CI
-               └────► tools/render.py ─► README.md, docs/, the Pages site
+               └────► tools/render.py, tools/site.py ─► README.md, docs/, the Pages site
 ```
 
 - [`app/`](app/): the system under test, a FastAPI service with the support assistant (BM25 search over [`app/kb/`](app/kb/), then the model) and the ticket triage, and two prompt versions of each in [`app/prompts/`](app/prompts/).
@@ -166,7 +168,7 @@ Six more repositories from the same portfolio:
 - **[Web-Scraping-Automation-Framework](https://github.com/WolfGung/Web-Scraping-Automation-Framework)** — a scraper that collects two practice sites and a demo store of its own, over HTTP and through a browser, detects changes between nightly runs and publishes the data, the change report and the test report.
 - **[Test-Suite-Rescue](https://github.com/WolfGung/Test-Suite-Rescue)** — a deliberately sick test suite, its cured version with the same coverage on Playwright and on Selenium, and the measured difference between them against the same application, reproducible with one command.
 - **[API-Test-Generator](https://github.com/WolfGung/API-Test-Generator)** — a command-line tool that turns an OpenAPI document or a Postman collection into a runnable pytest suite, with four generated suites committed and proven against a sample API in CI.
-- **[Accessibility-Test-Automation-Framework](https://github.com/WolfGung/Accessibility-Test-Automation-Framework)** — a small shop in a broken and a fixed mode, and the checks that test its pages against WCAG 2.1 AA success criteria.
+- **[Accessibility-Test-Automation-Framework](https://github.com/WolfGung/Accessibility-Test-Automation-Framework)** — an axe-core scan and keyboard-only checks against a shop served in an accessible and a deliberately broken mode, every finding mapped to a WCAG 2.1 AA criterion, with a manual checklist for what automation cannot see.
 
 ## Hire me
 

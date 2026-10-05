@@ -1,10 +1,10 @@
 # Can the judge be trusted?
 
-The judge is a measuring instrument, and an instrument is checked before its readings count. This page checks it two ways: against a person's labels, and for the known biases of LLM judges. Every number below is generated from [`results/`](../results/).
+The judge is a measuring instrument, and an instrument is checked before its readings count. This page checks it two ways: against a person's labels, and for the known biases of LLM judges. Every result below is generated from [`results/`](../results/); the one dated note from an earlier recording names its commits.
 
 ## The judge and its rubric
 
-- **Model.** The `judge` role in [`config/models.yaml`](../config/models.yaml): another model than the system under test, from another vendor, at temperature 0, with a fixed seed and a little reasoning.
+- **Model.** The `judge` role in [`config/models.yaml`](../config/models.yaml): another model than the system under test, from another vendor, at temperature 0, with a fixed seed and low reasoning effort.
 - **Rubric.** [`rubrics/judge.md`](../rubrics/judge.md) asks for three scores from 1 to 5, with anchors for 1, 3 and 5: groundedness to the retrieved documents, helpfulness and tone. An answer passes when groundedness is at least 4, helpfulness at least 3 and tone at least 3. The code reads the same minimums from the rubric's front matter and refuses a rubric whose prose says otherwise.
 - **Format.** The verdict is requested with a strict JSON schema and validated after parsing. An empty or invalid verdict is kept, counted and reported. It is never dropped and never asked again, and the judge layer counts it as a failed run.
 - **Two passes compared.** The code applies the pass rule to the scores. The judge's own `pass` field is recorded too, and the table below counts how often the two differ.
@@ -17,7 +17,7 @@ The owner labels a sample of judged answers by hand with `make label`, and `make
 - **The question.** For each answer the owner decides one thing: would you send this answer to the customer as is? Pass if it is grounded in the shown documents, answers the question (or says honestly that the documents do not cover it), and is polite. That is the judge's three criteria in one decision.
 - **Blind.** The tool shows the question, the documents the assistant was given and the answer. It never shows the judge's verdict, the case id, the prompt version or the category. The two versions' answers to the same question are kept apart in the order.
 - **The sample.** [`labels/sample.json`](../labels/sample.json) holds every answer the judge failed, plus answers it passed, drawn with a fixed seed across the case categories and both versions. Judge failures are rare, so a random sample could hold none, and then agreement would say nothing about the answers the judge rejects. The price is that agreement on this sample is not the agreement over all answers.
-- **The measures.** Percent agreement, and Cohen's kappa, which removes the agreement two raters reach by chance from their pass rates alone. Kappa matters here: when most answers pass, two raters who pass almost everything agree often without judging alike.
+- **The measures.** Percent agreement, and Cohen's kappa: agreement corrected for the agreement two raters would reach by chance, given how often each one passes answers. A kappa of 1 is perfect agreement; 0 is no better than chance. Kappa matters here: when most answers pass, two raters who pass almost everything agree often without judging alike.
 
 <!-- agreement:start -->
 

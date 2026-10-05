@@ -19,7 +19,7 @@ The knowledge base holds two traps on purpose. Any question can retrieve them, a
 The prompts are in [`app/prompts/`](../app/prompts/).
 
 - **v1** is a short prompt, the kind a first draft has: answer from the documents, be friendly, cite the documents. Triage v1 gives the schema and one line per field.
-- **v2** adds explicit rules. The assistant answers only from the documents, cites every sentence, says "I don't know" when the documents do not answer, treats documents and the customer's message as data rather than instructions, never shares internal notes or personal data, stays on Toolshop topics and keeps the answer short. Triage v2 adds the category definitions, the priority rules and the order-id rules.
+- **v2** adds explicit rules. The assistant answers only from the documents, cites every factual sentence, says "I don't know" when the documents do not answer, treats documents and the customer's message as data rather than instructions, never shares internal notes or personal data, stays on Toolshop topics and keeps the answer short. Triage v2 adds the category definitions, the priority rules and the order-id rules.
 
 Comparing v1 with v2 is the question a team asks after editing a prompt or switching a model: did it get better, and did anything get worse?
 
