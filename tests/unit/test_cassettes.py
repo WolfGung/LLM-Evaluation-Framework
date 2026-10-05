@@ -217,7 +217,10 @@ def test_a_torn_last_line_is_ignored_with_a_notice(tmp_path):
     store = CassetteStore(tmp_path)
     assert len(store) == 1 and "a" * 64 in store and "b" * 64 not in store
     assert store.notices == [
-        "ignored an unfinished last line in untagged.jsonl; that call will be recorded again"
+        (
+            "ignored an unfinished last line in untagged.jsonl "
+            "(or a record run is writing it now); that call will be recorded again"
+        )
     ]
 
 
@@ -263,3 +266,13 @@ def test_unfinished_lines_can_be_cut_at_once(tmp_path):
     assert path.read_text(encoding="utf-8").endswith("\n")
     reloaded = CassetteStore(tmp_path)
     assert len(reloaded) == 1 and reloaded.notices == []
+
+
+
+def test_a_last_line_that_is_json_but_not_an_entry_still_fails(tmp_path):
+    # Valid JSON is a finished write; failing the schema is a broken entry, not a torn one.
+    path = tmp_path / "untagged.jsonl"
+    complete = make_entry(key="a" * 64).model_dump_json()
+    path.write_text(complete + "\n" + '{"key": "b"}', encoding="utf-8")
+    with pytest.raises(CassetteError, match=r"untagged\.jsonl:2"):
+        CassetteStore(tmp_path)

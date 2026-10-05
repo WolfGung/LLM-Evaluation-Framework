@@ -184,11 +184,12 @@ class CassetteStore:
     and flush it to disk, so an interrupted recording keeps every call that
     finished and a rerun continues from there.
 
-    A write cut short (a crash, a full disk) can leave an unfinished last line
-    with no newline. That line is ignored with a notice in `notices`, and the
-    next append to the file first cuts it off, so the call is simply recorded
-    again; nothing is guessed or repaired. Any other broken line still raises
-    `CassetteError`.
+    A write cut short (a crash, a full disk) can leave an unfinished last line:
+    no newline after it, and not valid JSON. That line is ignored with a
+    notice in `notices`, and the next append to the file first cuts it off,
+    so the call is simply recorded again; nothing is guessed or repaired. Any
+    other broken line, including a last line that is valid JSON but not an
+    entry, still raises `CassetteError`.
     """
 
     def __init__(self, root: Path | str) -> None:
@@ -262,14 +263,21 @@ class CassetteStore:
         if not tail.strip():
             return
         try:
-            entry = CassetteEntry.model_validate_json(tail)
-        except ValidationError:
+            json.loads(tail)
+        except ValueError:
+            # Not even JSON: a write cut short (or one still in progress).
             self._torn_at[path] = len(data) - len(tail)
             self.notices.append(
-                f"ignored an unfinished last line in {path.name}; "
-                "that call will be recorded again"
+                f"ignored an unfinished last line in {path.name} (or a record run is writing "
+                "it now); that call will be recorded again"
             )
             return
+        try:
+            entry = CassetteEntry.model_validate_json(tail)
+        except ValidationError as exc:
+            # Finished JSON that is not an entry is broken, not torn.
+            number = len(lines) + 1
+            raise CassetteError(f"{path.name}:{number}: not a valid entry: {exc}") from None
         self._no_newline.add(path)
         yield entry
 

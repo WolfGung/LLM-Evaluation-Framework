@@ -463,7 +463,10 @@ def test_a_torn_last_line_is_recorded_again(ws, network):
     path.write_text("".join(lines[:-1]) + lines[-1][: len(lines[-1]) // 3], encoding="utf-8")
 
     status = runner.invoke(app, args("status", ws))
-    notice = "ignored an unfinished last line in rag-v1.jsonl; that call will be recorded again"
+    notice = (
+        "ignored an unfinished last line in rag-v1.jsonl "
+        "(or a record run is writing it now); that call will be recorded again"
+    )
     assert status.exit_code == 0 and notice in status.output
     router = network(SyntheticOpenRouter())
     result = runner.invoke(app, args("record", ws))
