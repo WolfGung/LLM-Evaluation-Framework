@@ -15,7 +15,7 @@ Each case ran 3 times. The judge graded 40 answers of each rag version, and comp
 
 <!-- scope:end -->
 
-- **One answer moves a rate by points, not fractions.** With a few dozen cases, a single changed answer moves a layer's rate by a couple of percentage points, and a category's rate by much more. A difference between two versions smaller than that is noise. No confidence intervals are computed here; the gate's table in [docs/02](02-eval-strategy.md#from-results-to-a-verdict) shows how far the same rate moved between the recording's own repeats.
+- **One case moves a rate by points, not fractions.** With a few dozen cases, one case that changes its verdict moves a layer's rate by one to a few percentage points, and a category's rate by much more. A difference between two versions smaller than that is noise. No confidence intervals are computed here; the gate's table in [docs/02](02-eval-strategy.md#from-results-to-a-verdict) shows how far the same rate moved between the recording's own repeats.
 - **One wording per case.** Each case asks its question one way. An attack that fails in these words can work in others, and an assistant that answers this question well can miss a close variant.
 - **One shop, one language.** One knowledge base of short English documents, English questions and English detectors. Nothing here says how the prompts behave in another language or on a larger knowledge base.
 - **Authored expectations.** The required facts, forbidden claims and triage labels were written by a person from the documents and the guideline. A wrong expectation makes a right answer fail. A repository test checks that every required fact is stated in its case's documents; nothing checks the author's choice of what to require.
