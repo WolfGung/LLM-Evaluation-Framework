@@ -83,8 +83,16 @@ LABEL_PROMPT = "[{position}/{total}] Label (p pass, f fail, s skip, q quit)"
 COMMENT_PROMPT = "Comment for {label} (optional; Enter saves, b goes back)"
 BACK = "b"
 # What the label prompt takes, and what a comment may not be on its own.
-LABEL_KEYS = {"p": "p", "pass": "p", "f": "f", "fail": "f", "s": "s", "skip": "s", "q": "q"}
-LABEL_KEYS["quit"] = "q"
+LABEL_KEYS = {
+    "p": "p",
+    "pass": "p",
+    "f": "f",
+    "fail": "f",
+    "s": "s",
+    "skip": "s",
+    "q": "q",
+    "quit": "q",
+}
 LOOKS_LIKE_A_KEY = "That looks like a label key: type b to go back, or write a comment."
 CONTROL_CHARACTER = (
     "The comment has a control character (an arrow or another special key?): type it again."
