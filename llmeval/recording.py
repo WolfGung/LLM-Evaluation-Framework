@@ -69,10 +69,12 @@ minutes in all) and sends the same call again. A recorded call starts the
 next 429 at the first wait. The run stops at once when the key has no free
 requests left (the daily quota), when the endpoint does not say, and for a
 paid model; it stops when the last wait did not help. Every try keeps the
-rpm limit and the spending cap. Every stop prints how many calls are
-recorded and how to continue, and after a 429 without a reset time it says
-whether the daily quota is the cause. Exit codes of the command: 0 complete,
-75 stopped on the free quota or a rate limit (rerun later), 1 an error.
+rpm limit and the spending cap. Ctrl-C stops the run cleanly at any point, a
+wait included. Every stop prints how many calls are recorded and how to
+continue, and after a 429 without a reset time it says whether the daily
+quota is the cause. Exit codes of the command: 0 complete, 75 stopped on the
+free quota or a rate limit (rerun later), 130 stopped with Ctrl-C (rerun to
+continue), 1 an error.
 """
 
 from __future__ import annotations
@@ -118,6 +120,8 @@ from llmeval.runner import PlannedRequest
 
 # sysexits EX_TEMPFAIL: a temporary failure; rerunning later continues.
 EXIT_STOPPED = 75
+# 128 + SIGINT, the shell's code for a run stopped with Ctrl-C.
+EXIT_INTERRUPTED = 130
 CONTINUE_HINT = "rerun make record to continue: the {n} recorded calls are kept and skipped"
 UPPER_BOUND_NOTE = "the total counts judge calls at their upper bound until the answers exist"
 
@@ -342,7 +346,8 @@ class RecordOutcome:
     `recorded` of `planned` distinct calls are in the cassettes (`planned` is
     an upper bound while judge calls wait for their answers); `sent` calls
     were made by this run. `stopped` is set when the free quota or a rate
-    limit stopped the run, `error` when the API failed.
+    limit stopped the run, `error` when the API failed, `interrupted` when
+    Ctrl-C stopped it.
     """
 
     complete: bool
@@ -352,6 +357,7 @@ class RecordOutcome:
     manifest: Path | None = None
     stopped: QuotaExhausted | None = None
     error: str | None = None
+    interrupted: bool = False
 
 
 class _Session:
@@ -760,6 +766,7 @@ def _record(
         session.prove(plan, store)
         stopped: QuotaExhausted | None = None
         error: str | None = None
+        interrupted = False
         hint = ""
         try:
             fresh, retry_system = split_tried(
@@ -836,6 +843,13 @@ def _record(
                 f"{session.recorded} of {session.planned} calls recorded; rerun make record "
                 "to retry: recorded calls are kept and skipped"
             )
+        except KeyboardInterrupt:
+            # Ctrl-C, also during a wait: every recorded call is already on disk.
+            interrupted = True
+            echo(f"interrupted (Ctrl-C): {session.recorded} of {session.planned} calls recorded")
+            if not session.exact:
+                echo(UPPER_BOUND_NOTE)
+            hint = CONTINUE_HINT.format(n=session.recorded)
     _summarise_skips(session, echo)
     plan = full_plan(inputs, store)
     counts = count_plan(plan, store, models)
@@ -845,10 +859,16 @@ def _record(
     if blocked:
         wait = "wait" if blocked > 1 else "waits"
         echo(f"{plural(blocked, 'judge call')} {wait} for answers that were skipped")
-    if stopped is not None or error is not None:
+    if stopped is not None or error is not None or interrupted:
         echo(hint)
         return RecordOutcome(
-            False, session.recorded, session.planned, session.sent, stopped=stopped, error=error
+            False,
+            session.recorded,
+            session.planned,
+            session.sent,
+            stopped=stopped,
+            error=error,
+            interrupted=interrupted,
         )
     if not session.sent and not session.skipped:
         echo("nothing left to record")

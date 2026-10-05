@@ -65,7 +65,13 @@ from llmeval.openrouter import MissingAPIKey, OpenRouterError
 from llmeval.perf import Performance
 from llmeval.pricing import BudgetExceeded, PricingError, check_budget, format_usd
 from llmeval.quota import free_daily_quota
-from llmeval.recording import EXIT_STOPPED, PlanMismatch, RecordLocked, record_all
+from llmeval.recording import (
+    EXIT_INTERRUPTED,
+    EXIT_STOPPED,
+    PlanMismatch,
+    RecordLocked,
+    record_all,
+)
 from llmeval.results import RESULTS_DIR, FunctionResults, PairwiseResults
 from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, run, versions_of
 from llmeval.stability import Stability
@@ -398,8 +404,9 @@ def record_command(
     stops on three different failures in a row of kinds not yet proven (a
     wrong model id or config), on twenty in a row with no response or a 5xx
     (an outage), and at once on HTTP 401 or 402. The manifest is written only
-    when every planned call is recorded. Exit codes:
-    0 complete, 75 stopped on the quota or a rate limit (rerun later), 1 an
+    when every planned call is recorded. Ctrl-C stops it cleanly, also
+    during a wait. Exit codes: 0 complete, 75 stopped on the quota or a rate
+    limit (rerun later), 130 stopped with Ctrl-C (rerun to continue), 1 an
     error or skipped calls (rerun to retry them).
     """
     net = _network()
@@ -419,6 +426,8 @@ def record_command(
         raise _fail(f"refused: {exc}") from None
     except (MissingAPIKey, PlanMismatch, RecordLocked, *PLAN_ERRORS) as exc:
         raise _fail(str(exc)) from None
+    if outcome.interrupted:
+        raise typer.Exit(code=EXIT_INTERRUPTED)
     if outcome.stopped is not None:
         raise typer.Exit(code=EXIT_STOPPED)
     if not outcome.complete:

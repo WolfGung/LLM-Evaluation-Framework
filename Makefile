@@ -29,7 +29,8 @@ status:
 
 # Record every planned call with the real API. Reads OPENROUTER_API_KEY from
 # the environment (for example: set -a; . ./.env; set +a). Exit code 75 means
-# the free quota or a rate limit stopped it: rerun later to continue.
+# the free quota or a rate limit stopped it: rerun later to continue. Ctrl-C
+# stops it cleanly (exit code 130); every recorded call is kept.
 record:
 	$(BIN)/llmeval record
 

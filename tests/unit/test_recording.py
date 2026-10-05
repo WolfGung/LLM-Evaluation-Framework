@@ -463,6 +463,32 @@ def test_a_429_without_reset_on_a_paid_model_stops_at_once(ws, network, sleeps, 
     assert "HTTP 429 came without a reset time, so the run stopped at once" in result.output
 
 
+def test_ctrl_c_during_a_wait_stops_cleanly_and_keeps_the_recorded_calls(ws, network, sleeps):
+    override, _ = upstream_limited(3)
+
+    def interrupt(seconds):
+        sleeps.append(seconds)
+        raise KeyboardInterrupt
+
+    network(SyntheticOpenRouter(chat_override=override), sleep=interrupt)
+    result = runner.invoke(app, args("record", ws))
+    out = result.output
+    assert result.exit_code == recording.EXIT_INTERRUPTED == 130
+    assert sleeps == [30]
+    assert "waiting 30 s, then retrying (1 of 4)" in out
+    assert f"interrupted (Ctrl-C): 3 of {ALL_CALLS} calls recorded" in out
+    assert "the total counts judge calls at their upper bound until the answers exist" in out
+    assert out.rstrip().endswith(
+        "rerun make record to continue: the 3 recorded calls are kept and skipped"
+    )
+    assert len(CassetteStore(ws / "cassettes")) == 3
+    assert load_manifest(ws / "cassettes") is None
+    # The lock is released: the next run continues.
+    router = network(SyntheticOpenRouter())
+    assert runner.invoke(app, args("record", ws)).exit_code == 0
+    assert len(router.chat_bodies) == ALL_CALLS - 3
+
+
 def test_a_used_up_key_stops_before_the_first_call(ws, network):
     router = network(SyntheticOpenRouter(remaining=0))
     result = runner.invoke(app, args("record", ws))
