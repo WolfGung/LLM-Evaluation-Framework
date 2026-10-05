@@ -48,6 +48,7 @@ def test_ci_runs_tests_and_the_evaluation_as_separate_steps():
     assert "${{ secrets" not in workflow  # replay only: no key in CI
 
 
-def test_a_half_written_manifest_is_never_committed():
+def test_a_half_written_manifest_and_the_record_lock_are_never_committed():
     ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "cassettes/.manifest.json.partial" in ignored
+    assert "cassettes/.record.lock" in ignored

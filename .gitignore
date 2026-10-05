@@ -25,6 +25,8 @@ results-live/
 
 # A manifest being written (record renames it into place when complete)
 cassettes/.manifest.json.partial
+# Held while make record runs: one record run at a time
+cassettes/.record.lock
 
 # Local secrets
 .env

@@ -3,7 +3,9 @@
 The order of work:
 
 1. The key: OPENROUTER_API_KEY must be set; nothing is sent without it. It
-   comes from the environment only and is never printed.
+   comes from the environment only and is never printed. Then the lock: one
+   record run at a time per cassettes directory (`.record.lock`); a second
+   run is refused instead of appending to the same files.
 2. The budget guard: the calls still to record are estimated
    (`llmeval.callplan`), and the run stops before any call when the estimate
    is above MAX_RUN_COST_USD. `:free` model ids cost $0.00.
@@ -33,8 +35,10 @@ limit (rerun later), 1 an error.
 
 from __future__ import annotations
 
+import fcntl
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -67,8 +71,39 @@ CONTINUE_HINT = "rerun make record to continue: the {n} recorded calls are kept 
 UPPER_BOUND_NOTE = "the total counts judge calls at their upper bound until the answers exist"
 
 
+LOCK_FILE = ".record.lock"
+
+
 class PlanMismatch(RuntimeError):
     """A request the client sent does not have the key the plan gave it."""
+
+
+class RecordLocked(RuntimeError):
+    """Another record run holds the lock on the same cassettes directory."""
+
+
+@contextmanager
+def record_lock(cassettes_dir: Path) -> Iterator[None]:
+    """Hold `<cassettes_dir>/.record.lock` for the whole run, or refuse at once.
+
+    Two runs appending to the same cassette files would interleave lines and
+    record calls twice. The lock is advisory (`flock`), released when the run
+    ends or the process dies; the file itself stays and is git-ignored.
+    """
+    path = Path(cassettes_dir) / LOCK_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise RecordLocked(
+                f"another record run is active on {cassettes_dir} ({LOCK_FILE} is held); "
+                "wait for it to finish"
+            ) from None
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 @dataclass(frozen=True)
@@ -248,10 +283,37 @@ def record_all(
 ) -> RecordOutcome:
     """Record every planned call (see the module docstring for the order of work).
 
-    Raises `MissingAPIKey` without a key and `BudgetExceeded` above the spend
-    limit, both before any model call.
+    Raises `MissingAPIKey` without a key, `RecordLocked` while another run is
+    active, and `BudgetExceeded` above the spend limit, all before any model
+    call.
     """
     require_key(config.settings.api_key)
+    with record_lock(cassettes_dir):
+        return _record(
+            inputs,
+            config,
+            cassettes_dir,
+            dataset_paths,
+            echo=echo,
+            transport=transport,
+            limiter=limiter,
+            sleep=sleep,
+            now=now,
+        )
+
+
+def _record(
+    inputs: PlanInputs,
+    config: Config,
+    cassettes_dir: Path,
+    dataset_paths: Mapping[str, Path],
+    *,
+    echo: Callable[[str], None],
+    transport: httpx.BaseTransport | None,
+    limiter: Any,
+    sleep: Callable[[float], None],
+    now: Callable[[], datetime],
+) -> RecordOutcome:
     models = config.models
     store = CassetteStore(cassettes_dir)
     plan = full_plan(inputs, store)

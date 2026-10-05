@@ -365,6 +365,58 @@ def test_an_api_error_stops_with_progress_and_the_key_scrubbed(ws, network):
     assert load_manifest(ws / "cassettes") is None
 
 
+# --- one record run at a time ----------------------------------------------------------
+
+
+def test_a_second_record_run_is_refused_while_one_is_active(ws, network):
+    from llmeval.recording import RecordLocked, record_all
+
+    router = SyntheticOpenRouter()
+    second = {}
+
+    def start_a_second_session(request, body):
+        if not second:  # during the first session's first call
+            loaded, inputs = cli._plan_inputs(ws / "config.yaml", ws / "datasets", RUBRIC)
+            lines = []
+            try:
+                record_all(
+                    inputs,
+                    loaded,
+                    ws / "cassettes",
+                    cli._dataset_paths(ws / "datasets"),
+                    echo=lines.append,
+                    transport=httpx.MockTransport(router),
+                    limiter=NoWait(),
+                )
+            except RecordLocked as exc:
+                second["refused"] = str(exc)
+            second["lines"] = lines
+        return None
+
+    router.chat_override = start_a_second_session
+    network(router)
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 0, result.output
+    assert second["refused"].startswith("another record run is active on ")
+    assert second["lines"] == []  # refused before it planned, estimated or sent anything
+    assert len(router.chat_bodies) == ALL_CALLS  # only the first session's calls
+    assert len(CassetteStore(ws / "cassettes")) == ALL_CALLS
+
+
+def test_a_held_lock_refuses_record_in_the_cli(ws, network):
+    import fcntl
+
+    router = network(SyntheticOpenRouter())
+    with (ws / "cassettes" / ".record.lock").open("a") as held:
+        fcntl.flock(held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 1
+    assert "another record run is active" in result.output
+    assert router.paths == []
+    # Released: the next run goes ahead.
+    assert runner.invoke(app, args("record", ws)).exit_code == 0
+
+
 # --- the rpm limit and the key ------------------------------------------------------------
 
 
@@ -400,9 +452,10 @@ def test_record_writes_only_into_the_given_cassettes_directory(ws, network):
     network(SyntheticOpenRouter())
     assert runner.invoke(app, args("record", ws)).exit_code == 0
     names = sorted(p.name for p in (ws / "cassettes").iterdir())
-    assert MANIFEST_FILE in names and ".gitkeep" in names
-    assert all(n.endswith(".jsonl") for n in names if n not in (MANIFEST_FILE, ".gitkeep"))
-    assert not list(ws.glob("*.tmp")) and not list((ws / "cassettes").glob("*.tmp"))
+    assert {MANIFEST_FILE, ".gitkeep", ".record.lock"} <= set(names)
+    others = set(names) - {MANIFEST_FILE, ".gitkeep", ".record.lock"}
+    assert others and all(name.endswith(".jsonl") for name in others)
+    assert sorted(p.name for p in ws.iterdir()) == ["cassettes", "config.yaml", "datasets"]
 
 
 def test_the_record_docstring_says_a_429_without_a_reset_stops_at_once():

@@ -65,7 +65,7 @@ from llmeval.openrouter import MissingAPIKey, OpenRouterError
 from llmeval.perf import Performance
 from llmeval.pricing import BudgetExceeded, PricingError, check_budget
 from llmeval.quota import free_daily_quota
-from llmeval.recording import EXIT_STOPPED, PlanMismatch, record_all
+from llmeval.recording import EXIT_STOPPED, PlanMismatch, RecordLocked, record_all
 from llmeval.results import RESULTS_DIR, FunctionResults, PairwiseResults
 from llmeval.runner import CASSETTES_DIR, EVAL_FUNCTIONS, run, versions_of
 
@@ -378,7 +378,7 @@ def record_command(
         )
     except BudgetExceeded as exc:
         raise _fail(f"refused: {exc}") from None
-    except (MissingAPIKey, PlanMismatch, *PLAN_ERRORS) as exc:
+    except (MissingAPIKey, PlanMismatch, RecordLocked, *PLAN_ERRORS) as exc:
         raise _fail(str(exc)) from None
     if outcome.stopped is not None:
         raise typer.Exit(code=EXIT_STOPPED)
