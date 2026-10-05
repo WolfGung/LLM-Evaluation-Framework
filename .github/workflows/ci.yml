@@ -1,10 +1,16 @@
 name: CI
 
+# Every push to main and every pull request: lint, unit and repository tests,
+# then the replay evaluation. The tests reach no network and use no key.
+# A push to main also builds the page and the Allure report from that run and
+# deploys them to GitHub Pages, straight from the workflow.
 on:
   push:
     branches: [main]
   pull_request:
 
+# Read-only everywhere but the one job that deploys the page, which asks for
+# what a Pages deployment takes and nothing more.
 permissions:
   contents: read
 
@@ -57,3 +63,64 @@ jobs:
           name: allure-results
           path: allure-results
           if-no-files-found: ignore
+
+  pages:
+    # The page and the Allure report, built from the green run above and
+    # published from main only: a pull request's ref is refs/pull/<n>/merge
+    # and never gets here.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # One deployment at a time; a newer one waits for the one under way
+    # rather than cancelling it halfway through.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    env:
+      ALLURE_VERSION: "2.30.0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: python -m pip install -e .
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: allure-results
+          path: allure-results
+
+      - name: Install the Allure command line
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/allure.tgz" \
+            "https://github.com/allure-framework/allure2/releases/download/$ALLURE_VERSION/allure-$ALLURE_VERSION.tgz"
+          tar -xzf "$RUNNER_TEMP/allure.tgz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/allure-$ALLURE_VERSION/bin" >> "$GITHUB_PATH"
+
+      # The page carries the README results table (from the committed results/)
+      # and links the report under report/. The runner image ships the Java
+      # that allure generate needs, so there is no setup-java step.
+      - name: Build the page and the report
+        run: |
+          python -m tools.site
+          allure generate allure-results --clean --output site/report
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v5

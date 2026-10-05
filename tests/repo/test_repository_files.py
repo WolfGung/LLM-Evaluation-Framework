@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -107,3 +109,30 @@ def test_the_built_page_and_report_are_not_committed():
     ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
     assert "site/" in ignored  # python -m tools.site and allure generate write it in CI
     assert "allure-results/" in ignored
+
+
+def workflow_jobs() -> dict:
+    workflow = yaml.safe_load((ROOT / ".github" / "workflows" / "ci.yml").read_text("utf-8"))
+    return workflow["jobs"]
+
+
+def test_ci_publishes_the_page_and_the_allure_report_from_main_only():
+    jobs = workflow_jobs()
+    pages = jobs["pages"]
+    assert pages["if"] == "github.event_name == 'push' && github.ref == 'refs/heads/main'"
+    assert pages["needs"] == "test"  # only a green run is published
+    assert pages["permissions"] == {"contents": "read", "pages": "write", "id-token": "write"}
+    assert pages["concurrency"] == {"group": "pages", "cancel-in-progress": False}
+    assert pages["env"]["ALLURE_VERSION"] == "2.30.0"
+    uses = [step.get("uses", "") for step in pages["steps"]]
+    assert "actions/download-artifact@v8" in uses
+    assert "actions/upload-pages-artifact@v5" in uses
+    assert "actions/deploy-pages@v5" in uses
+    runs = "\n".join(step.get("run", "") for step in pages["steps"])
+    assert "github.com/allure-framework/allure2/releases/download/$ALLURE_VERSION/" in runs
+    assert "python -m tools.site" in runs
+    assert "allure generate allure-results --clean --output site/report" in runs
+    # Every other job stays read-only.
+    for name, job in jobs.items():
+        if name != "pages":
+            assert "permissions" not in job, name
