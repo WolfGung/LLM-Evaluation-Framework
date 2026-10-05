@@ -155,6 +155,10 @@ def test_the_intro_asks_the_labelling_question_and_says_how_to_stop():
     assert "p pass, f fail, s skip for now, q quit" in words(text)
     assert "saved at once to labels/human.jsonl" in words(text)
     assert "Ctrl-C" in text
+    assert (
+        "To change a saved label, delete its line in labels/human.jsonl and run make label "
+        "again." in words(text)
+    )
     assert "1 sample answer cannot be shown" in words(text)
     assert "rag-001 v2 repeat 0: the answer is not in the cassettes" in words(text)
     for word in NOT_SHOWN:
@@ -215,6 +219,42 @@ def test_a_session_saves_pass_and_fail_with_the_comment_labeler_and_time(recordi
     ]
     assert "Item 3 of 3" in shown  # the skipped item was shown, and nothing saved
     assert "Skipped" in shown
+
+
+def test_the_comment_prompt_names_the_choice_and_offers_a_way_back(recording, tmp_path):
+    items, _ = items_of(recording, ("rag-001", "v1"))
+    script = Script("p", "b", "f", "No source for the fee.")
+    outcome, shown = run_session(items, tmp_path / "human.jsonl", script)
+    assert outcome.saved == 1
+    saved = load_labels(tmp_path / "human.jsonl")
+    assert [(label.label, label.comment) for label in saved] == [("fail", "No source for the fee.")]
+    assert script.asked[1] == "Comment for PASS (optional; Enter saves, b goes back)"
+    assert script.asked[3] == "Comment for FAIL (optional; Enter saves, b goes back)"
+    assert script.asked[0] == script.asked[2]  # b asks for the same item's label again
+
+
+@pytest.mark.parametrize("key", ["s", "q", "p", "f", "S", " Q ", "skip", "pass", "Fail"])
+def test_a_label_key_typed_as_the_comment_is_refused(recording, tmp_path, key):
+    items, _ = items_of(recording, ("rag-001", "v1"))
+    outcome, shown = run_session(items, tmp_path / "human.jsonl", Script("p", key, ""))
+    assert outcome.saved == 1
+    assert load_labels(tmp_path / "human.jsonl")[0].comment == ""
+    assert shown.count("That looks like a label key: type b to go back, or write a comment.") == 1
+
+
+@pytest.mark.parametrize("typed", ["Grounde\x1b[Dd", "tab\there", "rub\x7fout", "bell\x07"])
+def test_a_comment_with_control_characters_is_asked_again(recording, tmp_path, typed):
+    items, _ = items_of(recording, ("rag-001", "v1"))
+    script = Script("f", typed, "Invents a fee.")
+    outcome, shown = run_session(items, tmp_path / "human.jsonl", script)
+    assert outcome.saved == 1
+    assert load_labels(tmp_path / "human.jsonl")[0].comment == "Invents a fee."
+    assert (
+        shown.count(
+            "The comment has a control character (an arrow or another special key?): type it again."
+        )
+        == 1
+    )
 
 
 def test_an_unknown_key_is_asked_again(recording, tmp_path):

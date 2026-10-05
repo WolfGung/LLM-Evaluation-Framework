@@ -33,6 +33,7 @@ import os
 import random
 import re
 import textwrap
+import unicodedata
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -74,7 +75,15 @@ LABEL_QUESTION = (
     "cover it), and is polite. Fail otherwise."
 )
 LABEL_PROMPT = "Label (p pass, f fail, s skip, q quit)"
-COMMENT_PROMPT = "Comment (optional, Enter for none)"
+COMMENT_PROMPT = "Comment for {label} (optional; Enter saves, b goes back)"
+BACK = "b"
+# What the label prompt takes, and what a comment may not be on its own.
+LABEL_KEYS = {"p": "p", "pass": "p", "f": "f", "fail": "f", "s": "s", "skip": "s", "q": "q"}
+LABEL_KEYS["quit"] = "q"
+LOOKS_LIKE_A_KEY = "That looks like a label key: type b to go back, or write a comment."
+CONTROL_CHARACTER = (
+    "The comment has a control character (an arrow or another special key?): type it again."
+)
 
 SAMPLE_RULE = (
     "Every judged answer of repeat 0 whose valid verdict fails the rubric's pass rule. "
@@ -476,7 +485,7 @@ def render_intro(
         "",
         *wrap(
             "Keys: p pass, f fail, s skip for now, q quit. After p or f, type a comment "
-            "if you like and press Enter.",
+            "if you like and press Enter, or type b to go back to the label.",
             width,
         ),
         "",
@@ -484,6 +493,11 @@ def render_intro(
             f"Labelled so far: {labelled} of {total}. To label now: {todo}. Each label is "
             f"saved at once to {labels_path}. Stop any time with q or Ctrl-C: saved labels "
             "are kept, and make label goes on where you stopped.",
+            width,
+        ),
+        "",
+        *wrap(
+            f"To change a saved label, delete its line in {labels_path} and run make label again.",
             width,
         ),
     ]
@@ -535,6 +549,25 @@ def _ask_label(ask: Callable[[str], str], echo: Callable[[str], None]) -> str:
         echo("Type p, f, s or q.")
 
 
+def _ask_comment(ask: Callable[[str], str], echo: Callable[[str], None], value: str) -> str | None:
+    """The comment for a `value` label, or None when the owner typed b to go back.
+
+    A comment that is only a label key (p, pass, s, ...) is refused, and so
+    is one with a control character, such as the escape sequence an arrow
+    key leaves when the terminal has no line editing.
+    """
+    while True:
+        comment = ask(COMMENT_PROMPT.format(label=value.upper())).strip()
+        if comment.lower() == BACK:
+            return None
+        if comment.lower() in LABEL_KEYS:
+            echo(LOOKS_LIKE_A_KEY)
+        elif any(unicodedata.category(char) == "Cc" for char in comment):
+            echo(CONTROL_CHARACTER)
+        else:
+            return comment
+
+
 def label_session(
     items: Sequence[LabelItem],
     path: Path | str,
@@ -548,8 +581,9 @@ def label_session(
     """Show each item, ask for its label and comment, and append the label.
 
     A label is written only after its comment is given, as one complete
-    line (`append_label`). `s` moves on without writing, so the item comes
-    back next time; `q` stops. Ctrl-C (KeyboardInterrupt) or the end of the
+    line (`append_label`); `b` at the comment prompt goes back to the same
+    item's label. `s` moves on without writing, so the item comes back next
+    time; `q` stops. Ctrl-C (KeyboardInterrupt) or the end of the
     input (EOFError) stops at once: every label saved before is kept, and
     the item on screen is not saved.
     """
@@ -557,29 +591,33 @@ def label_session(
     try:
         for item in items:
             echo(render_item(item, total=total, width=width))
-            choice = _ask_label(ask, echo)
-            if choice == "q":
-                return SessionOutcome(saved=saved, reason="quit")
-            if choice == "s":
-                echo("Skipped: make label shows it again next time.")
-                continue
-            comment = ask(COMMENT_PROMPT).strip()
-            value: Literal["pass", "fail"] = "pass" if choice == "p" else "fail"
-            append_label(
-                path,
-                HumanLabel(
-                    case=item.item.case,
-                    version=item.item.version,
-                    repeat=item.item.repeat,
-                    answer_key=item.item.answer_key,
-                    label=value,
-                    comment=comment,
-                    labeler=LABELER,
-                    labeled_at=now(),
-                ),
-            )
-            saved += 1
-            echo(f"Saved: {value}.")
+            while True:
+                choice = _ask_label(ask, echo)
+                if choice == "q":
+                    return SessionOutcome(saved=saved, reason="quit")
+                if choice == "s":
+                    echo("Skipped: make label shows it again next time.")
+                    break
+                value: Literal["pass", "fail"] = "pass" if choice == "p" else "fail"
+                comment = _ask_comment(ask, echo, value)
+                if comment is None:
+                    continue  # b: back to this item's label
+                append_label(
+                    path,
+                    HumanLabel(
+                        case=item.item.case,
+                        version=item.item.version,
+                        repeat=item.item.repeat,
+                        answer_key=item.item.answer_key,
+                        label=value,
+                        comment=comment,
+                        labeler=LABELER,
+                        labeled_at=now(),
+                    ),
+                )
+                saved += 1
+                echo(f"Saved: {value}.")
+                break
     except (KeyboardInterrupt, EOFError):
         echo("")
         return SessionOutcome(saved=saved, reason="interrupted")

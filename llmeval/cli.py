@@ -34,6 +34,7 @@ The API key comes only from the environment and is never printed.
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 import time
 from collections.abc import Callable
@@ -722,13 +723,18 @@ def label_command(
     labels/sample.json: the customer's question, the documents the assistant
     was given and its answer. Nothing else is shown: no judge verdict, score
     or reason, no check result, no prompt version or category. Keys: p pass,
-    f fail, s skip for now, q quit; after p or f an optional comment. Each
+    f fail, s skip for now, q quit; after p or f an optional comment, or b
+    to go back to the label. Each
     label is appended to labels/human.jsonl at once, as one complete line,
     with the labeler and the time in UTC. Run it again to go on: labelled
     answers are not shown again. An answer whose prompt changed since the
     recording is named and not shown. Ctrl-C stops it (exit code 130) and
     keeps every saved label. Needs no key and calls nothing.
     """
+    # Line editing for the prompts: without it, an arrow key puts its escape
+    # sequence into the comment. Not every platform has readline.
+    with contextlib.suppress(ImportError):
+        import readline  # noqa: F401
     columns = width or min(shutil.get_terminal_size((88, 24)).columns, MAX_LABEL_WIDTH)
     try:
         chosen = load_sample(sample)
