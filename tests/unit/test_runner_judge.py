@@ -228,6 +228,24 @@ def test_the_judge_grades_every_repeat_with_judge_repeats_all():
     assert by_function(planned) == {"rag": 12, "triage": 2, "judge": 8, "pairwise": 4}
 
 
+def test_the_judge_repeats_values_come_from_the_config_type():
+    from typing import get_args
+
+    from llmeval.config import JudgeRepeats
+    from llmeval.runner import JUDGE_REPEATS
+
+    assert JUDGE_REPEATS == get_args(JudgeRepeats) == ("first", "all")
+
+
+def test_results_refuse_an_unknown_judge_repeats(tmp_path):
+    write_manifest(tmp_path / "cassettes")
+    v1 = run_all(FakeModel(reply=reply), tmp_path).results[0]
+    data = v1.model_dump(mode="json")
+    data["judge_repeats"] = "some"
+    with pytest.raises(ValueError, match="judge_repeats"):
+        type(v1).model_validate(data)
+
+
 def test_the_plan_refuses_an_unknown_judge_repeats():
     with pytest.raises(ValueError, match="judge_repeats"):
         plan(judge_repeats="some")

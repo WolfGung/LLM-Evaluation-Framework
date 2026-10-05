@@ -216,8 +216,9 @@ def eval_command(
         manifest.check_models(
             system=replay_config.models.system.model, judge=replay_config.models.judge.model
         )
-        rag_path, triage_path = datasets_dir / "rag.jsonl", datasets_dir / "triage.jsonl"
-        current = {p.name: file_sha256(p) for p in (rag_path, triage_path) if p.is_file()}
+        paths = _dataset_paths(datasets_dir)
+        rag_path, triage_path = paths["rag"], paths["triage"]
+        current = {p.name: file_sha256(p) for p in paths.values() if p.is_file()}
         if notice := manifest.dataset_notice(current):
             typer.echo(notice)
         judge_rubric = load_rubric(rubric)
@@ -238,7 +239,7 @@ def eval_command(
             results_dir=results_dir,
             rag_cases=rag_cases,
             triage_cases=triage_cases,
-            dataset_paths={"rag": rag_path, "triage": triage_path},
+            dataset_paths=paths,
             versions={f: v for f, v in manifest.prompt_versions.items() if f in EVAL_FUNCTIONS},
             repeats=manifest.repeats,
             stability_cases=manifest.stability_cases,

@@ -34,7 +34,7 @@ import hashlib
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from app import assistant
 from app import triage as triage_app
@@ -102,7 +102,7 @@ def judged(case: RagCase) -> bool:
     return case.category in JUDGED_CATEGORIES
 
 
-JUDGE_REPEATS: tuple[JudgeRepeats, ...] = ("first", "all")
+JUDGE_REPEATS: tuple[JudgeRepeats, ...] = get_args(JudgeRepeats)
 
 
 def graded_repeat(repeat: int, judge_repeats: JudgeRepeats) -> bool:

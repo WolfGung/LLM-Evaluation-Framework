@@ -256,17 +256,6 @@ def free_daily_quota(
     return FreeQuota(**{name: v if type(v) is int else None for name, v in numbers.items()})
 
 
-def free_daily_remaining(
-    api_key: SecretStr | None, *, transport: httpx.BaseTransport | None = None
-) -> int | None:
-    """Free-model requests left today for this key, from `GET /api/v1/key`.
-
-    Returns None when the API does not report the number.
-    """
-    quota = free_daily_quota(api_key, transport=transport)
-    return None if quota is None else quota.remaining
-
-
 def _parse_reset(value: str | None) -> datetime | None:
     number = _parse_int(value)
     if number is None:

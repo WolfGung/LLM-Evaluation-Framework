@@ -19,7 +19,6 @@ from llmeval.quota import (
     RateLimitedNoReset,
     RateLimiter,
     free_daily_quota,
-    free_daily_remaining,
     parse_rate_limit,
     wait_or_stop,
 )
@@ -185,7 +184,7 @@ def test_progress_is_part_of_the_message():
     assert (error.recorded, error.needed) == (12, 40)
 
 
-def test_free_daily_remaining_reads_the_key_endpoint():
+def test_the_free_quota_is_read_from_the_key_endpoint_with_the_key_as_a_header():
     seen: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -193,17 +192,17 @@ def test_free_daily_remaining_reads_the_key_endpoint():
         body = {"data": {"free_model_daily_requests": {"used": 8, "limit": 50, "remaining": 42}}}
         return httpx.Response(200, json=body)
 
-    remaining = free_daily_remaining(SecretStr(KEY), transport=httpx.MockTransport(handler))
+    quota = free_daily_quota(SecretStr(KEY), transport=httpx.MockTransport(handler))
 
-    assert remaining == 42
+    assert quota.remaining == 42
     assert seen[0].url.path == "/api/v1/key"
     assert seen[0].headers["authorization"] == f"Bearer {KEY}"
 
 
-def test_free_daily_remaining_without_the_field_is_unknown():
-    transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"data": {}}))
+def test_there_is_one_way_to_read_the_free_quota():
+    from llmeval import quota
 
-    assert free_daily_remaining(SecretStr(KEY), transport=transport) is None
+    assert not hasattr(quota, "free_daily_remaining")
 
 
 def test_free_daily_quota_reads_used_limit_and_remaining():

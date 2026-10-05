@@ -24,6 +24,7 @@ import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 import httpx
 
@@ -38,7 +39,7 @@ from llmeval.quota import FREE_LIMITS
 from llmeval.runner import EVAL_FUNCTIONS, PlannedRequest, plan_requests, recorded_answers
 
 FREE_SUFFIX = ":free"
-ROLES = ("system", "judge")
+ROLES: tuple[Literal["system", "judge"], ...] = ("system", "judge")
 
 
 def is_free(model: str) -> bool:
@@ -197,12 +198,8 @@ def count_plan(
         judge=_distinct(judge),
         waiting=sum(p.key is None for p in plan),
         recorded=sum(key in store for key in known) if store is not None else 0,
-        free_to_record=sum(is_free(_role(models, p).model) for p in left),
+        free_to_record=sum(is_free(models.role(p.role).model) for p in left),
     )
-
-
-def _role(models: ModelsConfig, planned: PlannedRequest) -> RoleConfig:
-    return models.system if planned.role == "system" else models.judge
 
 
 def up_to(count: int, upper_bound: bool) -> str:
@@ -251,7 +248,7 @@ def quota_lines(counts: PlanCounts, models: ModelsConfig) -> list[str]:
     lines = [FREE_LIMITS.describe()]
     calls = counts.free_to_record
     if not calls:
-        if any(is_free(getattr(models, name).model) for name in ROLES):
+        if any(is_free(models.role(name).model) for name in ROLES):
             lines.append("free-model calls to record: none")
         else:
             lines.append(
@@ -323,21 +320,21 @@ def estimate_remaining_cost(
         name: [
             entry.cost_usd
             for entry in entries
-            if entry.request.get("model") == getattr(models, name).model
+            if entry.request.get("model") == models.role(name).model
             and entry.cost_source == "provider"
             and entry.cost_usd is not None
         ]
         for name in ROLES
     }
     need_prices = [
-        getattr(models, name).model
+        models.role(name).model
         for name in ROLES
-        if by_role[name] and not is_free(getattr(models, name).model) and not history[name]
+        if by_role[name] and not is_free(models.role(name).model) and not history[name]
     ]
     prices = fetch_prices(need_prices, transport=transport, now=now) if need_prices else {}
     total = 0.0
     for name in ROLES:
-        role: RoleConfig = getattr(models, name)
+        role: RoleConfig = models.role(name)
         calls = by_role[name]
         count = up_to(len(calls), any(p.key is None for p in calls))
         label = f"{name} ({role.model})"

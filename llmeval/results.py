@@ -36,6 +36,7 @@ from llmeval.checks.judge import (
 )
 from llmeval.checks.retrieval import retrieval_recall_value
 from llmeval.client import CallResult
+from llmeval.config import JudgeRepeats
 from llmeval.perf import Performance, performance
 from llmeval.stability import Stability, stability
 
@@ -273,7 +274,7 @@ class FunctionResults(_Record):
     dataset_sha256: str
     repeats: int
     judge_model: str | None = None
-    judge_repeats: str | None = None
+    judge_repeats: JudgeRepeats | None = None
     rubric_sha256: str | None = None
     summary: Summary
     cases: list[CaseRecord]
