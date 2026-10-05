@@ -170,11 +170,12 @@ def test_repository_config_is_valid_and_free():
     assert config.judge.temperature == 0
     assert config.repeats == 3
     assert config.rpm == 18
-    # Written out in the file, so the owner sees both levers at the record stop.
+    # Written out in the file, so the owner sees both levers. On 2026-10-05 he
+    # chose ten stability cases, so the first recording fits a small free quota.
     text = REPO_CONFIG.read_text(encoding="utf-8")
-    assert "\njudge_repeats: first" in text and "\nstability_cases: null" in text
+    assert "\njudge_repeats: first" in text and "\nstability_cases:" in text
     assert config.judge_repeats == "first"
-    assert config.stability_cases is None
+    assert config.stability_cases is not None and len(config.stability_cases) == 10
 
 
 def test_settings_defaults():

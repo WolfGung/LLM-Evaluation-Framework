@@ -14,6 +14,7 @@ from typer.testing import CliRunner
 
 from llmeval import cli
 from llmeval.callplan import PlanInputs, count_plan, full_plan
+from llmeval.cassettes import repeats_for
 from llmeval.checks.judge import RUBRIC_PATH, load_rubric
 from llmeval.config import load_models_config
 from llmeval.datasets import RAG_PATH, TRIAGE_PATH, load_rag, load_triage
@@ -40,12 +41,14 @@ def test_the_plan_follows_the_config_and_the_datasets():
     versions = {f: versions_of(f) for f in ("rag", "triage")}
     inputs = PlanInputs(models, rag, triage, load_rubric(ROOT / RUBRIC_PATH), versions)
     counts = count_plan(full_plan(inputs, None), None, models)
-    assert models.stability_cases is None and models.judge_repeats == "first"
+    assert models.judge_repeats == "first"
     judged = sum(case.category in JUDGED_CATEGORIES for case in rag)
     rag_versions, triage_versions = len(versions["rag"]), len(versions["triage"])
-    assert counts.system == models.repeats * (
-        len(rag) * rag_versions + len(triage) * triage_versions
-    )
+
+    def runs(cases):
+        return sum(repeats_for(case.id, models.repeats, models.stability_cases) for case in cases)
+
+    assert counts.system == runs(rag) * rag_versions + runs(triage) * triage_versions
     # Repeat 0 graded per version, plus two pairwise orders per later version.
     assert counts.judge == judged * rag_versions + judged * 2 * (rag_versions - 1)
     assert counts.waiting == counts.judge and not counts.exact
