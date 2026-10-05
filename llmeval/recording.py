@@ -37,7 +37,9 @@ The order of work:
    whose answers differ).
 6. The manifest: written only when every planned call of both passes is in
    the cassettes. Until then the evaluation stays "pending first recorded
-   run".
+   run". After a complete run, one line names the recorded entries the plan
+   no longer has (for example the judge calls of an older judge config):
+   `make prune` removes them.
 
 A request the API refuses or fails (for example a moderation 403 on one
 prompt) is skipped with its reason and the run goes on. Failures are counted
@@ -103,6 +105,7 @@ from llmeval.callplan import (
     plural,
     quota_lines,
     to_record,
+    unplanned,
     up_to,
 )
 from llmeval.cassettes import CassetteStore, RunManifest, request_key, utc_now, write_manifest
@@ -407,6 +410,13 @@ def record_lock(
             yield
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def unplanned_hint(count: int) -> str:
+    """The line a complete record run prints when entries are outside the plan."""
+    if count == 1:
+        return "1 recorded entry is not in the current plan: run make prune to remove it"
+    return f"{count} recorded entries are not in the current plan: run make prune to remove them"
 
 
 @dataclass(frozen=True)
@@ -1024,4 +1034,6 @@ def _record(
         return RecordOutcome(False, counts.recorded, counts.total, session.sent)
     path = write_manifest(cassettes_dir, build_manifest(inputs, plan, store, dataset_paths))
     echo(f"every planned call is recorded ({counts.total}); wrote {path}")
+    if extra := len(unplanned(plan, store)):
+        echo(unplanned_hint(extra))
     return RecordOutcome(True, counts.recorded, counts.total, session.sent, manifest=path)

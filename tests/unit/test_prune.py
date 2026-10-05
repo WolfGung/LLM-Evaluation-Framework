@@ -19,7 +19,7 @@ from llmeval import cli
 from llmeval.cassettes import MANIFEST_FILE, CassetteStore, load_manifest
 from llmeval.checks.judge import RUBRIC_PATH
 from llmeval.cli import app
-from llmeval.recording import EXIT_STOPPED, LOCK_FILE
+from llmeval.recording import EXIT_STOPPED, LOCK_FILE, unplanned_hint
 from tests.unit.synthetic_judge import ROOT
 from tests.unit.synthetic_openrouter import FAKE_KEY, NoWait, SyntheticOpenRouter, make_workspace
 
@@ -345,3 +345,41 @@ def test_a_torn_last_line_follows_the_store_rule(ws, network):
     assert "notice: ignored an unfinished last line in rag-v1.jsonl" in result.output
     assert f"removed {JUDGE_CALLS} entries in all" in result.output
     assert path.read_bytes() == torn  # not pruned, not repaired: record cuts it off
+
+
+# --- the hint after a complete record run ------------------------------------------------
+
+
+def test_a_complete_record_names_the_entries_outside_the_plan(ws, network):
+    recorded(ws, network)
+    set_judge_budget(ws, 400)
+    router = network(SyntheticOpenRouter())
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == 0, result.output
+    assert len(router.chat_bodies) == JUDGE_CALLS
+    lines = result.output.splitlines()
+    assert lines[-1] == (
+        f"{JUDGE_CALLS} recorded entries are not in the current plan: "
+        "run make prune to remove them"
+    )
+    assert lines[-2].startswith(f"every planned call is recorded ({ALL_CALLS}); wrote ")
+    status = runner.invoke(app, args("status", ws)).output
+    assert f"manifest: present: a complete recording of {ALL_CALLS} calls" in status
+
+
+def test_the_hint_counts_one_entry_in_the_singular():
+    assert unplanned_hint(1) == (
+        "1 recorded entry is not in the current plan: run make prune to remove it"
+    )
+    assert unplanned_hint(2) == (
+        "2 recorded entries are not in the current plan: run make prune to remove them"
+    )
+
+
+def test_an_incomplete_record_gives_no_prune_hint(ws, network):
+    recorded(ws, network)
+    set_judge_budget(ws, 400)
+    network(SyntheticOpenRouter(remaining=3))
+    result = runner.invoke(app, args("record", ws))
+    assert result.exit_code == EXIT_STOPPED
+    assert "make prune" not in result.output
