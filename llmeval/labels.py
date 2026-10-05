@@ -9,21 +9,34 @@ of the answers it graded, and `llmeval.agreement` compares the two.
   strata of prompt version and category. Each item names its answer by the
   cassette key of the system call that wrote it. The file says nothing about
   the judge's verdicts.
-- `labels/human.jsonl`: one line per labelled answer. Only `llmeval label`
+- `labels/human.jsonl`: one line per labelled answer (`HumanLabel`): the
+  answer (case, version, repeat and cassette key), `pass` or `fail`, a
+  comment, the labeler and the time in UTC. Only `llmeval label`
   (`make label`) writes it, and only the owner runs it. Tests use their own
-  temporary files.
+  temporary files. Each label is appended as one complete line, or not at
+  all (`append_label`), so Ctrl-C never leaves half a line.
 """
 
 from __future__ import annotations
 
 import math
+import os
 import random
-from collections.abc import Hashable, Iterable, Mapping
+from collections.abc import Callable, Hashable, Iterable, Mapping
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from fractions import Fraction
 from pathlib import Path
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from llmeval.results import CaseRecord, FunctionResults, RunRecord
 
@@ -33,6 +46,7 @@ SAMPLE_SIZE = 30
 SAMPLE_SEED = 2026
 SAMPLE_SCHEMA_VERSION = 1
 RAG_FUNCTION = "rag"
+LABELER = "Pavel Zhukov Atum"
 
 SAMPLE_RULE = (
     "Every judged answer of repeat 0 whose valid verdict fails the rubric's pass rule. "
@@ -194,3 +208,110 @@ def load_sample(path: Path | str = SAMPLE_PATH) -> Sample:
         return Sample.model_validate_json(path.read_bytes())
     except ValidationError as exc:
         raise LabelError(f"{path.name}: not a valid sample: {exc}") from None
+
+
+class HumanLabel(_Record):
+    """One line of `labels/human.jsonl`: the owner's label of one answer.
+
+    `answer_key` is the cassette key of the answer when it was labelled. If
+    the sample now names another key for the same case, version and repeat,
+    the label is stale: it labels an answer that is no longer measured.
+    """
+
+    case: str
+    version: str
+    repeat: int = Field(ge=0)
+    answer_key: str
+    label: Literal["pass", "fail"]
+    comment: str
+    labeler: Literal["Pavel Zhukov Atum"]
+    labeled_at: datetime
+
+    @field_validator("labeled_at")
+    @classmethod
+    def _utc(cls, value: datetime) -> datetime:
+        if value.utcoffset() != timedelta(0):
+            raise ValueError("labeled_at must be in UTC (ISO 8601 with Z or +00:00)")
+        return value
+
+    @property
+    def ref(self) -> tuple[str, str, int]:
+        return (self.case, self.version, self.repeat)
+
+
+def describe(ref: tuple[str, str, int]) -> str:
+    case, version, repeat = ref
+    return f"{case} {version} repeat {repeat}"
+
+
+def load_labels(path: Path | str = LABELS_PATH) -> list[HumanLabel]:
+    """The labels in `path`, in file order; no file means no labels.
+
+    Refuses a broken file and names the line: a line that is not a valid
+    label, an empty line, a last line without its newline (it may be cut
+    off), or two labels of the same answer.
+    """
+    path = Path(path)
+    if not path.is_file():
+        return []
+    data = path.read_bytes()
+    lines = data.split(b"\n")
+    if lines[-1]:
+        raise LabelError(
+            f"{path} line {len(lines)} has no newline at the end: it may be cut off; "
+            "check it, then end it with a newline or remove it"
+        )
+    labels: list[HumanLabel] = []
+    seen: dict[tuple[tuple[str, str, int], str], int] = {}
+    for number, line in enumerate(lines[:-1], start=1):
+        if not line.strip():
+            raise LabelError(f"{path} line {number} is empty")
+        try:
+            item = HumanLabel.model_validate_json(line)
+        except ValidationError as exc:
+            problem = exc.errors()[0]
+            where = ".".join(str(part) for part in problem["loc"]) or "line"
+            raise LabelError(
+                f"{path} line {number}: not a valid label: {where}: {problem['msg']}"
+            ) from None
+        answer = (item.ref, item.answer_key)
+        if answer in seen:
+            raise LabelError(
+                f"{path} lines {seen[answer]} and {number} label the same answer: "
+                f"{describe(item.ref)}; keep one"
+            )
+        seen[answer] = number
+        labels.append(item)
+    return labels
+
+
+Writer = Callable[[int, bytes], int]
+
+
+def append_label(path: Path | str, label: HumanLabel, *, write: Writer = os.write) -> None:
+    """Append `label` to `path` as one complete line, or leave the file as it was.
+
+    The line goes out in one write call on a file opened for appending. If
+    the write is short or interrupted (Ctrl-C), the file is cut back to its
+    old length, so it never holds half a line. Refuses a file whose last line
+    has no newline, because the label would be glued to it.
+    """
+    path = Path(path)
+    line = (label.model_dump_json() + "\n").encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o644)
+    try:
+        size = os.fstat(fd).st_size
+        if size and os.pread(fd, 1, size - 1) != b"\n":
+            raise LabelError(f"{path} does not end with a newline: check its last line first")
+        written = 0
+        try:
+            written = write(fd, line)
+        finally:
+            if written != len(line):
+                os.ftruncate(fd, size)
+        if written != len(line):
+            raise OSError(f"{path}: wrote {written} of {len(line)} bytes; the label was not saved")
+        os.fsync(fd)
+    finally:
+        os.close(fd)
