@@ -235,7 +235,7 @@ def test_after_a_429_without_reset_a_zero_key_count_stops_the_live_run_at_once(w
     assert not (ws / "results-live").exists()
 
 
-def test_a_429_without_reset_on_a_paid_model_stops_the_live_run_at_once(
+def test_a_persistent_429_on_a_paid_model_stops_the_live_run_after_four_waits(
     ws, network, sleeps, monkeypatch
 ):
     config = (ws / "config.yaml").read_text(encoding="utf-8")
@@ -251,7 +251,7 @@ def test_a_429_without_reset_on_a_paid_model_stops_the_live_run_at_once(
     network(SyntheticOpenRouter(prices=prices, chat_override=busy))
     result = live(ws)
     assert result.exit_code == 1
-    assert sleeps == []
+    assert sleeps == [30, 60, 120, 240]
     assert "live run stopped:" in result.output
 
 

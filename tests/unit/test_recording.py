@@ -458,17 +458,41 @@ def test_after_a_429_without_reset_a_key_without_the_count_stops_at_once(ws, net
     ) in out
 
 
-def test_a_429_without_reset_on_a_paid_model_stops_at_once(ws, network, sleeps, monkeypatch):
+def test_a_429_without_reset_on_a_paid_model_waits_and_retries(ws, network, sleeps, monkeypatch):
+    paid_system(ws)
+    monkeypatch.setenv("MAX_RUN_COST_USD", "100")
+    prices = {"synthetic/system-paid": ("0.0001", "0.0001")}
+    override, state = upstream_limited(1)
+
+    def once(request, body):
+        return override(request, body) if state["limited"] == 0 else None
+
+    network(SyntheticOpenRouter(remaining=47, cost=0.0, prices=prices, chat_override=once))
+    result = runner.invoke(app, args("record", ws))
+    # A paid model is limited by its provider, not by the free daily quota, and
+    # a request answered with 429 is not billed: wait and send it again.
+    assert result.exit_code == 0, result.output
+    assert sleeps == [30] and state["limited"] == 1
+
+
+def test_a_persistent_429_on_a_paid_model_stops_after_four_waits(
+    ws, network, sleeps, monkeypatch
+):
     paid_system(ws)
     monkeypatch.setenv("MAX_RUN_COST_USD", "100")
     prices = {"synthetic/system-paid": ("0.0001", "0.0001")}
     override, state = upstream_limited(1)
     network(SyntheticOpenRouter(remaining=47, cost=0.0, prices=prices, chat_override=override))
     result = runner.invoke(app, args("record", ws))
+    out = result.output
     assert result.exit_code == EXIT_STOPPED
-    # The free-request count says nothing about a paid model: no wait, as before.
-    assert sleeps == [] and state["limited"] == 1
-    assert "HTTP 429 came without a reset time, so the run stopped at once" in result.output
+    assert sleeps == [30, 60, 120, 240] and state["limited"] == 5
+    assert "came back after 4 waits" in out
+    assert (
+        "the provider of synthetic/system-paid kept answering 429; a paid call does not use "
+        "the free daily quota: rerun in a few minutes"
+    ) in out
+    assert "free requests today" not in out
 
 
 def test_ctrl_c_during_a_wait_stops_cleanly_and_keeps_the_recorded_calls(ws, network, sleeps):

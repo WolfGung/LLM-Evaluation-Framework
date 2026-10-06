@@ -169,6 +169,10 @@ NO_RESET_GAVE_UP = (
     f"HTTP 429 without a reset time came back after {len(UPSTREAM_BACKOFF_S)} waits "
     f"({_backoff_text()}), so the run stopped"
 )
+PAID_GAVE_UP_HINT = (
+    "the provider of {model} kept answering 429; a paid call does not use the free daily "
+    "quota: rerun in a few minutes"
+)
 
 
 class PlanMismatch(RuntimeError):
@@ -442,14 +446,15 @@ class RecordOutcome:
 
 
 class UpstreamBackoff:
-    """After HTTP 429 without a reset time on a free-model call: wait and try again, or stop.
+    """After HTTP 429 without a reset time: wait and try the same call again, or stop.
 
     Shared by `make record` (`_Session`) and `make live` (`WaitingModel`).
-    It waits only while the key endpoint reports free requests left (then the
-    429 is upstream capacity, not the daily quota), and at most
-    `UPSTREAM_BACKOFF_S` times since the last call that succeeded (`reset`).
-    A paid model stops at once: the free-request count says nothing about it.
-    When it stops, `stop` holds the reason and the key's hint.
+    It waits at most `UPSTREAM_BACKOFF_S` times since the last call that
+    succeeded (`reset`). For a free-model call it waits only while the key
+    endpoint reports free requests left (then the 429 is upstream capacity,
+    not the daily quota). A paid-model call is limited by its provider, not by
+    the free quota, and a request answered with 429 is not billed, so it waits
+    without reading the key. When it stops, `stop` holds the reason and a hint.
     """
 
     def __init__(
@@ -484,17 +489,21 @@ class UpstreamBackoff:
 
     def wait_or_stop(self, error: RateLimitedNoReset, role: RoleConfig) -> None:
         """Wait before the next try of `role`'s call, or re-raise `error`."""
-        if not is_free(role.model):
-            raise error
-        reading = self.read_key()
-        if reading.remaining is not None and self.on_reading is not None:
-            self.on_reading(reading.remaining)
-        if reading.remaining is None:
-            self.stop = (NO_RESET_UNKNOWN, reading.hint)
-        elif reading.remaining <= 0:
-            self.stop = (NO_RESET_STOPPED, reading.hint)
-        elif self.waits >= len(UPSTREAM_BACKOFF_S):
-            self.stop = (NO_RESET_GAVE_UP, reading.hint)
+        if is_free(role.model):
+            reading = self.read_key()
+            if reading.remaining is not None and self.on_reading is not None:
+                self.on_reading(reading.remaining)
+            hint = reading.hint
+            if reading.remaining is None:
+                self.stop = (NO_RESET_UNKNOWN, hint)
+                raise error
+            if reading.remaining <= 0:
+                self.stop = (NO_RESET_STOPPED, hint)
+                raise error
+        else:
+            hint = PAID_GAVE_UP_HINT.format(model=role.model)
+        if self.waits >= len(UPSTREAM_BACKOFF_S):
+            self.stop = (NO_RESET_GAVE_UP, hint)
         else:
             wait = UPSTREAM_BACKOFF_S[self.waits]
             self.waits += 1
@@ -949,8 +958,8 @@ def _record(
     echo(
         f"to record: {up_to(counts.to_record, not counts.exact)} of "
         f"{up_to(counts.total, not counts.exact)} calls, at most {models.rpm} per minute; "
-        f"after a 429 without a reset time a free-model call waits ({_backoff_text()}) "
-        "and is sent again while the key has free requests left"
+        f"after a 429 without a reset time a call waits ({_backoff_text()}) and is sent "
+        "again; a free-model call waits only while the key has free requests left"
     )
     free_left = None
     calls_free_models = counts.free_to_record > 0
