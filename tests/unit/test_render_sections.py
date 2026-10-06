@@ -267,9 +267,36 @@ def test_both_blocks_are_pending_without_a_recorded_run(ws):
 # --- findings ---------------------------------------------------------------------------
 
 
-def test_the_findings_read_the_position_flips_in_plain_words(ws):
+def overturned(case_id: str, scores: tuple[int, int, int]) -> Disagreement:
+    """An answer the judge failed with these scores and the author passed."""
+    return Disagreement(
+        case=case_id,
+        version="v1",
+        repeat=0,
+        category="answerable",
+        judge="fail",
+        human="pass",
+        judge_scores=dict(zip(("groundedness", "helpfulness", "tone"), scores, strict=True)),
+        judge_reasons="Synthetic reasons.",
+        human_comment="",
+    )
+
+
+LINKS = (
+    "([results/judge-agreement.json](results/judge-agreement.json), "
+    "[docs/03](docs/03-judge-validation.md#agreement-with-a-person))"
+)
+
+
+def test_the_findings_read_the_agreement_and_the_position_flips_in_plain_words(ws):
     record_rag(ws, PAIRS)
+    write_agreement(labelled_report(), ws / "results")
     assert body(ws, "findings") == (
+        "\n- **Trust the judge's fails more than its passes.** The judge agreed with the author "
+        "on 2 of 3 sample answers (66.7%), while two raters who pass answers as often as these "
+        "two do would agree on 44.4% by chance alone: Cohen's kappa of 0.40 counts only the "
+        "agreement beyond that, and a kappa from 0.21 to 0.40 is conventionally called fair "
+        f"agreement. The author agreed with 1 of the judge's 2 passes and 1 of its 1 fail {LINKS}."
         "\n- **With this judge, one call per case cannot compare two prompts.** In 2 of the 5 "
         "compared pairs of rag v1 and v2 answers (40.0%), the judge changed its verdict when the "
         "two answers swapped places. 1 more pair with identical answers and 1 more pair with an "
@@ -280,10 +307,79 @@ def test_the_findings_read_the_position_flips_in_plain_words(ws):
     )
 
 
+def test_the_findings_name_what_the_overturned_fails_have_in_common(ws):
+    record_rag(ws, PAIRS)
+    report = labelled_report(
+        labelled=10,
+        agreed=7,
+        kappa=0.2,
+        confusion={
+            "judge_pass": {"human_pass": 6, "human_fail": 0},
+            "judge_fail": {"human_pass": 3, "human_fail": 1},
+        },
+        disagreements=[
+            overturned("rag-001", (3, 5, 5)),
+            overturned("rag-002", (3, 4, 5)),
+            overturned("rag-003", (2, 3, 4)),
+        ],
+    )
+    write_agreement(report, ws / "results")
+    text = body(ws, "findings")
+    assert text.startswith("\n- **Trust the judge's passes more than its fails.**")
+    assert "a kappa from 0.00 to 0.20 is conventionally called slight agreement" in text
+    assert (
+        "The author agreed with 6 of the judge's 6 passes but only 1 of its 4 fails, and on all "
+        "3 answers the judge failed and the author passed, groundedness was its lowest score: "
+        "it is stricter than the author about what the documents support"
+    ) in text
+
+
+@pytest.mark.parametrize(
+    "scores",
+    [[(3, 5, 5), (5, 3, 5)], [(3, 3, 5), (3, 4, 5)], [(3, 5, 5)]],
+    ids=["different", "a tie for lowest", "one alone"],
+)
+def test_the_findings_name_nothing_in_common_without_one_lowest_score(ws, scores):
+    record_rag(ws, PAIRS)
+    disagreements = [overturned(f"rag-00{n}", s) for n, s in enumerate(scores, 1)]
+    write_agreement(labelled_report(disagreements=disagreements), ws / "results")
+    assert "lowest score" not in body(ws, "findings")
+
+
+@pytest.mark.parametrize(
+    ("kappa", "named"),
+    [
+        (0.0, "a kappa from 0.00 to 0.20 is conventionally called slight agreement"),
+        (0.205, "Cohen's kappa of 0.21 counts"),  # two decimals, a half rounds up
+        (0.3023, "a kappa from 0.21 to 0.40 is conventionally called fair agreement"),
+        (0.41, "a kappa from 0.41 to 0.60 is conventionally called moderate agreement"),
+        (0.8, "a kappa from 0.61 to 0.80 is conventionally called substantial agreement"),
+        (0.95, "a kappa from 0.81 to 1.00 is conventionally called almost perfect agreement"),
+        (-0.1, "Cohen's kappa of -0.10 is below zero: less agreement than chance alone gives"),
+    ],
+)
+def test_the_kappa_has_its_conventional_name(kappa, named):
+    assert named in sections._kappa_name(kappa)
+
+
+def test_an_undefined_kappa_is_named_in_the_findings(ws):
+    record_rag(ws, PAIRS)
+    write_agreement(labelled_report(kappa=None, kappa_note="undefined: x"), ws / "results")
+    assert "by chance alone; Cohen's kappa is undefined: x." in body(ws, "findings")
+
+
+def test_without_labels_the_agreement_finding_is_pending(ws):
+    record_rag(ws, PAIRS)
+    write_agreement(sample_report(), ws / "results")
+    assert body(ws, "findings").startswith(
+        "\n- **The judge's agreement with the author is not measured yet:** pending human labels.\n"
+    )
+
+
 def test_a_comparison_without_flips_says_the_order_did_not_sway_the_judge(ws):
     record_rag(ws, [syn.pair_case("rag-001", "tie", "tie"), identical("rag-002")])
-    assert body(ws, "findings") == (
-        "\n"
+    write_agreement(sample_report(), ws / "results")
+    assert body(ws, "findings").endswith(
         "- **The order of the answers did not sway the judge.** In none of the 1 compared pairs "
         "of rag v1 and v2 answers did the judge change its verdict when the two answers swapped "
         "places, so one order would have given the same verdicts here; asking in both orders is "
@@ -294,16 +390,17 @@ def test_a_comparison_without_flips_says_the_order_did_not_sway_the_judge(ws):
 def test_a_few_flips_above_the_consistency_threshold_ask_for_both_orders(ws):
     consistent = [syn.pair_case(f"rag-00{n}", "tie", "tie") for n in range(1, 5)]
     record_rag(ws, [*consistent, syn.pair_case("rag-005", "A", "A")])  # 4 of 5: 80.0%
+    write_agreement(sample_report(), ws / "results")
     text = body(ws, "findings")
     assert "- **Ask the judge in both orders.** In 1 of the 5 compared pairs" in text
     assert "were not compared" not in text and "was not compared" not in text
 
 
-def test_a_run_without_a_pairwise_comparison_has_no_findings(ws):
+def test_a_run_without_the_judge_has_no_findings(ws):
     write_manifest(ws / "cassettes", syn.manifest({"triage": ("v1",)}))
     case = syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS)
     write_results(syn.function_results("triage", "v1", [case]), ws / "results")
-    assert body(ws, "findings") == "\nNo pairwise comparison in this run.\n\n"
+    assert body(ws, "findings") == "\nNo answer in this run was graded by the judge.\n\n"
 
 
 # --- the docs blocks: judge, safety, cost, gate, scope ----------------------------------

@@ -11,9 +11,13 @@ in `config/gate.yaml` or the datasets; the same files give the same text.
   counted over every case; position consistency only over the pairs the
   judge really compared (two different answers, two valid verdicts), so an
   identical or invalid pair never counts as consistent.
-- `findings`: what the run shows a reader, in plain words. From each
-  pairwise comparison: how many compared pairs flipped with the order, and
-  what that means for a comparison made with one judge call per case.
+- `findings`: what the judge's two checks mean for a reader, in plain
+  words. From `results/judge-agreement.json`: the agreement next to the
+  agreement chance alone would give, the conventional name of the kappa,
+  how often the author agreed with the judge's passes and with its fails,
+  and what the disagreements of one kind have in common. From each pairwise
+  comparison: how many compared pairs flipped with the order, and what that
+  means for a comparison made with one judge call per case.
 - `agreement`: the judge against the author's labels on the label sample:
   `pending human labels` with the sample until there are labels, then
   percent agreement, Cohen's kappa, the confusion and the disagreements,
@@ -49,7 +53,12 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from llmeval.agreement import AGREEMENT_FILE, PENDING_HUMAN_LABELS, AgreementReport
+from llmeval.agreement import (
+    AGREEMENT_FILE,
+    PENDING_HUMAN_LABELS,
+    AgreementReport,
+    Disagreement,
+)
 from llmeval.baseline import RunResults
 from llmeval.callplan import plural
 from llmeval.cassettes import RunManifest
@@ -280,7 +289,104 @@ def agreement(recorded: Recorded) -> list[Part]:
 
 # --- findings ----------------------------------------------------------------------------
 
+# The conventional names of Cohen's kappa (Landis and Koch, 1977), by the
+# highest kappa, to two decimals, each name covers.
+KAPPA_NAMES = (
+    (Decimal("0.20"), "0.00 to 0.20", "slight"),
+    (Decimal("0.40"), "0.21 to 0.40", "fair"),
+    (Decimal("0.60"), "0.41 to 0.60", "moderate"),
+    (Decimal("0.80"), "0.61 to 0.80", "substantial"),
+    (Decimal("1.00"), "0.81 to 1.00", "almost perfect"),
+)
+AGREEMENT_LINKS = (
+    "([results/judge-agreement.json](results/judge-agreement.json), "
+    "[docs/03](docs/03-judge-validation.md#agreement-with-a-person))"
+)
 PAIRWISE_SECTION = "#the-two-prompt-versions-compared-by-the-judge"
+# What a judge that fails answers the author passes is stricter about, by the
+# criterion it scored lowest.
+STRICTER_ABOUT = {
+    "groundedness": "what the documents support",
+    "helpfulness": "whether the answer helps",
+    "tone": "tone",
+}
+
+
+def _kappa_name(kappa: float) -> str:
+    """Cohen's kappa with its conventional name, as a clause."""
+    value = Decimal(decimal(kappa, 2))
+    if value < 0:
+        return f"Cohen's kappa of {value} is below zero: less agreement than chance alone gives"
+    span, name = next((span, name) for top, span, name in KAPPA_NAMES if value <= top)
+    return (
+        f"Cohen's kappa of {value} counts only the agreement beyond that, and a kappa from "
+        f"{span} is conventionally called {name} agreement"
+    )
+
+
+def _share(part: int, whole: int) -> Fraction | None:
+    return Fraction(part, whole) if whole else None
+
+
+def _lowest_criterion(disagreements: Sequence[Disagreement]) -> str:
+    """What the disagreements of one kind have in common: the judge's one
+    lowest score, when every one of them (two or more) has the same."""
+    lowest: set[str | None] = set()
+    for item in disagreements:
+        scores = item.judge_scores
+        floor = min(scores.values())
+        named = [criterion for criterion in CRITERIA if scores.get(criterion) == floor]
+        lowest.add(named[0] if len(named) == 1 else None)
+    if len(disagreements) < 2 or len(lowest) != 1 or None in lowest:
+        return ""
+    return lowest.pop() or ""
+
+
+def _agreement_finding(report: AgreementReport) -> str:
+    cells = report.confusion
+    passed, failed = cells["judge_pass"], cells["judge_fail"]
+    judge_pass = passed["human_pass"] + passed["human_fail"]
+    judge_fail = failed["human_pass"] + failed["human_fail"]
+    author_pass = passed["human_pass"] + failed["human_pass"]
+    labelled = report.labelled
+    pass_share = _share(passed["human_pass"], judge_pass)
+    fail_share = _share(failed["human_fail"], judge_fail)
+    passes_better = False
+    if pass_share is None or fail_share is None:
+        headline = "What the judge's agreement with the author means."
+    elif pass_share > fail_share:
+        headline, passes_better = "Trust the judge's passes more than its fails.", True
+    elif fail_share > pass_share:
+        headline = "Trust the judge's fails more than its passes."
+    else:
+        headline = "The author agreed with the judge's passes and its fails alike."
+    by_chance = judge_pass * author_pass + judge_fail * (labelled - author_pass)
+    kappa = (
+        f": {_kappa_name(report.kappa)}"
+        if report.kappa is not None
+        else f"; Cohen's kappa is {report.kappa_note}"
+    )
+    first = (
+        f"The judge agreed with the author on {report.agreed} of {labelled} sample answers "
+        f"({percent(report.agreed, labelled)}), while two raters who pass answers as often as "
+        f"these two do would agree on {percent(by_chance, labelled * labelled)} by chance "
+        f"alone{kappa}."
+    )
+    counts = []
+    if judge_pass:
+        verdicts = "pass" if judge_pass == 1 else "passes"
+        counts.append(f"{passed['human_pass']} of the judge's {judge_pass} {verdicts}")
+    if judge_fail:
+        counts.append(f"{failed['human_fail']} of its {plural(judge_fail, 'fail')}")
+    second = "The author agreed with " + (" but only " if passes_better else " and ").join(counts)
+    overturned = [item for item in report.disagreements if item.judge == "fail"]
+    if criterion := _lowest_criterion(overturned):
+        second += (
+            f", and on all {len(overturned)} answers the judge failed and the author passed, "
+            f"{criterion} was its lowest score: it is stricter than the author about "
+            f"{STRICTER_ABOUT.get(criterion, criterion)}"
+        )
+    return f"- **{headline}** {first} {second} {AGREEMENT_LINKS}."
 
 
 def _pairwise_finding(result: PairwiseResults) -> str:
@@ -326,11 +432,21 @@ def _pairwise_finding(result: PairwiseResults) -> str:
 
 
 def findings(recorded: Recorded) -> list[Part]:
-    """What each pairwise comparison means (see the module docstring), one
-    bullet each."""
-    bullets = [_pairwise_finding(result) for result in recorded.run.pairwise]
+    """What the judge's agreement and the pairwise comparison mean (see the
+    module docstring), one bullet each."""
+    bullets = []
+    if recorded.graded():
+        report = recorded.agreement()
+        if report.status == PENDING_HUMAN_LABELS or not report.labelled:
+            bullets.append(
+                "- **The judge's agreement with the author is not measured yet:** "
+                f"{PENDING_HUMAN_LABELS}."
+            )
+        else:
+            bullets.append(_agreement_finding(report))
+    bullets += [_pairwise_finding(result) for result in recorded.run.pairwise]
     if not bullets:
-        return ["No pairwise comparison in this run."]
+        return ["No answer in this run was graded by the judge."]
     return ["\n".join(bullets)]
 
 

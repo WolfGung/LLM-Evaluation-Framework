@@ -34,6 +34,7 @@ How to read the table: rag is the support assistant (retrieval-augmented generat
 
 <!-- findings:start -->
 
+- **Trust the judge's passes more than its fails.** The judge agreed with the author on 24 of 30 sample answers (80.0%), while two raters who pass answers as often as these two do would agree on 71.3% by chance alone: Cohen's kappa of 0.30 counts only the agreement beyond that, and a kappa from 0.21 to 0.40 is conventionally called fair agreement. The author agreed with 22 of the judge's 23 passes but only 2 of its 7 fails, and on all 5 answers the judge failed and the author passed, groundedness was its lowest score: it is stricter than the author about what the documents support ([results/judge-agreement.json](results/judge-agreement.json), [docs/03](docs/03-judge-validation.md#agreement-with-a-person)).
 - **With this judge, one call per case cannot compare two prompts.** In 18 of the 38 compared pairs of rag v1 and v2 answers (47.4%), the judge changed its verdict when the two answers swapped places. 2 more pairs with identical answers were not compared. With one judge call per case, those verdicts would depend on which answer happened to be shown first: ask in both orders and count only the pairs that agree, as [the comparison below](#the-two-prompt-versions-compared-by-the-judge) does.
 
 <!-- findings:end -->

@@ -96,8 +96,11 @@ def test_the_findings_follow_the_legend_right_after_the_first_screen():
     legend = text.index(site.LEGEND)
     assert text[legend + 1 : legend + 5] == ["", "## Findings", "", "<!-- findings:start -->"]
     assert text.index("<!-- findings:end -->") < text.index("## What this shows")
-    (pairwise,) = section("Findings")[1:-1]  # one bullet, inside the markers
-    assert pairwise.startswith("- **")
+    agreement, pairwise = section("Findings")[1:-1]  # one bullet each, inside the markers
+    assert agreement.startswith("- **") and pairwise.startswith("- **")
+    assert "Cohen's kappa" in agreement and "conventionally called" in agreement
+    assert "(results/judge-agreement.json)" in agreement
+    assert "(docs/03-judge-validation.md#agreement-with-a-person)" in agreement
     assert "compared pairs" in pairwise and "swapped places" in pairwise
 
 
