@@ -103,8 +103,8 @@ def test_the_block_is_the_main_table_and_the_lines_under_it(ws):
         "2 calls.\n\n"
         "Latency: the system call at or above its column's p95 whose case ran more than once "
         "took at least twice as long as a repeat of the same request (2.6 times as long) while "
-        "writing 1 answer token against the repeat's 1, so the tail is time spent waiting at "
-        "the provider's shared free endpoint, not the time the system needs to answer.\n\n"
+        "writing 1 answer token against the repeat's 1, so the tail is delay at the provider's "
+        "shared free endpoint, not time the request needs.\n\n"
     )
 
 
@@ -182,8 +182,8 @@ def test_a_tail_slower_than_its_repeats_is_named_as_waiting(ws):
     assert line == (
         "Latency: each of the 4 system calls at or above their column's p95 took at least twice "
         "as long as a repeat of the same request (a median of 15 times as long) while writing a "
-        "median of 50 answer tokens against the repeats' 50, so the tail is time spent waiting "
-        "at the provider's shared free endpoint, not the time the system needs to answer."
+        "median of 50 answer tokens against the repeats' 50, so the tail is delay at the "
+        "provider's shared free endpoint, not time the request needs."
     )
 
 
@@ -193,7 +193,7 @@ def test_a_tail_slow_on_every_repeat_comes_from_the_requests(ws):
         "Latency: of the 4 system calls at or above their column's p95, none of them took even "
         "twice as long as a repeat of the same request would need for the same answer, so the "
         "slow requests were slow on every try: the tail comes from the requests themselves, not "
-        "from waiting at the provider."
+        "from delay at the provider."
     )
 
 
@@ -202,7 +202,7 @@ def test_a_tail_that_partly_waited_says_how_much(ws, waiting, share):
     tail = [slow(n, 9000 if n <= waiting else 3000, repeat_ms=2000) for n in (1, 2, 3, 4)]
     line = latency_line(ws, *QUICK, *tail)
     assert line.startswith(f"Latency: {waiting} of the 4 system calls at or above their column")
-    assert f"so {share} is time spent waiting" in line
+    assert f"so {share} is delay at the provider" in line
 
 
 def test_a_longer_answer_is_not_taken_for_waiting(ws):
@@ -222,7 +222,7 @@ def test_a_paid_system_model_is_not_called_a_free_endpoint(ws):
     )
     tail = [slow(n, 30000) for n in (1, 2, 3, 4)]
     line = latency_line(ws, *QUICK, *tail, manifest=paid)
-    assert line.endswith("waiting at the provider, not the time the system needs to answer.")
+    assert line.endswith("so the tail is delay at the provider, not time the request needs.")
 
 
 def test_a_paid_run_shows_the_provider_cost(ws):

@@ -156,7 +156,7 @@ def test_without_labels_the_agreement_block_is_pending_with_the_sample(ws):
     assert body(ws, "agreement") == (
         "\npending human labels\n\n"
         "Pavel Zhukov Atum, the author, labels 3 judged answers by hand, blind to the judge's "
-        "verdict (make label): "
+        "verdict (make label), and this sample awaits his labels: "
         "all 2 answers the judge failed and 1 it passed. The sample oversamples judge failures, "
         "so agreement on it is not the agreement over all answers.\n\n"
     )
@@ -368,12 +368,52 @@ def test_an_undefined_kappa_is_named_in_the_findings(ws):
     assert "by chance alone; Cohen's kappa is undefined: x." in body(ws, "findings")
 
 
-def test_without_labels_the_agreement_finding_is_pending(ws):
+def test_without_labels_the_agreement_finding_says_the_sample_awaits_them(ws):
     record_rag(ws, PAIRS)
     write_agreement(sample_report(), ws / "results")
     assert body(ws, "findings").startswith(
-        "\n- **The judge's agreement with the author is not measured yet:** pending human labels.\n"
+        "\n- **The judge's agreement with the author is not measured yet.** The sample of 3 "
+        "judged answers (all 2 the judge failed and 1 it passed) awaits the author's labels "
+        "([docs/03](docs/03-judge-validation.md#agreement-with-a-person)).\n"
     )
+
+
+def stale_labels(count: int) -> list[dict]:
+    return [
+        {"case": f"rag-00{n}", "version": "v1", "repeat": 0, "reason": "stale: synthetic"}
+        for n in range(1, count + 1)
+    ]
+
+
+def test_with_only_stale_labels_the_findings_and_the_block_say_none_counts(ws):
+    record_rag(ws, PAIRS)
+    write_agreement(sample_report(stale=stale_labels(2)), ws / "results")
+    assert (
+        "awaits the author's labels; his 2 earlier labels are of answers the sample no longer "
+        "holds, so they do not count ([docs/03]"
+    ) in body(ws, "findings")
+    assert body(ws, "agreement") == (
+        "\npending human labels\n\n"
+        "None of the author's 2 labels in labels/human.jsonl is of an answer in the current "
+        "sample: the answers or the sample changed after he labelled them. Stale labels are not "
+        "used; each is listed with its reason in results/judge-agreement.json.\n\n"
+        "Pavel Zhukov Atum, the author, labels 3 judged answers by hand, blind to the judge's "
+        "verdict (make label), and this sample awaits his labels: all 2 answers the judge failed "
+        "and 1 it passed. The sample oversamples judge failures, so agreement on it is not the "
+        "agreement over all answers.\n\n"
+    )
+
+
+def test_one_stale_label_is_named_in_the_singular(ws):
+    record_rag(ws, PAIRS)
+    write_agreement(sample_report(stale=stale_labels(1)), ws / "results")
+    assert "his earlier label is of an answer the sample no longer holds, so it does not count" in (
+        body(ws, "findings")
+    )
+    assert (
+        "The author's one label in labels/human.jsonl is not of an answer in the current sample: "
+        "the answers or the sample changed after he labelled it."
+    ) in body(ws, "agreement")
 
 
 def test_a_comparison_without_flips_says_the_order_did_not_sway_the_judge(ws):

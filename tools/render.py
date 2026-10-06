@@ -60,13 +60,14 @@ above that column's p95, each next to the fastest other repeat of the same
 request. A call that took at least twice as long as a repeat of the same
 request (`WAITED`), with that repeat's time first scaled up by the token
 ratio when the slow call wrote a longer answer, spent at least half its time
-on something the same work did not need: waiting for the provider. The line
-counts those calls, gives the median of their latency over their repeat's
-and their answers' median length next to the repeats', and says what the
-tail is, by what it shows: waiting when such calls are there (most or part
-of the tail when not every call is one), the requests themselves when none
-is. A free system model (its id ends in `:free`) is named as the shared
-free endpoint. Without a tail call that has a repeat there is no line.
+on something the same work did not need: delay at the provider, such as a
+queue or a slower route. The line counts those calls, gives the median of
+their latency over their repeat's and their answers' median length next to
+the repeats', and says what the tail is, by what it shows: delay when such
+calls are there (most or part of the tail when not every call is one), the
+requests themselves when none is. A free system model (its id ends in
+`:free`) is named as the shared free endpoint. Without a tail call that has
+a repeat there is no line.
 """
 
 from __future__ import annotations
@@ -285,7 +286,7 @@ def latency_line(manifest: RunManifest, run: RunResults) -> str | None:
         return (
             f"Latency: of {calls}, {never} even twice as long as a repeat of the same request "
             "would need for the same answer, so the slow requests were slow on every try: the "
-            "tail comes from the requests themselves, not from waiting at the provider."
+            "tail comes from the requests themselves, not from delay at the provider."
         )
     ratio = statistics.median(
         call.latency_ms / (call.fastest_repeat_latency_ms or 1.0) for call in waited
@@ -316,8 +317,7 @@ def latency_line(manifest: RunManifest, run: RunResults) -> str | None:
         )
     return (
         f"Latency: {subject} took at least twice as long as a repeat of the same request "
-        f"{measured}, so {share} is time spent waiting at {where}, not the time the system "
-        "needs to answer."
+        f"{measured}, so {share} is delay at {where}, not time the request needs."
     )
 
 

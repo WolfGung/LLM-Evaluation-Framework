@@ -15,11 +15,14 @@ in `config/gate.yaml` or the datasets; the same files give the same text.
   words. From `results/judge-agreement.json`: the agreement next to the
   agreement chance alone would give, the conventional name of the kappa,
   how often the author agreed with the judge's passes and with its fails,
-  and what the disagreements of one kind have in common. From each pairwise
+  and what the disagreements of one kind have in common; before the author
+  has labelled the current sample, that the sample awaits his labels and
+  that his earlier labels, if any, do not count. From each pairwise
   comparison: how many compared pairs flipped with the order, and what that
   means for a comparison made with one judge call per case.
 - `agreement`: the judge against the author's labels on the label sample:
-  `pending human labels` with the sample until there are labels, then
+  `pending human labels` with the sample until there are labels (and why
+  none of his labels counts when all of them are stale), then
   percent agreement, Cohen's kappa, the confusion and the disagreements,
   always with the note that the sample oversamples judge failures.
 - `judge`: the judge as an instrument, per graded version: valid verdicts,
@@ -228,10 +231,29 @@ def _sample_sentence(report: AgreementReport, failures: int) -> str:
         else f"{sample.judge_fail} of the {failures} answers the judge failed"
     )
     labels = "labelled" if report.status == "complete" else "labels"
+    awaits = ", and this sample awaits his labels" if report.status == PENDING_HUMAN_LABELS else ""
     return (
         f"{LABELER}, the author, {labels} {sample.size} judged answers by hand, blind to the "
-        f"judge's verdict (make label): {failed} and {sample.judge_pass} it passed. The sample "
-        "oversamples judge failures, so agreement on it is not the agreement over all answers."
+        f"judge's verdict (make label){awaits}: {failed} and {sample.judge_pass} it passed. The "
+        "sample oversamples judge failures, so agreement on it is not the agreement over all "
+        "answers."
+    )
+
+
+def _stale_sentence(report: AgreementReport) -> str | None:
+    """Why no label counts, when the labels file has labels but none is of a
+    sample answer: they are stale (see `llmeval.agreement`)."""
+    stale = len(report.stale)
+    if not stale or report.labelled:
+        return None
+    if stale == 1:
+        named = "The author's one label in labels/human.jsonl is not of an answer"
+    else:
+        named = f"None of the author's {stale} labels in labels/human.jsonl is of an answer"
+    return (
+        f"{named} in the current sample: the answers or the sample changed after he labelled "
+        f"{'it' if stale == 1 else 'them'}. Stale labels are not used; each is listed with its "
+        "reason in results/judge-agreement.json."
     )
 
 
@@ -239,7 +261,8 @@ def agreement_parts(report: AgreementReport, failures: int) -> list[Part]:
     """The judge's agreement with the author's labels (see the module docstring)."""
     sample = _sample_sentence(report, failures)
     if report.status == PENDING_HUMAN_LABELS:
-        return [PENDING_HUMAN_LABELS, sample]
+        stale = _stale_sentence(report)
+        return [PENDING_HUMAN_LABELS, *([stale] if stale else []), sample]
     cells = report.confusion
     confusion = Table(
         header=("Judge's verdict", "Author: pass", "Author: fail"),
@@ -389,6 +412,29 @@ def _agreement_finding(report: AgreementReport) -> str:
     return f"- **{headline}** {first} {second} {AGREEMENT_LINKS}."
 
 
+def _pending_finding(report: AgreementReport, failures: int) -> str:
+    """The agreement bullet before the author has labelled the current sample."""
+    sample = report.sample
+    failed = (
+        f"all {sample.judge_fail} the judge failed"
+        if sample.judge_fail == failures
+        else f"{sample.judge_fail} of the {failures} the judge failed"
+    )
+    text = (
+        "- **The judge's agreement with the author is not measured yet.** The sample of "
+        f"{sample.size} judged answers ({failed} and {sample.judge_pass} it passed) awaits the "
+        "author's labels"
+    )
+    if stale := len(report.stale):
+        text += (
+            "; his earlier label is of an answer the sample no longer holds, so it does not count"
+            if stale == 1
+            else f"; his {stale} earlier labels are of answers the sample no longer holds, so "
+            "they do not count"
+        )
+    return f"{text} ([docs/03](docs/03-judge-validation.md#agreement-with-a-person))."
+
+
 def _pairwise_finding(result: PairwiseResults) -> str:
     summary = result.summary
     first, second = result.versions
@@ -438,10 +484,7 @@ def findings(recorded: Recorded) -> list[Part]:
     if recorded.graded():
         report = recorded.agreement()
         if report.status == PENDING_HUMAN_LABELS or not report.labelled:
-            bullets.append(
-                "- **The judge's agreement with the author is not measured yet:** "
-                f"{PENDING_HUMAN_LABELS}."
-            )
+            bullets.append(_pending_finding(report, _judge_failures(recorded)))
         else:
             bullets.append(_agreement_finding(report))
     bullets += [_pairwise_finding(result) for result in recorded.run.pairwise]
