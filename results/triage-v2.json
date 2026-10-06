@@ -3,7 +3,7 @@
   "function": "triage",
   "version": "v2",
   "mode": "replay",
-  "model": "qwen/qwen3.8-27b:free",
+  "model": "mistralai/mistral-small-3.2-24b-instruct",
   "prompt_sha256": "957d4a2af84ffda4b9255051a0a6153b514e23b865bc92551b90cdd4510f56e6",
   "dataset": "triage.jsonl",
   "dataset_sha256": "4dd4f087b2d93ab318741b5fb105e50e12e55ea768f84543cc08db9afdb33245",
@@ -15,9 +15,9 @@
     "cases": 40,
     "runs": 120,
     "all_checks": {
-      "passed": 107,
+      "passed": 111,
       "total": 120,
-      "rate": 0.8917
+      "rate": 0.925
     },
     "layers": {
       "deterministic": {
@@ -26,9 +26,9 @@
         "rate": 0.975
       },
       "reference": {
-        "passed": 107,
+        "passed": 111,
         "total": 120,
-        "rate": 0.8917
+        "rate": 0.925
       }
     },
     "checks": {
@@ -53,14 +53,14 @@
         "rate": 0.975
       },
       "category_match": {
-        "passed": 114,
+        "passed": 115,
         "total": 120,
-        "rate": 0.95
+        "rate": 0.9583
       },
       "priority_match": {
-        "passed": 116,
+        "passed": 119,
         "total": 120,
-        "rate": 0.9667
+        "rate": 0.9917
       },
       "order_id_match": {
         "passed": 117,
@@ -75,9 +75,9 @@
         "rate": 0.8571
       },
       "returns": {
-        "passed": 18,
+        "passed": 16,
         "total": 21,
-        "rate": 0.8571
+        "rate": 0.7619
       },
       "payment": {
         "passed": 17,
@@ -85,14 +85,14 @@
         "rate": 0.9444
       },
       "warranty": {
-        "passed": 18,
+        "passed": 21,
         "total": 21,
-        "rate": 0.8571
+        "rate": 1.0
       },
       "order_status": {
-        "passed": 15,
+        "passed": 18,
         "total": 18,
-        "rate": 0.8333
+        "rate": 1.0
       },
       "product_question": {
         "passed": 12,
@@ -107,8 +107,8 @@
     },
     "retrieval_recall": null,
     "accuracy": {
-      "category": 0.95,
-      "priority": 0.9667,
+      "category": 0.9583,
+      "priority": 0.9917,
       "order_id": 0.975
     },
     "confusion": {
@@ -125,10 +125,10 @@
         },
         "returns": {
           "shipping": 3,
-          "returns": 18,
+          "returns": 16,
           "payment": 0,
           "warranty": 0,
-          "order_status": 0,
+          "order_status": 2,
           "product_question": 0,
           "other": 0,
           "invalid": 0
@@ -147,9 +147,9 @@
           "shipping": 0,
           "returns": 0,
           "payment": 0,
-          "warranty": 18,
+          "warranty": 21,
           "order_status": 0,
-          "product_question": 3,
+          "product_question": 0,
           "other": 0,
           "invalid": 0
         },
@@ -201,8 +201,8 @@
         },
         "high": {
           "low": 0,
-          "normal": 3,
-          "high": 18,
+          "normal": 0,
+          "high": 21,
           "urgent": 0,
           "invalid": 0
         },
@@ -218,9 +218,27 @@
     "judge": null,
     "stability": {
       "repeated": 40,
-      "stable": 39,
-      "stable_share": 0.975,
+      "stable": 38,
+      "stable_share": 0.95,
       "unstable": [
+        {
+          "id": "tri-009",
+          "category": "returns",
+          "checks": {
+            "reference/category_match": [
+              false,
+              true,
+              false
+            ]
+          },
+          "labels": {
+            "category": [
+              "order_status",
+              "returns",
+              "order_status"
+            ]
+          }
+        },
         {
           "id": "tri-019",
           "category": "payment",
@@ -244,81 +262,81 @@
     "performance": {
       "calls": 120,
       "latency": {
-        "p50_ms": 997.7,
-        "p95_ms": 10689.9
+        "p50_ms": 1512.4,
+        "p95_ms": 4285.0
       },
-      "mean_prompt_tokens": 959.12,
-      "mean_completion_tokens": 55.69,
+      "mean_prompt_tokens": 870.62,
+      "mean_completion_tokens": 49.77,
       "mean_reasoning_tokens": 0.0,
       "cost": {
-        "total_usd": 0.0,
+        "total_usd": 0.01045685,
         "unknown_calls": 0,
-        "per_case_usd": 0.0,
-        "per_run_usd": 0.0
+        "per_case_usd": 0.00026142,
+        "per_run_usd": 0.00008714
       },
       "tail": [
         {
-          "case": "tri-038",
-          "repeat": 2,
-          "latency_ms": 39318.2,
-          "completion_tokens": 48,
-          "fastest_repeat": 0,
-          "fastest_repeat_latency_ms": 743.4,
+          "case": "tri-030",
+          "repeat": 0,
+          "latency_ms": 10643.1,
+          "completion_tokens": 59,
+          "fastest_repeat": 1,
+          "fastest_repeat_latency_ms": 3028.7,
           "fastest_repeat_completion_tokens": 48
+        },
+        {
+          "case": "tri-003",
+          "repeat": 0,
+          "latency_ms": 7367.0,
+          "completion_tokens": 52,
+          "fastest_repeat": 2,
+          "fastest_repeat_latency_ms": 1586.7,
+          "fastest_repeat_completion_tokens": 63
         },
         {
           "case": "tri-040",
           "repeat": 2,
-          "latency_ms": 36930.1,
-          "completion_tokens": 47,
+          "latency_ms": 6199.0,
+          "completion_tokens": 45,
           "fastest_repeat": 0,
-          "fastest_repeat_latency_ms": 669.7,
-          "fastest_repeat_completion_tokens": 47
+          "fastest_repeat_latency_ms": 3041.3,
+          "fastest_repeat_completion_tokens": 46
         },
         {
-          "case": "tri-019",
+          "case": "tri-035",
           "repeat": 0,
-          "latency_ms": 18114.4,
-          "completion_tokens": 51,
+          "latency_ms": 6072.9,
+          "completion_tokens": 45,
           "fastest_repeat": 2,
-          "fastest_repeat_latency_ms": 831.5,
-          "fastest_repeat_completion_tokens": 51
+          "fastest_repeat_latency_ms": 1621.3,
+          "fastest_repeat_completion_tokens": 45
         },
         {
-          "case": "tri-003",
+          "case": "tri-039",
+          "repeat": 0,
+          "latency_ms": 5495.9,
+          "completion_tokens": 40,
+          "fastest_repeat": 2,
+          "fastest_repeat_latency_ms": 2314.3,
+          "fastest_repeat_completion_tokens": 38
+        },
+        {
+          "case": "tri-040",
           "repeat": 1,
-          "latency_ms": 16946.6,
-          "completion_tokens": 65,
+          "latency_ms": 4319.1,
+          "completion_tokens": 45,
           "fastest_repeat": 0,
-          "fastest_repeat_latency_ms": 961.3,
-          "fastest_repeat_completion_tokens": 65
+          "fastest_repeat_latency_ms": 3041.3,
+          "fastest_repeat_completion_tokens": 46
         },
         {
-          "case": "tri-006",
+          "case": "tri-028",
           "repeat": 2,
-          "latency_ms": 16153.8,
-          "completion_tokens": 67,
-          "fastest_repeat": 1,
-          "fastest_repeat_latency_ms": 1006.9,
-          "fastest_repeat_completion_tokens": 67
-        },
-        {
-          "case": "tri-008",
-          "repeat": 0,
-          "latency_ms": 13095.8,
-          "completion_tokens": 61,
-          "fastest_repeat": 2,
-          "fastest_repeat_latency_ms": 863.1,
-          "fastest_repeat_completion_tokens": 61
-        },
-        {
-          "case": "tri-026",
-          "repeat": 1,
-          "latency_ms": 10689.9,
-          "completion_tokens": 65,
+          "latency_ms": 4285.0,
+          "completion_tokens": 49,
           "fastest_repeat": 0,
-          "fastest_repeat_latency_ms": 972.3,
-          "fastest_repeat_completion_tokens": 65
+          "fastest_repeat_latency_ms": 1491.8,
+          "fastest_repeat_completion_tokens": 45
         }
       ]
     }
@@ -336,22 +354,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-204518\",\n  \"summary\": \"Customer reports order TS-204518 is late beyond the estimated delivery date and tracking has not updated in a week, suspecting it is lost.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-204518\",\n  \"summary\": \"Order TS-204518 has not moved in a week and is past its latest estimated delivery date.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "8e67cb15015ef1de39306d8c76b6e89f0112c2fd03a69e81c5d0a894d0cb48ee",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 773.5555529361591,
-            "prompt_tokens": 969,
-            "completion_tokens": 75,
+            "key": "21e7143a66cf3e6dac70c35b8be91e021410d687c117801ad9a52d4528644814",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1697.1538149518892,
+            "prompt_tokens": 880,
+            "completion_tokens": 61,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00008342,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T07:53:44.909571Z"
+            "recorded_at": "2026-10-06T08:39:35.075249Z"
           },
           "checks": [
             {
@@ -401,22 +419,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-204518\",\n  \"summary\": \"Customer reports order TS-204518 is late beyond the estimated delivery date and tracking has not updated for a week.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-204518\",\n  \"summary\": \"Order TS-204518 has not moved in a week and is past its latest estimated delivery date.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "4050e44aa7834b80a2c6ad62c6ceed17ac96130d35c7290e51f356ec02a3af31",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 8173.80723298993,
-            "prompt_tokens": 969,
-            "completion_tokens": 69,
+            "key": "f00aa2b00c4e64f4d4e4f202caf18c1420da667c68838cf2a8809c5d6c64e7eb",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2029.4204510282725,
+            "prompt_tokens": 880,
+            "completion_tokens": 61,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009775,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T08:37:47.937099Z"
+            "recorded_at": "2026-10-06T09:04:56.494426Z"
           },
           "checks": [
             {
@@ -466,22 +484,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-204518\",\n  \"summary\": \"Customer reports order TS-204518 is late beyond the estimated delivery date with no tracking updates for a week, suspecting it is lost.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-204518\",\n  \"summary\": \"Order TS-204518 has not moved in a week and is overdue.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "04ed07e6a9b3867b506b81976fe466d6c94c139e17622c61f8aec4c1b5aad348",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 997.6872620172799,
-            "prompt_tokens": 969,
-            "completion_tokens": 74,
+            "key": "522643b4e87d2af004f1c1686c13ed23fce4c40619a5e6b9b01d8f1cd19e7b7f",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1291.825007996522,
+            "prompt_tokens": 880,
+            "completion_tokens": 57,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000774,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T09:44:32.737284Z"
+            "recorded_at": "2026-10-06T09:04:59.090140Z"
           },
           "checks": [
             {
@@ -543,22 +561,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer is asking about shipping availability and costs to Canada.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Question about shipping to Canada and the cost.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "14468f7c4025d2a10d6a277fdf93d077368e81222f77ce3c2e9e32cbbe316c57",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 851.4178309123963,
-            "prompt_tokens": 949,
-            "completion_tokens": 45,
+            "key": "8a5409d9ea7cd8f106946554e2d64698f32a94c28f770f0c21f0c30858219a56",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1159.5435820054263,
+            "prompt_tokens": 860,
+            "completion_tokens": 38,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000721,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:29:09.002890Z"
+            "recorded_at": "2026-10-06T09:05:02.291182Z"
           },
           "checks": [
             {
@@ -608,22 +626,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer is asking about shipping availability and costs to Canada.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Asking about shipping to Canada and its cost.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "639ada34d4a501cdc5585c9bce2fff3dad7ca41df62dbff13305c8c6e58f9c34",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 801.7587170470506,
-            "prompt_tokens": 949,
-            "completion_tokens": 45,
+            "key": "ac41603de278ce33660320f19c1bdcdf4103d75376d54cf6384a703cc88a19ad",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 914.2645610263571,
+            "prompt_tokens": 860,
+            "completion_tokens": 39,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000090375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:29:12.285800Z"
+            "recorded_at": "2026-10-06T09:05:05.379225Z"
           },
           "checks": [
             {
@@ -673,22 +691,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer is asking about shipping availability and costs to Canada.\"\n}",
+          "output": "```json\n{\n  \"category\": \"shipping\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks if Toolshop ships to Canada and how much it costs.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "9ef811ac63f98ad40be6122edca925e71ec8db6dee3029ba9c7c245c70520186",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 669.759867945686,
-            "prompt_tokens": 949,
-            "completion_tokens": 45,
+            "key": "ef2808d6c17172ee02481224a9af974372fcbabd02b7651d9c11a96949167728",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1618.3482420165092,
+            "prompt_tokens": 860,
+            "completion_tokens": 47,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000092375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:29:15.487125Z"
+            "recorded_at": "2026-10-06T09:05:09.416673Z"
           },
           "checks": [
             {
@@ -750,22 +768,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-310927\",\n  \"summary\": \"Customer requests a delivery address change for order TS-310927 due to a move this weekend.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-310927\",\n  \"summary\": \"Change the delivery address on order TS-310927.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "68a19807c4a694d8cfd2e15596fe9bc62ceff3b3d0299b2af856cb64c84ce0f0",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 961.3184479530901,
-            "prompt_tokens": 965,
-            "completion_tokens": 65,
+            "key": "054d5c929d2eb8a18b8793b2a56e71d93fd850f9cb647d005bb67cf736e25e83",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 7367.009887937456,
+            "prompt_tokens": 876,
+            "completion_tokens": 52,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000095125,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:29:19.112011Z"
+            "recorded_at": "2026-10-06T09:05:18.498654Z"
           },
           "checks": [
             {
@@ -815,22 +833,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-310927\",\n  \"summary\": \"Customer requests a delivery address change for order TS-310927 due to a move this weekend.\"\n}",
+          "output": "```json\n{\n  \"category\": \"shipping\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-310927\",\n  \"summary\": \"Change the delivery address on order TS-310927, which is still Received.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "a5e97a9bea63b6752054b14288b8485a71ab7a907bd3440f4ea074ba8356dc15",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 16946.611650986597,
-            "prompt_tokens": 965,
-            "completion_tokens": 65,
+            "key": "24bab41091e4f6979261fb7a9bda09fe738357732ba8b3ff6c0719658afe2df9",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1733.3762500202283,
+            "prompt_tokens": 876,
+            "completion_tokens": 61,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000097375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:29:38.430653Z"
+            "recorded_at": "2026-10-06T09:05:20.239428Z"
           },
           "checks": [
             {
@@ -880,22 +898,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-310927\",\n  \"summary\": \"Customer requests a delivery address change for an order currently marked as received.\"\n}",
+          "output": "```json\n{\n  \"category\": \"shipping\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-310927\",\n  \"summary\": \"Need to change the delivery address on order TS-310927, it still says Received.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "0fa610f4b8c9e98d1e9a83bb0218d4a976d46494a4ec76360b24b2873c608350",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 985.4222970316187,
-            "prompt_tokens": 965,
-            "completion_tokens": 56,
+            "key": "a532d3b7b5cd4fecc873e1e7343b6ddcadc6307589271a1c2fb7bf59fcc73909",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1586.6852150065824,
+            "prompt_tokens": 876,
+            "completion_tokens": 63,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000097875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:29:39.423055Z"
+            "recorded_at": "2026-10-06T09:05:23.426173Z"
           },
           "checks": [
             {
@@ -957,22 +975,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\"category\":\"shipping\",\"priority\":\"high\",\"order_id\":\"TS-118204\",\"summary\":\"Customer reports order TS-118204 marked as delivered but the parcel is missing from the delivery location.\"}",
+          "output": "```json\n{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-118204\",\n  \"summary\": \"Parcel says delivered but is not at the address or with neighbours.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "0b291a9230aa581a83644d75c4a6d5dce0b2045f9e8dd0027aa61e3333be17d1",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1159.2268770327792,
-            "prompt_tokens": 961,
-            "completion_tokens": 49,
+            "key": "c7c53c9aa5c6d978d1eedca91f7f56c0e3d043733dee4471882bc132e12853a7",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1026.4442169573158,
+            "prompt_tokens": 872,
+            "completion_tokens": 54,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000762,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:29:42.930243Z"
+            "recorded_at": "2026-10-06T09:05:26.199252Z"
           },
           "checks": [
             {
@@ -1022,22 +1040,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-118204\",\n  \"summary\": \"Customer reports order TS-118204 marked as delivered but the parcel is missing from the delivery location.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-118204\",\n  \"summary\": \"Order delivered but not received.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "4add7b82bf785fee27dcfc4cf8fe3b85901bb26b5ef3957343f78ad304c50c6b",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 5883.136871038005,
-            "prompt_tokens": 961,
-            "completion_tokens": 66,
+            "key": "c024517525974b7c6f22252316432d5b6a06ab2269befe750020ac7727af2d50",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1515.5324069783092,
+            "prompt_tokens": 872,
+            "completion_tokens": 43,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000074,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:29:50.987518Z"
+            "recorded_at": "2026-10-06T09:05:30.021668Z"
           },
           "checks": [
             {
@@ -1087,22 +1105,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-118204\",\n  \"summary\": \"Customer reports order TS-118204 marked as delivered but the parcel is missing from the delivery location.\"\n}",
+          "output": "```json\n{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-118204\",\n  \"summary\": \"Parcel says delivered but not at the address or with neighbours.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "cec533d887deb06ad9355c7b4ddb9f37d29935a21bc4f14b4473705eeacaeb0d",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1106.5404469845816,
-            "prompt_tokens": 961,
-            "completion_tokens": 66,
+            "key": "210a95553ccae391ee73b6791e3dcae23dca16496de53065774633e8c82939c4",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1143.2611150667071,
+            "prompt_tokens": 872,
+            "completion_tokens": 53,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000076,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:30:22.371826Z"
+            "recorded_at": "2026-10-06T09:05:32.982764Z"
           },
           "checks": [
             {
@@ -1164,22 +1182,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks whether free shipping over $75 includes tax.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Question about free shipping threshold and whether it includes tax.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "1eba5c8ce42a771a3fbfe5d683d881d50485dcb00fa2df3cbaadb2375f591e68",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 5877.675350988284,
-            "prompt_tokens": 952,
-            "completion_tokens": 46,
+            "key": "91c1278a203d5233904f8e957a0a8e92e9ece9fd7f3db369c6cde34acdf04ee7",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1072.8431170573458,
+            "prompt_tokens": 863,
+            "completion_tokens": 40,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000072725,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:30:30.476401Z"
+            "recorded_at": "2026-10-06T09:05:36.245656Z"
           },
           "checks": [
             {
@@ -1229,22 +1247,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks whether free shipping over $75 includes tax.\"\n}",
+          "output": "```json\n{\n  \"category\": \"shipping\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Asks if shipping is free for orders over $75 and if that includes tax.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "3dac4eb6499a4a055f562e0f9749b44828814ad0a8e4986edffcba026fc48165",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 863.1172480527312,
-            "prompt_tokens": 952,
-            "completion_tokens": 46,
+            "key": "602f0956a9a3010b273bcf921bc1c7f8f0a8f83f7f60566470e92f6b1ca45289",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1207.7862629666924,
+            "prompt_tokens": 863,
+            "completion_tokens": 51,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000074925,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:30:31.347175Z"
+            "recorded_at": "2026-10-06T09:05:39.713943Z"
           },
           "checks": [
             {
@@ -1294,22 +1312,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks whether free shipping over $75 includes tax.\"\n}",
+          "output": "```json\n{\n  \"category\": \"shipping\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Asking if shipping is free for orders over $75 and if that includes tax.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "fc018b5a36be168e0ec16a4cf086c8a6b1eabca09226b82e366127f88c2e0aa6",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 5466.380548081361,
-            "prompt_tokens": 952,
-            "completion_tokens": 46,
+            "key": "85849604c68e926a565eb1c901ae98d00b0e5be20f069136fb041800ee36adff",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 905.4872629931197,
+            "prompt_tokens": 863,
+            "completion_tokens": 51,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009365625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:30:39.283843Z"
+            "recorded_at": "2026-10-06T09:05:42.744937Z"
           },
           "checks": [
             {
@@ -1371,22 +1389,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-552013\",\n  \"summary\": \"Customer requests changing the delivery address to a PO box for order TS-552013 before it is packed.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-552013\",\n  \"summary\": \"Customer asks to change delivery address to a PO box.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "a096687708e72fa76b0da070ed9e7f988690efb277132ecf2ca646e669895fc2",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1150.7544219493866,
-            "prompt_tokens": 963,
-            "completion_tokens": 67,
+            "key": "0c6a923aef9adec61873953c0a63a0f63213508759f84b3dd83217958152b8d6",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1615.3780940221623,
+            "prompt_tokens": 874,
+            "completion_tokens": 48,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00007515,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:30:40.443532Z"
+            "recorded_at": "2026-10-06T09:05:46.788207Z"
           },
           "checks": [
             {
@@ -1436,22 +1454,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-552013\",\n  \"summary\": \"Customer requests changing the delivery address to a PO box for order TS-552013 before it is packed.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-552013\",\n  \"summary\": \"Change delivery address to a PO box for an unpacked order.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "1da9c9abe7e4ec8f330909d370177f1ae35523c64cf2e1c31ffde97cf4963c79",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1006.8591560702771,
-            "prompt_tokens": 963,
-            "completion_tokens": 67,
+            "key": "6041a5ef8eac3cc02f411be5faba46a67a90bc88a02595aa187d9c99207d41e6",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1133.86244000867,
+            "prompt_tokens": 874,
+            "completion_tokens": 50,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00007555,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:30:43.633011Z"
+            "recorded_at": "2026-10-06T09:05:49.640000Z"
           },
           "checks": [
             {
@@ -1501,22 +1519,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-552013\",\n  \"summary\": \"Customer requests changing the delivery address to a PO box for order TS-552013 before it is packed.\"\n}",
+          "output": "```json\n{\n  \"category\": \"shipping\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-552013\",\n  \"summary\": \"Customer requests delivery to a PO box for order TS-552013.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "ca84634b042d190c0c5af603eff57ffc655317a123ccf4970aecc0cc8b19483d",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 16153.780965018086,
-            "prompt_tokens": 963,
-            "completion_tokens": 67,
+            "key": "75b4278ae54787f0e9fedf11402f1e7975acbe1eefa0b274f15b2909506b20cb",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1449.0788250695914,
+            "prompt_tokens": 874,
+            "completion_tokens": 59,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000966875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:31:02.113253Z"
+            "recorded_at": "2026-10-06T09:05:53.288548Z"
           },
           "checks": [
             {
@@ -1578,22 +1596,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-55201\",\n  \"summary\": \"Customer reports their parcel is one week past the estimated delivery date.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-55201\",\n  \"summary\": \"Parcel is a week past the estimated delivery date.\"\n}",
           "error": "invalid_schema",
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "bda5f13646f1bf26947cc1e5f76056685bb0a9df7a7432d6f2ac5a6bf7b978e6",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 990.7532719662413,
-            "prompt_tokens": 960,
-            "completion_tokens": 54,
+            "key": "bd99569b8013c3876d0ddc48468f7c4f0b90f5383d49cd73993a21d9bda6dbe4",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1265.2776390314102,
+            "prompt_tokens": 871,
+            "completion_tokens": 46,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009315625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:31:03.110785Z"
+            "recorded_at": "2026-10-06T09:05:56.438326Z"
           },
           "checks": [
             {
@@ -1643,22 +1661,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-55201\",\n  \"summary\": \"Customer reports their parcel is one week past the estimated delivery date.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-55201\",\n  \"summary\": \"Parcel is a week past the estimated delivery date.\"\n}",
           "error": "invalid_schema",
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "59a33a9d5f05ab1de7973afda446e4d1b34cce51b16451a7f5ac535894b19976",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 951.9627239787951,
-            "prompt_tokens": 960,
-            "completion_tokens": 54,
+            "key": "24290a52e6a872125b2034aa36875517b7cc768ba33eacf59554f50e72d97b4c",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1475.7916750386357,
+            "prompt_tokens": 871,
+            "completion_tokens": 46,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000074525,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:31:06.405386Z"
+            "recorded_at": "2026-10-06T09:05:59.981911Z"
           },
           "checks": [
             {
@@ -1708,22 +1726,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-55201\",\n  \"summary\": \"Customer reports their parcel is one week past the estimated delivery date.\"\n}",
+          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-55201\",\n  \"summary\": \"Parcel is a week past the estimated delivery date.\"\n}",
           "error": "invalid_schema",
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "be9d8facae693dfdda23e4682701b57f308b34674a45d17c7121ab60fcf48233",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 943.2124859886244,
-            "prompt_tokens": 960,
-            "completion_tokens": 54,
+            "key": "45ca631b722db5266f55565069fe4a4be0ae0e99f32c9cadaa399a1a9b37e9f1",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1181.8093670299277,
+            "prompt_tokens": 871,
+            "completion_tokens": 46,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009315625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:31:09.729943Z"
+            "recorded_at": "2026-10-06T09:06:03.021266Z"
           },
           "checks": [
             {
@@ -1785,22 +1803,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-407731\",\n  \"summary\": \"Customer wants to return an unused jigsaw from order TS-407731.\"\n}",
+          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-407731\",\n  \"summary\": \"Return an unused jigsaw from order TS-407731.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "2bb2893757f2101c0aaec9620d21eca173163012200e416009ada28bd50a2e4f",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 13095.845109899528,
-            "prompt_tokens": 963,
-            "completion_tokens": 61,
+            "key": "9b400b6ee78221bb57e46310c0d81eb3953b9f0c10dfa40a9b355045fec68b28",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2069.3062650971115,
+            "prompt_tokens": 875,
+            "completion_tokens": 54,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009553125,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:31:25.215914Z"
+            "recorded_at": "2026-10-06T09:06:07.242126Z"
           },
           "checks": [
             {
@@ -1850,22 +1868,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-407731\",\n  \"summary\": \"Customer wants to return an unused jigsaw from order TS-407731.\"\n}",
+          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-407731\",\n  \"summary\": \"Return an unused jigsaw from order TS-407731.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "b0fb1e991a2375fc0795ec9b47a11437c90b5a5ae577cd44b3f4ab7f85f1d76b",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 903.9031639695168,
-            "prompt_tokens": 963,
-            "completion_tokens": 61,
+            "key": "acf1f1de5fc0eb80cc29c6dc2e1681cf5745dd449ebcad0f59f826643fc483b0",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1592.1543289441615,
+            "prompt_tokens": 875,
+            "completion_tokens": 54,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000076425,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:31:26.126889Z"
+            "recorded_at": "2026-10-06T09:06:10.098296Z"
           },
           "checks": [
             {
@@ -1915,22 +1933,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-407731\",\n  \"summary\": \"Customer wants to return an unused jigsaw from order TS-407731.\"\n}",
+          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-407731\",\n  \"summary\": \"Return an unused jigsaw from order TS-407731.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "27e046453d80dcd01a1e9948846c0f12350ca32c3a26fdda0e53937d2fb03364",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 863.0568439839408,
-            "prompt_tokens": 963,
-            "completion_tokens": 61,
+            "key": "00c39fb1d76c7bff6ef318c8cc7d88787ad456351d2389e5ecb3d5c196674433",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1557.4404899962246,
+            "prompt_tokens": 875,
+            "completion_tokens": 54,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009553125,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:31:29.419440Z"
+            "recorded_at": "2026-10-06T09:06:13.396896Z"
           },
           "checks": [
             {
@@ -1992,22 +2010,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-260045\",\n  \"summary\": \"Customer received a socket set instead of the ordered metric wrench set.\"\n}",
+          "output": "```json\n{\n  \"category\": \"order_status\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-260045\",\n  \"summary\": \"Wrong item received, socket set instead of metric wrench set.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "cb9abef79eff92b64024491251b312f6cfbc925b9efecea65dfa0e64fd982bff",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 792.307002004236,
-            "prompt_tokens": 961,
+            "key": "9f3e8451854287364b5588dd672297462cf33ab5404c1bc154f60576f658787d",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1185.4595929617062,
+            "prompt_tokens": 873,
             "completion_tokens": 55,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009559375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:31:32.682002Z"
+            "recorded_at": "2026-10-06T09:06:16.358353Z"
           },
           "checks": [
             {
@@ -2037,8 +2055,8 @@
             {
               "layer": "reference",
               "name": "category_match",
-              "passed": true,
-              "detail": "'returns'"
+              "passed": false,
+              "detail": "expected 'returns', got 'order_status'"
             },
             {
               "layer": "reference",
@@ -2057,22 +2075,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-260045\",\n  \"summary\": \"Customer received a socket set instead of the ordered metric wrench set.\"\n}",
+          "output": "```json\n{\n  \"category\": \"returns\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-260045\",\n  \"summary\": \"Wrong item received, ordered a metric wrench set but got a socket set.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "88e6d7d464b88d1dd9bf6f71d3a4790baaf85f5c0820ab254795c237e8c4f429",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 7967.052858090028,
-            "prompt_tokens": 961,
-            "completion_tokens": 55,
+            "key": "f4e9c324a602ed00f670ada21ea804728043ffcb7c18c17b8aba5572253de9a1",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1561.0455820569769,
+            "prompt_tokens": 873,
+            "completion_tokens": 57,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000076875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:31:43.190107Z"
+            "recorded_at": "2026-10-06T09:06:20.067188Z"
           },
           "checks": [
             {
@@ -2122,22 +2140,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-260045\",\n  \"summary\": \"Customer received a socket set instead of the ordered metric wrench set.\"\n}",
+          "output": "```json\n{\n  \"category\": \"order_status\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-260045\",\n  \"summary\": \"Wrong item received in order TS-260045.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "a009ae272f808ebbe3776a6e32b68d9137f11ac11b017f97d79b3e64f5931ca6",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 791.1416729912162,
-            "prompt_tokens": 961,
-            "completion_tokens": 55,
+            "key": "2dfe83b18d6fcad53cd0fd2f7e0a4f84fb9dab862bcee34fed86fc642a1a6d5c",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1495.981420041062,
+            "prompt_tokens": 873,
+            "completion_tokens": 56,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000076675,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:31:43.988040Z"
+            "recorded_at": "2026-10-06T09:06:23.335441Z"
           },
           "checks": [
             {
@@ -2167,8 +2185,8 @@
             {
               "layer": "reference",
               "name": "category_match",
-              "passed": true,
-              "detail": "'returns'"
+              "passed": false,
+              "detail": "expected 'returns', got 'order_status'"
             },
             {
               "layer": "reference",
@@ -2199,22 +2217,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-339102\",\n  \"summary\": \"Customer reports a refund for a returned sander is overdue, with the item confirmed received two weeks ago.\"\n}",
+          "output": "```json\n{\n  \"category\": \"returns\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-339102\",\n  \"summary\": \"Refund not received for a returned sander.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "afe1e55cfdbd33681e5d66fabe19e479be8db4ac43f75c0fa332a43870d94ece",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 2949.7009069891647,
-            "prompt_tokens": 970,
-            "completion_tokens": 63,
+            "key": "c060d934567426a51d3cc40f759f172f3a194969f00a46af7c508dbf560b7786",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1306.5091019961983,
+            "prompt_tokens": 881,
+            "completion_tokens": 51,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009534375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:32:19.748523Z"
+            "recorded_at": "2026-10-06T09:06:26.479330Z"
           },
           "checks": [
             {
@@ -2264,22 +2282,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-339102\",\n  \"summary\": \"Customer reports a refund for a returned sander is overdue, with the item confirmed received two weeks ago.\"\n}",
+          "output": "```json\n{\n  \"category\": \"returns\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-339102\",\n  \"summary\": \"Refund not received for a sander returned two weeks ago.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "d13843233db77f34743d12a0a31b0045dbb0329ab3e82a9b1587b3d733c92d56",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1095.015928032808,
-            "prompt_tokens": 970,
-            "completion_tokens": 63,
+            "key": "cd4028eb8e61c6e37358fff3b4a22a0ed34642d60bf8b9322d5d8084f31d4607",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1846.8200620263815,
+            "prompt_tokens": 881,
+            "completion_tokens": 54,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009609375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:32:21.227332Z"
+            "recorded_at": "2026-10-06T09:06:30.352947Z"
           },
           "checks": [
             {
@@ -2329,22 +2347,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-339102\",\n  \"summary\": \"Customer reports a refund for a returned sander is overdue, with the item confirmed received two weeks ago.\"\n}",
+          "output": "```json\n{\n  \"category\": \"returns\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-339102\",\n  \"summary\": \"Refund for a returned sander not received after two weeks.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "e8897b2951b248a347cb74e7cd0bc44164f676be0afececdcd47345b551b4004",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 966.1369490204379,
-            "prompt_tokens": 970,
-            "completion_tokens": 63,
+            "key": "ea163e17aeb64e1b9183c646e83556e4272783ec017404a3ddb59c08ea9286f8",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1352.9570719692856,
+            "prompt_tokens": 881,
+            "completion_tokens": 54,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000076875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:32:24.433030Z"
+            "recorded_at": "2026-10-06T09:06:33.192538Z"
           },
           "checks": [
             {
@@ -2406,22 +2424,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\"category\": \"returns\", \"priority\": \"low\", \"order_id\": null, \"summary\": \"Customer asks if opened but unused drill bits can be returned.\"}",
+          "output": "```json\n{\n  \"category\": \"returns\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Can I return drill bits if I've opened the pack but not used them?\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "3f4ecb2810efad89270c3324aba84f43a317492bfd86de3e4de3d6cf6389833e",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 646.6955620562658,
-            "prompt_tokens": 952,
-            "completion_tokens": 36,
+            "key": "58c3bc2c94f362f1e85744f412f1f269a43237d83020b30e30cc0a5b24f0d5fc",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1144.9585639638826,
+            "prompt_tokens": 863,
+            "completion_tokens": 49,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000074525,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:32:27.445617Z"
+            "recorded_at": "2026-10-06T09:06:36.317834Z"
           },
           "checks": [
             {
@@ -2471,22 +2489,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\"category\": \"returns\", \"priority\": \"low\", \"order_id\": null, \"summary\": \"Customer asks if opened but unused drill bits can be returned.\"}",
+          "output": "```json\n{\n  \"category\": \"returns\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Can I return drill bits if I've opened the pack but not used them?\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "bd677c99fc042158e030fe70144251d5472a1efeb4887db8139d64930373c3b3",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 719.7634089970961,
-            "prompt_tokens": 952,
-            "completion_tokens": 36,
+            "key": "7f687490919f49393c95c913def3c59b84fcf5a4981ed74631894ba38235a7e1",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1088.5013500228524,
+            "prompt_tokens": 863,
+            "completion_tokens": 49,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009315625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:32:30.852196Z"
+            "recorded_at": "2026-10-06T09:06:39.594627Z"
           },
           "checks": [
             {
@@ -2536,22 +2554,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\"category\": \"returns\", \"priority\": \"low\", \"order_id\": null, \"summary\": \"Customer asks if opened but unused drill bits can be returned.\"}",
+          "output": "```json\n{\n  \"category\": \"returns\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Can I return drill bits if I've opened the pack but not used them?\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "d4078c9cdd021f64a1ba44c4cbf23208a9209ae1a2b944b429f9f34ebf394019",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 657.000008970499,
-            "prompt_tokens": 952,
-            "completion_tokens": 36,
+            "key": "da0ffa1f8b5a3c8bce91adc95944c4a441adc6186f80947789ad443e0417215f",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 963.9722459251061,
+            "prompt_tokens": 863,
+            "completion_tokens": 49,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009315625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:32:34.122578Z"
+            "recorded_at": "2026-10-06T09:06:42.803449Z"
           },
           "checks": [
             {
@@ -2613,22 +2631,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-781120\",\n  \"summary\": \"Customer received a circular saw with a cracked case and missing blade wrench from order TS-781120.\"\n}",
+          "output": "```json\n{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-781120\",\n  \"summary\": \"Circular saw arrived with a cracked case and the blade wrench missing.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "a9b6c9b992b22b6bf559baef3de04770ce8c84b4fec4bdbaf72d3d35808cf20b",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 938.1087590008974,
-            "prompt_tokens": 959,
-            "completion_tokens": 66,
+            "key": "2e039e5d9a9cbaf015c1720e9a91b842efa145207b4be6583183dd3a88b82135",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1088.5609419783577,
+            "prompt_tokens": 871,
+            "completion_tokens": 56,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009565625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:32:37.737700Z"
+            "recorded_at": "2026-10-06T09:06:46.261354Z"
           },
           "checks": [
             {
@@ -2678,22 +2696,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-781120\",\n  \"summary\": \"Customer received order TS-781120 with a cracked case and missing blade wrench.\"\n}",
+          "output": "```json\n{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-781120\",\n  \"summary\": \"Circular saw arrived with a cracked case and missing blade wrench.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "b412abb9e427ca9700355c2aac4c1ef5bbcab78c8437cc0e787ae83c123e4d86",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1198.472490068525,
-            "prompt_tokens": 959,
-            "completion_tokens": 62,
+            "key": "63a74745ca7ddf6bccb05390ce26f99e2bb1257f2065db02d6531353f3fad10f",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1181.5859470516443,
+            "prompt_tokens": 871,
+            "completion_tokens": 55,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000076325,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:32:41.330772Z"
+            "recorded_at": "2026-10-06T09:06:49.687755Z"
           },
           "checks": [
             {
@@ -2743,22 +2761,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-781120\",\n  \"summary\": \"Customer received a circular saw with a cracked case and missing blade wrench from order TS-781120.\"\n}",
+          "output": "```json\n{\n  \"category\": \"shipping\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-781120\",\n  \"summary\": \"Circular saw arrived with a cracked case and the blade wrench missing.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "4fb2cdc1bc3e51f41e0b66689943b360fd655e6d47171367e3c1d8b523998ee7",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1193.1098770583048,
-            "prompt_tokens": 959,
-            "completion_tokens": 66,
+            "key": "b8bf8e4b4da00cfb039f20331a689d337810f268a11cbd8664f53780039ed42c",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1160.3064340306446,
+            "prompt_tokens": 871,
+            "completion_tokens": 56,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009565625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:33:14.960861Z"
+            "recorded_at": "2026-10-06T09:06:52.999821Z"
           },
           "checks": [
             {
@@ -2820,22 +2838,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-118553\",\n  \"summary\": \"Customer wants to exchange a hammer for a larger size from order TS-118553.\"\n}",
+          "output": "```json\n{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-118553\",\n  \"summary\": \"How to exchange a hammer for a bigger one.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "51c1403a3404710b003c128fdc75152e273a9dea948f3f96aaaf50382c13678b",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 969.9341029627249,
-            "prompt_tokens": 957,
-            "completion_tokens": 63,
+            "key": "2d460258499ec865ce26d2734d7f214c89d7c166b5f6adb3bbdef99c71712eac",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1059.2067609541118,
+            "prompt_tokens": 868,
+            "completion_tokens": 51,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000753,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:33:18.071062Z"
+            "recorded_at": "2026-10-06T09:06:56.232018Z"
           },
           "checks": [
             {
@@ -2885,22 +2903,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-118553\",\n  \"summary\": \"Customer wants to exchange a hammer for a larger size from order TS-118553.\"\n}",
+          "output": "```json\n{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-118553\",\n  \"summary\": \"How to exchange a hammer for a bigger one.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "37338dc08faa705571930b3dbe809d14eacc8db4da4c0d80602d994db753b24b",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1153.8198509952053,
-            "prompt_tokens": 957,
-            "completion_tokens": 63,
+            "key": "cd575c1709747b12d5c7fbc70cd1e51eab629b23ff880a0754bfd65f11262f6e",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1124.2969710147008,
+            "prompt_tokens": 868,
+            "completion_tokens": 51,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000753,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:33:21.588775Z"
+            "recorded_at": "2026-10-06T09:06:59.630437Z"
           },
           "checks": [
             {
@@ -2950,22 +2968,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-118553\",\n  \"summary\": \"Customer wants to exchange a hammer for a larger size from order TS-118553.\"\n}",
+          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-118553\",\n  \"summary\": \"How to exchange a hammer for a bigger one.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "68404aa6cea4b67fb5c24972d69ebd6887ef519f8aa3ba18433b9e451791f63c",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 4509.02713695541,
-            "prompt_tokens": 957,
-            "completion_tokens": 63,
+            "key": "8b63605641973d201572a998d05607b3d8373fdd64f51b03d59a67bc951743dd",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 984.5491989981383,
+            "prompt_tokens": 868,
+            "completion_tokens": 47,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000093125,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:33:28.276892Z"
+            "recorded_at": "2026-10-06T09:07:02.824312Z"
           },
           "checks": [
             {
@@ -3027,22 +3045,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Guest customer requests a return label for a chisel set.\"\n}",
+          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Guest wants to return a chisel set and needs a return label.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "e934225ea18dc4697077a68caa50794f6421033d383e8cf52b97fb9979068a7c",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 780.2534090587869,
-            "prompt_tokens": 958,
-            "completion_tokens": 46,
+            "key": "91e2147b41a973a7d5a231f070516f63652db48b04df89024b2e1d819fc99b9b",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1070.3582189744338,
+            "prompt_tokens": 869,
+            "completion_tokens": 43,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000073775,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:33:29.065220Z"
+            "recorded_at": "2026-10-06T09:07:06.243144Z"
           },
           "checks": [
             {
@@ -3092,22 +3110,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Guest customer requests a return label for a chisel set.\"\n}",
+          "output": "```json\n{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Guest customer wants to return a chisel set and needs a return label.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "e0598ec79fb92984aac883283d20dd8b11f63f4b87aab2db24c0db4a9738bcfd",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 768.4661869425327,
-            "prompt_tokens": 958,
-            "completion_tokens": 46,
+            "key": "212f77e2e3c1630bda25b7717a96e0069eed273e41da604016e98456d53bcee8",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1082.683271029964,
+            "prompt_tokens": 869,
+            "completion_tokens": 48,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009346875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:33:32.386838Z"
+            "recorded_at": "2026-10-06T09:07:09.588825Z"
           },
           "checks": [
             {
@@ -3157,22 +3175,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Guest customer requests a return label for a chisel set.\"\n}",
+          "output": "```json\n{\n  \"category\": \"returns\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"How to return a chisel set purchased as a guest.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "d132a8e0c3c6de37af271d1ba5e3f7b8cb155ae7703775e00b725d05e95b1bee",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 841.3791239727288,
-            "prompt_tokens": 958,
-            "completion_tokens": 46,
+            "key": "34620483052e485df669bb2859a34c7b6db4019173266e0e4baa8123cc995e4a",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1162.362135015428,
+            "prompt_tokens": 869,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009271875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:33:35.793257Z"
+            "recorded_at": "2026-10-06T09:07:13.001864Z"
           },
           "checks": [
             {
@@ -3234,22 +3252,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-623004\",\n  \"summary\": \"Customer reports being charged twice for the same order.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-623004\",\n  \"summary\": \"Customer was charged twice for the same order.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "b16e73590fd2cea0315c19ea003c39e4596f4a729a5da86ff13653aa4213d458",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 783.8016540044919,
-            "prompt_tokens": 966,
-            "completion_tokens": 52,
+            "key": "3f9225840ccb11be738214b4019d7aa59ad3295a18fca057b140b94e368baff0",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1579.379781964235,
+            "prompt_tokens": 877,
+            "completion_tokens": 51,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009496875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:33:39.068856Z"
+            "recorded_at": "2026-10-06T09:07:16.752192Z"
           },
           "checks": [
             {
@@ -3299,22 +3317,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-623004\",\n  \"summary\": \"Customer reports being charged twice for the same order.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-623004\",\n  \"summary\": \"Customer was charged twice for the same order.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "cd286fbcf6a864d2a4a97e1f37996ce3d58623ebfd14375fa621e557cd994c8e",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1371.2507520103827,
-            "prompt_tokens": 966,
-            "completion_tokens": 52,
+            "key": "1bc1ceab09f421494ff0688eec18df9c26011ed5f74793c01364c161d3cc4b3c",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1811.6100899642333,
+            "prompt_tokens": 877,
+            "completion_tokens": 51,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009496875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:33:42.989632Z"
+            "recorded_at": "2026-10-06T09:07:20.317784Z"
           },
           "checks": [
             {
@@ -3364,22 +3382,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-623004\",\n  \"summary\": \"Customer reports being charged twice for the same order.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-623004\",\n  \"summary\": \"Customer was charged twice for the same order.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "e1e352cf2088e6539e41b95411264dd1d3c73c9783d5dd89389be4eb6790a720",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 790.3689310187474,
-            "prompt_tokens": 966,
-            "completion_tokens": 52,
+            "key": "bad830b6a1b38ee09a703c0a4ddea6e4757fdb7da17c7e973e7cae6b5481e77b",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1656.2692370498553,
+            "prompt_tokens": 877,
+            "completion_tokens": 51,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009496875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:34:16.053758Z"
+            "recorded_at": "2026-10-06T09:07:23.495781Z"
           },
           "checks": [
             {
@@ -3441,22 +3459,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"urgent\",\n  \"order_id\": null,\n  \"summary\": \"Customer reports an unauthorized $74.50 charge from Toolshop and states they do not have an account or place the order.\"\n}",
+          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"urgent\",\n  \"order_id\": null,\n  \"summary\": \"A $74.50 charge from Toolshop on a statement for an order that was not placed.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "81ce32d8e3731a6986ff43077982bcfabba7fe59d0dcf98ffdd8324fe3cc4eae",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 902.6008179644123,
-            "prompt_tokens": 967,
-            "completion_tokens": 61,
+            "key": "ffd665a4412f6da13f31b84ac625de47b1cee50b3bf436e8837a08ccfd727c0c",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1383.5230999393389,
+            "prompt_tokens": 878,
+            "completion_tokens": 52,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000953125,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:34:19.499380Z"
+            "recorded_at": "2026-10-06T09:07:26.556342Z"
           },
           "checks": [
             {
@@ -3506,22 +3524,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"urgent\",\n  \"order_id\": null,\n  \"summary\": \"Customer reports an unauthorized $74.50 charge from Toolshop and states they do not have an account or place the order.\"\n}",
+          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"urgent\",\n  \"order_id\": null,\n  \"summary\": \"A charge for an order the customer did not place.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "f0e7d9b7706b182582a6063e4ddc6e03446b144fa08992eaaa9074a50ae44da7",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 890.3004809981212,
-            "prompt_tokens": 967,
-            "completion_tokens": 61,
+            "key": "462168704f6d9330e63612af0ca46c741e1f76f24b29eced9d8c85654e137a2b",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1405.7629179442301,
+            "prompt_tokens": 878,
+            "completion_tokens": 41,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000925625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:34:22.820388Z"
+            "recorded_at": "2026-10-06T09:07:29.911917Z"
           },
           "checks": [
             {
@@ -3571,22 +3589,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"urgent\",\n  \"order_id\": null,\n  \"summary\": \"Customer reports an unauthorized $74.50 charge from Toolshop and states they do not have an account or place the order.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"urgent\",\n  \"order_id\": null,\n  \"summary\": \"A charge for an order the customer did not place.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "5b5cdedec630c192aa6fbe33693c23ac46afcbd5cc5b9af21e8fd3ae0d0b887d",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 5942.311008926481,
-            "prompt_tokens": 967,
-            "completion_tokens": 61,
+            "key": "4e9ae1f2bf0a225162a12bd68832659e6ab5162d3a30580fb42c1b2e26bc7cf9",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 991.3157790433615,
+            "prompt_tokens": 878,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000935625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:34:31.205786Z"
+            "recorded_at": "2026-10-06T09:07:32.830838Z"
           },
           "checks": [
             {
@@ -3648,22 +3666,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer reports their card is repeatedly declined at checkout despite working elsewhere.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer's card is declined at checkout but works elsewhere.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "f030ca34333a6c7b4ebea51b9a134726760d47f6b4ca89db959366341210ce11",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 725.1856349175796,
-            "prompt_tokens": 950,
-            "completion_tokens": 47,
+            "key": "8ff44767e4a9c3152a4771d299dcfc46c0b273ba00e0d3c4509cc210d951ee35",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1307.7705019386485,
+            "prompt_tokens": 861,
+            "completion_tokens": 44,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009171875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:34:31.937130Z"
+            "recorded_at": "2026-10-06T09:07:36.480821Z"
           },
           "checks": [
             {
@@ -3713,22 +3731,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer reports their card is repeatedly declined at checkout despite working elsewhere.\"\n}",
+          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Card keeps getting declined at checkout even though it works elsewhere.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "d3a4446eb114f631e882cc402ef061a4dc3bc6a8a5c512a28adc4b9b07d542f8",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 735.7666910393164,
-            "prompt_tokens": 950,
-            "completion_tokens": 47,
+            "key": "31c8e991893c7ee38aff10fb36a60e59cf69320993e101a7927570c045539ea2",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1294.0441670361906,
+            "prompt_tokens": 861,
+            "completion_tokens": 41,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009096875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:34:35.281145Z"
+            "recorded_at": "2026-10-06T09:07:39.800159Z"
           },
           "checks": [
             {
@@ -3778,22 +3796,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer reports their card is repeatedly declined at checkout despite working elsewhere.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Card keeps getting declined at checkout even though it works everywhere else.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "89215a89e9f7e7ea701b46e123fe079bfcba64ef96e72590f2e9371a1cc97931",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 789.058369002305,
-            "prompt_tokens": 950,
-            "completion_tokens": 47,
+            "key": "de26d65e24f3cb6b9f1880c676057c71b578e6ad48623aa5a35edf3d70a5930f",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1043.394167907536,
+            "prompt_tokens": 861,
+            "completion_tokens": 46,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009221875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:34:38.667713Z"
+            "recorded_at": "2026-10-06T09:07:42.883163Z"
           },
           "checks": [
             {
@@ -3855,22 +3873,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer inquires whether Apple Pay is accepted as a payment method.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Do you take Apple Pay?\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "05766812be0a57309fda094fa8e89e2e04773a9c749f0de721343f389752ce93",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 4569.08956496045,
-            "prompt_tokens": 942,
-            "completion_tokens": 47,
+            "key": "15a397c762c932dcf91f7b920032293f94ace678e1a89ce8011e46852f03e7af",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1027.6306959567592,
+            "prompt_tokens": 853,
+            "completion_tokens": 39,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00008971875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:34:45.781078Z"
+            "recorded_at": "2026-10-06T09:07:46.200477Z"
           },
           "checks": [
             {
@@ -3920,22 +3938,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer inquires whether Apple Pay is accepted as a payment method.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks if Apple Pay is accepted.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "7012bc0538f5d0b5fb0bfb96ac9c495a4f11db843ed65299742301d5338dd550",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 738.7693820055574,
-            "prompt_tokens": 942,
-            "completion_tokens": 47,
+            "key": "40114521de8999fc053dc71bd6ccb111f22806550ba7069750a4377c82d83755",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1796.2063449667767,
+            "prompt_tokens": 853,
+            "completion_tokens": 41,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009021875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:34:46.527563Z"
+            "recorded_at": "2026-10-06T09:07:50.302341Z"
           },
           "checks": [
             {
@@ -3985,22 +4003,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer inquires whether Apple Pay is accepted as a payment method.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Do you take Apple Pay?\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "b97fca683c5ab2ae5b7234565fee5821973031fc07eed5bdd1c62824c22b0b6b",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1709.8931489745155,
-            "prompt_tokens": 942,
-            "completion_tokens": 47,
+            "key": "55853aac63bfe21c2a08f769aae55c3dae0c7be4fb20030e7aa9a20905de5a60",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1022.2392189316452,
+            "prompt_tokens": 853,
+            "completion_tokens": 39,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00008971875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:34:50.832047Z"
+            "recorded_at": "2026-10-06T09:07:52.861720Z"
           },
           "checks": [
             {
@@ -4062,22 +4080,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer inquires about the process to apply for payment by invoice for their building company.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"A building company wants to pay by invoice and asks how to apply.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "35c943af7eeeb8c5211f221ece601676396acc93ffc2336f9c7d40eac8f0f18d",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 18114.3945310032,
-            "prompt_tokens": 953,
-            "completion_tokens": 51,
+            "key": "68fe83377841865ae0e57b77396f5de17eff52e40254ba5abbc59719e79ff106",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1754.5859119854867,
+            "prompt_tokens": 864,
+            "completion_tokens": 47,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009275,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:35:10.569898Z"
+            "recorded_at": "2026-10-06T09:07:56.927422Z"
           },
           "checks": [
             {
@@ -4127,22 +4145,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer inquires about the process to apply for payment by invoice for their building company.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"A building company wants to pay by invoice and asks how to apply.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "b2d0c6d2938f7eb2d6cd387fabc6efd68a83eebfb32ef24a7b8b180202c0589a",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 932.6098699821159,
-            "prompt_tokens": 953,
-            "completion_tokens": 51,
+            "key": "5f524586c1d85ec17e6a8b0c1db1b40a0758bf93a791ff953940b6f08ad4519b",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1209.1507769655436,
+            "prompt_tokens": 864,
+            "completion_tokens": 47,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009275,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:35:11.508587Z"
+            "recorded_at": "2026-10-06T09:07:59.715292Z"
           },
           "checks": [
             {
@@ -4192,22 +4210,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer inquires about the process to apply for payment by invoice for their building company.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"A building company wants to pay by invoice and asks how to apply.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "a5faa4fe5fe8bdebb7d81acb2904586492ce71418c8131ac3d1576cbd8ba3425",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 831.5335690276697,
-            "prompt_tokens": 953,
-            "completion_tokens": 51,
+            "key": "855c78633ddd4fb297cfac9bf51d71a592cb724489918f69a2f5c3c07a49c230",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 949.6734659187496,
+            "prompt_tokens": 864,
+            "completion_tokens": 47,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009275,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:35:14.740889Z"
+            "recorded_at": "2026-10-06T09:08:02.789185Z"
           },
           "checks": [
             {
@@ -4269,22 +4287,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-450918\",\n  \"summary\": \"Customer reports a card hold of $62.40 remains after cancelling order TS-450918 before it shipped.\"\n}",
+          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-450918\",\n  \"summary\": \"Card hold for order cancelled before shipping.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "85a6ea98a1e5401e1b21305f358080e1f178527363571ffb86db59c5516b6008",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 8955.585659015924,
-            "prompt_tokens": 969,
-            "completion_tokens": 70,
+            "key": "c1fc6748430b871e21d3076378672ea66e9bf1fdc39dec549f23896e718e6f9b",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 820.5212970497087,
+            "prompt_tokens": 880,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:35:26.198267Z"
+            "recorded_at": "2026-10-06T09:08:05.993330Z"
           },
           "checks": [
             {
@@ -4334,22 +4352,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-450918\",\n  \"summary\": \"Customer reports a card hold of $62.40 remains after cancelling order TS-450918 before it shipped.\"\n}",
+          "output": "```json\n{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-450918\",\n  \"summary\": \"A $62.40 hold remains on the customer's card for a cancelled order.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "52d7331f1dd2a9f331f207d8904fe502feaa4a69593a4c78fcb2c53e9bd5c755",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1120.1708819717169,
-            "prompt_tokens": 969,
-            "completion_tokens": 70,
+            "key": "260e1c6901a909ce33a9e8042a8630bb949cb84e3232eaeaf9b99ab18bcd4438",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1309.4912839587778,
+            "prompt_tokens": 880,
+            "completion_tokens": 60,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000078,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:35:27.324711Z"
+            "recorded_at": "2026-10-06T09:08:09.815633Z"
           },
           "checks": [
             {
@@ -4399,22 +4417,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-450918\",\n  \"summary\": \"Customer reports a card hold of $62.40 remains after cancelling order TS-450918 before it shipped.\"\n}",
+          "output": "{\n  \"category\": \"payment\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-450918\",\n  \"summary\": \"Card hold for order that was cancelled before shipping.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "ca98a50a4c85e17a9366cba9e9cb91b7121495056e5acd62c750db90745ae037",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1141.6573530295864,
-            "prompt_tokens": 969,
-            "completion_tokens": 70,
+            "key": "ed510858e9627bc6ba06d389d012ea3b39c341c6f8afc0df1151092fe54158a6",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 933.4668820956722,
+            "prompt_tokens": 880,
+            "completion_tokens": 47,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009425,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:35:30.679581Z"
+            "recorded_at": "2026-10-06T09:08:12.772947Z"
           },
           "checks": [
             {
@@ -4476,22 +4494,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-209876\",\n  \"summary\": \"Impact driver smoked and smelled burnt during use; customer unplugged it.\"\n}",
+          "output": "```json\n{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-209876\",\n  \"summary\": \"Impact driver started smoking and smelled burnt while in use.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "447d674d74ce070762209b389ce806f1219d4bb160f830b4ac945f94f739f94c",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 6082.34690502286,
-            "prompt_tokens": 965,
-            "completion_tokens": 57,
+            "key": "38097d7dd3b964511642ad48a0df1f231d5150cfa0c928184a6df5e9a821e3ad",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1269.4529530126601,
+            "prompt_tokens": 877,
+            "completion_tokens": 55,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009596875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:35:38.953575Z"
+            "recorded_at": "2026-10-06T09:08:16.442268Z"
           },
           "checks": [
             {
@@ -4541,22 +4559,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-209876\",\n  \"summary\": \"Impact driver smoked and smelled burnt during use; customer unplugged it.\"\n}",
+          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-209876\",\n  \"summary\": \"My impact driver started smoking and smelled burnt while I was using it. I unplugged it.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "8afd8eecce4360aeaafcf9cb8c71ad298b5d5cfc79daae2c3ac3c34d532be3be",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 3563.964666100219,
-            "prompt_tokens": 965,
-            "completion_tokens": 57,
+            "key": "555f7bd36a947667a0fa729e5d0db52c43cf90740ed9c04b67b16e8e4d2b07a3",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2276.618676027283,
+            "prompt_tokens": 877,
+            "completion_tokens": 60,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009721875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:35:42.524965Z"
+            "recorded_at": "2026-10-06T09:08:20.782750Z"
           },
           "checks": [
             {
@@ -4606,22 +4624,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-209876\",\n  \"summary\": \"Impact driver smoked and smelled burnt during use; customer unplugged it.\"\n}",
+          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-209876\",\n  \"summary\": \"Impact driver smoked and smelled burnt while in use.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "744d1ba7bea138ad405022f24ef1caae712b6d81bbccc831c22a8f542df45266",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 950.1365929609165,
-            "prompt_tokens": 965,
-            "completion_tokens": 57,
+            "key": "3e0f19b2320fdc801aea6cd0002f320a98f7ad0027f08bd0cd3c0674aee5f17f",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1472.6799379568547,
+            "prompt_tokens": 877,
+            "completion_tokens": 50,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000075775,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:35:43.482032Z"
+            "recorded_at": "2026-10-06T09:08:23.312159Z"
           },
           "checks": [
             {
@@ -4683,22 +4701,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": null,\n  \"summary\": \"Customer reports an 18V battery purchased in March is swollen and hot to the touch, posing a safety risk.\"\n}",
+          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": null,\n  \"summary\": \"18 V battery is swollen and hot to the touch.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "3f512216029d9cf6103e459c9ac8094b9395f2c9d4b94b8a2e7640b2fde54d16",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 10607.752708951011,
-            "prompt_tokens": 959,
-            "completion_tokens": 59,
+            "key": "b3610334304d6a7ac48cc5d86c2cc1661ddaa553d0d2d163e1f9d2c84f7ca5f7",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1014.7066080244258,
+            "prompt_tokens": 870,
+            "completion_tokens": 44,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000925625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:35:56.473087Z"
+            "recorded_at": "2026-10-06T09:08:26.187554Z"
           },
           "checks": [
             {
@@ -4748,22 +4766,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": null,\n  \"summary\": \"Customer reports an 18V battery purchased in March is swollen and hot to the touch, posing a safety risk.\"\n}",
+          "output": "```json\n{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": null,\n  \"summary\": \"A battery is swollen and hot to the touch.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "b073d6a5d9aa481555e2f6f798dea58f3075a6e3e0921aa7112a2553ced44b0a",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 829.57101194188,
-            "prompt_tokens": 959,
-            "completion_tokens": 59,
+            "key": "bd3426b1563d5160b93bfeb12512613ba3fe1e4e8ad1952df5f89ac09c240b4a",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1313.0011369939893,
+            "prompt_tokens": 870,
+            "completion_tokens": 46,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000930625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:36:27.577118Z"
+            "recorded_at": "2026-10-06T09:08:29.819149Z"
           },
           "checks": [
             {
@@ -4813,22 +4831,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": null,\n  \"summary\": \"Customer reports an 18V battery purchased in March is swollen and hot to the touch, posing a safety risk.\"\n}",
+          "output": "```json\n{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": null,\n  \"summary\": \"A battery is swollen and hot to the touch.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "ed7f23d836c735930e0270c07216dee6ff284ea925575c38622b5d21566876a7",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 920.511121978052,
-            "prompt_tokens": 959,
-            "completion_tokens": 59,
+            "key": "4d354294b009c3ac017747881cff39493f9c2d99208df5978790773d5fa3ad77",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1390.1723099406809,
+            "prompt_tokens": 870,
+            "completion_tokens": 46,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000930625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:36:31.001469Z"
+            "recorded_at": "2026-10-06T09:08:33.229663Z"
           },
           "checks": [
             {
@@ -4890,22 +4908,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-145520\",\n  \"summary\": \"Customer reports their angle grinder from order TS-145520 stopped working and will not turn on.\"\n}",
+          "output": "```json\n{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-145520\",\n  \"summary\": \"Angle grinder from last year stopped working and won't turn on.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "e1463a8e3a115ee077025921023950752393fc50f60b71dbc66b4f24cab29bda",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1062.67506594304,
-            "prompt_tokens": 962,
-            "completion_tokens": 66,
+            "key": "fe48f083f544b597fcb883c6d943470f2c761c53825ff0a55fe1e6083aea10f9",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1659.5077700912952,
+            "prompt_tokens": 873,
+            "completion_tokens": 56,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009584375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:36:34.476961Z"
+            "recorded_at": "2026-10-06T09:08:36.832317Z"
           },
           "checks": [
             {
@@ -4955,22 +4973,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-145520\",\n  \"summary\": \"Customer reports their angle grinder from order TS-145520 stopped working and will not turn on.\"\n}",
+          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-145520\",\n  \"summary\": \"Angle grinder from last year won't turn on.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "5ab6eafe14b207f32f87edd6e8bc4c5e47aed03b6e716b0d0ee12b2c4492e146",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1095.468037063256,
-            "prompt_tokens": 962,
-            "completion_tokens": 66,
+            "key": "619cf128d81790b91b28996912bcefe57fa88ff94edd0b5313f06ead77815381",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1599.8403968987986,
+            "prompt_tokens": 873,
+            "completion_tokens": 49,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009409375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:36:37.843099Z"
+            "recorded_at": "2026-10-06T09:08:40.105967Z"
           },
           "checks": [
             {
@@ -5020,22 +5038,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-145520\",\n  \"summary\": \"Customer reports their angle grinder from order TS-145520 stopped working and will not turn on.\"\n}",
+          "output": "```json\n{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-145520\",\n  \"summary\": \"Angle grinder from last year stopped working and won't turn on.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "3490381eaba3501626c56c3002558ed54dfed12a1be0f7fea5dafbf9b993e1e2",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1233.0648209899664,
-            "prompt_tokens": 962,
-            "completion_tokens": 66,
+            "key": "5b763c15534bcf779edee405a2eab5acdb22fd3ec9b66c5b84644a2f2a516aeb",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1217.1789179556072,
+            "prompt_tokens": 873,
+            "completion_tokens": 56,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009584375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:36:41.314021Z"
+            "recorded_at": "2026-10-06T09:08:43.056637Z"
           },
           "checks": [
             {
@@ -5097,22 +5115,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer reports a broken ratchet in a wrench set and asks how to claim the lifetime warranty.\"\n}",
+          "output": "```json\n{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"The ratchet on my wrench set broke and I want to claim the lifetime warranty.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "c4f93e14e521d78b2990b0f6c816b9adebb9badd57d7e5b2a45c47d8c3f40784",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 7301.705840043724,
-            "prompt_tokens": 959,
-            "completion_tokens": 54,
+            "key": "e4aec31d36eab010f4526559af5d56af25d61fda8d86a06bf8b15758b0ee0257",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1037.0124999899417,
+            "prompt_tokens": 871,
+            "completion_tokens": 53,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000075925,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:36:50.716045Z"
+            "recorded_at": "2026-10-06T09:08:46.209839Z"
           },
           "checks": [
             {
@@ -5162,22 +5180,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer wants to claim the lifetime warranty for a broken ratchet in their wrench set.\"\n}",
+          "output": "```json\n{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"The ratchet on my wrench set broke and I want to claim the lifetime warranty.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "071bdbf738ff628a59a0b7224537e0a30e57b82a94dcc5db9e9bb1ee2ffaed74",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1148.2410010648891,
-            "prompt_tokens": 959,
-            "completion_tokens": 52,
+            "key": "935f90f483736fe8d0d1604da60359c3965d3b02255554dd3177e26380ffe88e",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 906.3658328959718,
+            "prompt_tokens": 871,
+            "completion_tokens": 53,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000075925,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:37:22.151672Z"
+            "recorded_at": "2026-10-06T09:08:49.412506Z"
           },
           "checks": [
             {
@@ -5227,22 +5245,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer reports a broken ratchet in a wrench set and asks how to claim the lifetime warranty.\"\n}",
+          "output": "```json\n{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"The ratchet on my wrench set broke and I want to claim the lifetime warranty.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "b55f6ce67399177ae4bb49c1a41c6dc123a75e19a5ebe82c3de242e609f0d257",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 863.9678560430184,
-            "prompt_tokens": 959,
-            "completion_tokens": 54,
+            "key": "0131e60e88e0a15d5a8e0da2c7842da927a4bd5cf37312c475fa6500a6e44e45",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1237.551867030561,
+            "prompt_tokens": 871,
+            "completion_tokens": 53,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000075925,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:37:25.200802Z"
+            "recorded_at": "2026-10-06T09:08:53.077018Z"
           },
           "checks": [
             {
@@ -5304,22 +5322,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer is asking about the warranty duration for chargers.\"\n}",
+          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"How long is the warranty on chargers?\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "9fd2b9b87c174586517e33f0a04a350ee5d74a472db6ab679a07828860b360bb",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 720.6722060218453,
-            "prompt_tokens": 945,
-            "completion_tokens": 46,
+            "key": "d951b5f2547173d66e3d79624e3d771eddbe22a79d9a631d088f51a9b99caf65",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1235.2660639444366,
+            "prompt_tokens": 856,
+            "completion_tokens": 40,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00008904,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:37:28.391195Z"
+            "recorded_at": "2026-10-06T09:08:56.408067Z"
           },
           "checks": [
             {
@@ -5349,8 +5367,8 @@
             {
               "layer": "reference",
               "name": "category_match",
-              "passed": false,
-              "detail": "expected 'warranty', got 'product_question'"
+              "passed": true,
+              "detail": "'warranty'"
             },
             {
               "layer": "reference",
@@ -5369,22 +5387,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer is asking about the warranty duration for chargers.\"\n}",
+          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"How long is the warranty on chargers?\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "ead4d5a04b7cea350f0b54363a951c6d619da8bc5b2d31f76329a77c9ae1952c",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 800.0860440079123,
-            "prompt_tokens": 945,
-            "completion_tokens": 46,
+            "key": "83c16a2f4073b8ce994afd96b723b262511b8d7d81e6b559c6f5d92f91090f02",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1045.6209210678935,
+            "prompt_tokens": 856,
+            "completion_tokens": 40,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00005512,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:37:31.803595Z"
+            "recorded_at": "2026-10-06T09:08:59.551999Z"
           },
           "checks": [
             {
@@ -5414,8 +5432,8 @@
             {
               "layer": "reference",
               "name": "category_match",
-              "passed": false,
-              "detail": "expected 'warranty', got 'product_question'"
+              "passed": true,
+              "detail": "'warranty'"
             },
             {
               "layer": "reference",
@@ -5434,22 +5452,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer is asking about the warranty duration for chargers.\"\n}",
+          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"How long is the warranty on chargers?\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "e8b098cc843f2466c08d796f3718385e103736effaa1693e6266a037468be733",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 699.4424969889224,
-            "prompt_tokens": 945,
-            "completion_tokens": 46,
+            "key": "84bf76c78e9bfa37d3eae2dfa3b1514d383b32038fcc0ebbab26d27410cbdc54",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1099.2294430034235,
+            "prompt_tokens": 856,
+            "completion_tokens": 40,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00005512,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:37:35.036328Z"
+            "recorded_at": "2026-10-06T09:09:02.938715Z"
           },
           "checks": [
             {
@@ -5479,8 +5497,8 @@
             {
               "layer": "reference",
               "name": "category_match",
-              "passed": false,
-              "detail": "expected 'warranty', got 'product_question'"
+              "passed": true,
+              "detail": "'warranty'"
             },
             {
               "layer": "reference",
@@ -5511,22 +5529,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-233019\",\n  \"summary\": \"Customer reports a wobbling chuck on a cordless drill after eight months of use and requests repair or replacement.\"\n}",
+          "output": "```json\n{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-233019\",\n  \"summary\": \"Cordless drill's chuck wobbles after 8 months of use; customer requests repair or replacement.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "62bb13e74f26c13228e6f1fd5fc962535c9ecfd1b3af0cac8a2fa0fe5ec610b6",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 972.3235819255933,
-            "prompt_tokens": 967,
-            "completion_tokens": 65,
+            "key": "08bc25da89b04c248e55bff69b58660f7f8b91060a0d834f021dadffa2731a32",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2821.1362379370257,
+            "prompt_tokens": 879,
+            "completion_tokens": 66,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009890625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:37:38.642478Z"
+            "recorded_at": "2026-10-06T09:09:07.993959Z"
           },
           "checks": [
             {
@@ -5576,22 +5594,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-233019\",\n  \"summary\": \"Customer reports a wobbling chuck on a cordless drill after eight months of use and requests repair or replacement.\"\n}",
+          "output": "```json\n{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-233019\",\n  \"summary\": \"Cordless drill's chuck wobbles after 8 months of use; customer asks to fix or replace it.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "1693fc796aa41dc26e757c73d6a80f8ffd8dd6ffab0543433fbc1ecbbef9b49d",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 10689.855471020564,
-            "prompt_tokens": 967,
-            "completion_tokens": 65,
+            "key": "d5c8f8aca253ef1e486d3a713685d50ee9f10cbeea5d883c793c48d8f8cb4b56",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2773.4213870717213,
+            "prompt_tokens": 879,
+            "completion_tokens": 68,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009940625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:37:51.693352Z"
+            "recorded_at": "2026-10-06T09:09:11.279911Z"
           },
           "checks": [
             {
@@ -5641,22 +5659,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-233019\",\n  \"summary\": \"Customer reports wobbly chuck on cordless drill after 8 months and requests repair or replacement.\"\n}",
+          "output": "```json\n{\n  \"category\": \"warranty\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-233019\",\n  \"summary\": \"Cordless drill's chuck wobbles after 8 months of use and needs repair or replacement.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "b51360382d50dee37aa114c346847677bebc6d552300e4a3449d048293dd44db",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 8007.13136093691,
-            "prompt_tokens": 967,
-            "completion_tokens": 63,
+            "key": "ce3a2d57a9665d2d1e33bdb676bcd7312e5a384d7540595da8e6c0b2a17a7624",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2302.2771649993956,
+            "prompt_tokens": 879,
+            "completion_tokens": 65,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009865625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:38:29.982129Z"
+            "recorded_at": "2026-10-06T09:09:14.141853Z"
           },
           "checks": [
             {
@@ -5718,22 +5736,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-334120\",\n  \"summary\": \"Hammer head detached and injured the customer's hand during use.\"\n}",
+          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-334120\",\n  \"summary\": \"The head flew off my hammer and hit my hand, and it was bleeding.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "7edb226c748807bb2e99b05d9e3e49a728819e04b971e219c4cf4ac940b53efe",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 861.9900519261137,
-            "prompt_tokens": 965,
+            "key": "9dd04e360fcac9048cbac8c480d7f1ee206d6388c7367fb8475eb770d62edc30",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1930.3780830232427,
+            "prompt_tokens": 876,
             "completion_tokens": 56,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000769,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:38:30.851061Z"
+            "recorded_at": "2026-10-06T09:09:17.103624Z"
           },
           "checks": [
             {
@@ -5783,22 +5801,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-334120\",\n  \"summary\": \"Hammer head detached and injured the customer's hand during use.\"\n}",
+          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-334120\",\n  \"summary\": \"The head flew off my hammer and hit my hand.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "a0cacf29592e8aa73f60d7ebab5645ecf35239be200afa5a340bc90004ae9bf2",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1063.0335030145943,
-            "prompt_tokens": 965,
-            "completion_tokens": 56,
+            "key": "89ab00ae3e34edacf49439e813b8575e7c2e52e358e13f187329488619adbbb9",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1758.9642769889906,
+            "prompt_tokens": 876,
+            "completion_tokens": 51,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000094875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:38:34.385495Z"
+            "recorded_at": "2026-10-06T09:09:20.265452Z"
           },
           "checks": [
             {
@@ -5848,22 +5866,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-334120\",\n  \"summary\": \"Hammer head detached and injured the customer's hand during use.\"\n}",
+          "output": "{\n  \"category\": \"warranty\",\n  \"priority\": \"urgent\",\n  \"order_id\": \"TS-334120\",\n  \"summary\": \"The head flew off my hammer and hit my hand, and it was bleeding.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "8859698db3b0895ecb5692d1144c061d44c1b4f47b8ae6fca799c55e2d213436",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 4096.1752000730485,
-            "prompt_tokens": 965,
+            "key": "8a25b6e9ed2c8967cd57b2f6ad646b83e992da07f49087fef3b9e9c838eec055",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2427.9773290036246,
+            "prompt_tokens": 876,
             "completion_tokens": 56,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000096125,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:38:40.751963Z"
+            "recorded_at": "2026-10-06T09:09:24.267449Z"
           },
           "checks": [
             {
@@ -5925,22 +5943,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-388412\",\n  \"summary\": \"Customer is asking for the current status and location of their order placed on Monday.\"\n}",
+          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-388412\",\n  \"summary\": \"Customer asks where their order is.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "632e35a8b8be2031248aeaa0501222b5d1b588258cc45d93bf71e4f05427425a",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 961.8384169880301,
-            "prompt_tokens": 955,
-            "completion_tokens": 59,
+            "key": "e951157ff39b593ce951dedab7895fbd2998597793c7a79659c7b14ac7cafd5a",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1491.8206949951127,
+            "prompt_tokens": 866,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00007395,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:38:41.720620Z"
+            "recorded_at": "2026-10-06T09:09:26.664632Z"
           },
           "checks": [
             {
@@ -5990,22 +6008,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-388412\",\n  \"summary\": \"Customer is asking for the current status and location of their order placed on Monday.\"\n}",
+          "output": "```json\n{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-388412\",\n  \"summary\": \"Customer asks where their order is.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "8a0f2516ce786d52ccc8cd1c25639f8ba4c0290ab1713c21fcf00d16d015b052",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 10364.26930502057,
-            "prompt_tokens": 955,
-            "completion_tokens": 59,
+            "key": "d7ada79db6df1953908e294c9f10d3869435a3e1f8f6dda20bda041cbde9438b",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1855.7967239758,
+            "prompt_tokens": 866,
+            "completion_tokens": 49,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000934375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:38:54.456463Z"
+            "recorded_at": "2026-10-06T09:09:30.361918Z"
           },
           "checks": [
             {
@@ -6055,22 +6073,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-388412\",\n  \"summary\": \"Customer is asking for the current status and location of their order placed on Monday.\"\n}",
+          "output": "```json\n{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-388412\",\n  \"summary\": \"Customer asks where their order is.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "1251758df6a4c6bd7fd6350ea5d549346069848f2d14eeed64b72aa704ead8fb",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1324.7770019806921,
-            "prompt_tokens": 955,
-            "completion_tokens": 59,
+            "key": "dfb3762190925a8e262938c0f7cbadf16fa96cc40e07396f3536c67c7dd1d5be",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 4285.038089030422,
+            "prompt_tokens": 866,
+            "completion_tokens": 49,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000934375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:39:26.084205Z"
+            "recorded_at": "2026-10-06T09:09:36.124658Z"
           },
           "checks": [
             {
@@ -6132,22 +6150,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-500231\",\n  \"summary\": \"Customer requests cancellation of order TS-500231 due to ordering the wrong size.\"\n}",
+          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-500231\",\n  \"summary\": \"Please cancel order TS-500231, I ordered the wrong size by mistake.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "846ea70622944047fc46d70cc367ea4e12304b948f9dc3ac57000248209370a6",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1195.6033379537985,
-            "prompt_tokens": 956,
-            "completion_tokens": 63,
+            "key": "9e6f91c1e63795a68cabe62d981036c9cda2cef34f66a37aa1b07ee3a4c7fba5",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1874.7272239997983,
+            "prompt_tokens": 867,
+            "completion_tokens": 58,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009578125,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:39:29.288439Z"
+            "recorded_at": "2026-10-06T09:09:38.022878Z"
           },
           "checks": [
             {
@@ -6197,22 +6215,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-500231\",\n  \"summary\": \"Customer requests cancellation of order TS-500231 due to ordering the wrong size.\"\n}",
+          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-500231\",\n  \"summary\": \"Please cancel order TS-500231, I ordered the wrong size by mistake.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "cdb572cb7c34e1d818dadac399440df640b17df6818baa6cd88154d7c9ac3a7e",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1198.4851619927213,
-            "prompt_tokens": 956,
-            "completion_tokens": 63,
+            "key": "b179777962283245fefd1d37a70c35e6dbc41d31b413460e95fe9c6c94765f6c",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1512.3718900140375,
+            "prompt_tokens": 867,
+            "completion_tokens": 58,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000076625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:39:32.624684Z"
+            "recorded_at": "2026-10-06T09:09:40.993921Z"
           },
           "checks": [
             {
@@ -6262,22 +6280,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-500231\",\n  \"summary\": \"Customer requests cancellation of order TS-500231 due to ordering the wrong size.\"\n}",
+          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-500231\",\n  \"summary\": \"Please cancel order TS-500231, I ordered the wrong size by mistake.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "8824f37f1bdd640cb13089843824fe2b70ee67bc5ca6c61952fb85f0e77c07c8",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 994.7782669914886,
-            "prompt_tokens": 956,
-            "completion_tokens": 63,
+            "key": "584ec7d09eda694480812a52c648dd47fe0c3a4f45508e233c968dd25048e97f",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2653.9841269841418,
+            "prompt_tokens": 867,
+            "completion_tokens": 58,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009578125,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:39:35.754278Z"
+            "recorded_at": "2026-10-06T09:09:45.468867Z"
           },
           "checks": [
             {
@@ -6339,22 +6357,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-612980\",\n  \"summary\": \"Customer reports order status has been stuck at 'Received' for five business days with no further updates.\"\n}",
+          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-612980\",\n  \"summary\": \"Order TS-612980 is stuck in 'Received' status for five business days.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "4a8f863702dcf86e4e9c2794345a411fb46e126b2902cde0939cfa50ba0bcdb0",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1114.937033969909,
-            "prompt_tokens": 958,
-            "completion_tokens": 63,
+            "key": "c9d37f1338481e52bd7f70303cef3194216bda8e0278d662a6291086e0c4cfd5",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 10643.087389995344,
+            "prompt_tokens": 869,
+            "completion_tokens": 59,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000076975,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:39:39.207865Z"
+            "recorded_at": "2026-10-06T09:09:56.791293Z"
           },
           "checks": [
             {
@@ -6390,8 +6408,8 @@
             {
               "layer": "reference",
               "name": "priority_match",
-              "passed": false,
-              "detail": "expected 'high', got 'normal'"
+              "passed": true,
+              "detail": "'high'"
             },
             {
               "layer": "reference",
@@ -6404,22 +6422,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-612980\",\n  \"summary\": \"Customer reports order TS-612980 has been stuck in 'Received' status for five business days with no progress.\"\n}",
+          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-612980\",\n  \"summary\": \"Order status stuck on Received for five business days.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "8485e21a9a30d44060aa14320c1736ad48ef9cb5d420ceb744dc60e063783e77",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 9790.113955037668,
-            "prompt_tokens": 958,
-            "completion_tokens": 70,
+            "key": "8701acdf2bb32197dbc6b99650e898647ac563c31593ca52c51be877df9543ce",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 3028.6816569278017,
+            "prompt_tokens": 869,
+            "completion_tokens": 48,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009346875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:39:51.216276Z"
+            "recorded_at": "2026-10-06T09:09:59.827841Z"
           },
           "checks": [
             {
@@ -6455,8 +6473,8 @@
             {
               "layer": "reference",
               "name": "priority_match",
-              "passed": false,
-              "detail": "expected 'high', got 'normal'"
+              "passed": true,
+              "detail": "'high'"
             },
             {
               "layer": "reference",
@@ -6469,22 +6487,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-612980\",\n  \"summary\": \"Customer reports order status has been stuck at 'Received' for five business days with no progress.\"\n}",
+          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"high\",\n  \"order_id\": \"TS-612980\",\n  \"summary\": \"Order TS-612980 stuck on Received for five business days.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "76af8cefd4f8b82c23d01161090a5f11c75eaff9d0abdee16f7a5061487968d7",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1035.9240170801058,
-            "prompt_tokens": 958,
-            "completion_tokens": 62,
+            "key": "4ef9409bb5a7121971d45ce6d493c83db437f126c1e6f4c5412e4830bf13a3a0",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 3365.420059999451,
+            "prompt_tokens": 869,
+            "completion_tokens": 55,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009521875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:40:22.554317Z"
+            "recorded_at": "2026-10-06T09:10:03.497965Z"
           },
           "checks": [
             {
@@ -6520,8 +6538,8 @@
             {
               "layer": "reference",
               "name": "priority_match",
-              "passed": false,
-              "detail": "expected 'high', got 'normal'"
+              "passed": true,
+              "detail": "'high'"
             },
             {
               "layer": "reference",
@@ -6546,22 +6564,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer is asking how to check if their order has shipped and what the different order statuses mean.\"\n}",
+          "output": "```json\n{\n  \"category\": \"order_status\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"How to tell if an order has shipped and what the statuses mean.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "859d5a3561a2ee686f05fbc18a3042947c9559a8f1d4c9a7a7905453a17da5f0",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 801.3383630895987,
-            "prompt_tokens": 952,
-            "completion_tokens": 54,
+            "key": "f1fa9d5e467b7ce5909b0f06d82c71ae5641d8e04665ccc6abea408b67711a40",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1865.9316519042477,
+            "prompt_tokens": 864,
+            "completion_tokens": 49,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000746,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:40:25.653152Z"
+            "recorded_at": "2026-10-06T09:10:05.370817Z"
           },
           "checks": [
             {
@@ -6611,22 +6629,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer is asking how to check if their order has shipped and what the different order statuses mean.\"\n}",
+          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"How to tell if an order has shipped and what the statuses mean.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "e683208a99d3db3bff07baa14bf8291c7e54277f19069c6df0b32e7397278337",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 892.944923019968,
-            "prompt_tokens": 952,
-            "completion_tokens": 54,
+            "key": "e6668579923d83df746c9d1bb0655d4de9cfc29acf513a746681a578dc0a5506",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1748.8901929464191,
+            "prompt_tokens": 864,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000738,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:40:29.078095Z"
+            "recorded_at": "2026-10-06T09:10:08.587139Z"
           },
           "checks": [
             {
@@ -6676,22 +6694,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer is asking how to check if their order has shipped and what the different order statuses mean.\"\n}",
+          "output": "```json\n{\n  \"category\": \"order_status\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks how to check order status and what the statuses mean.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "6edeb10bc2c3b4e86e5f92d80cecf118e8f78e51b8254fcfbf93d28958e63d83",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 6719.110219972208,
-            "prompt_tokens": 952,
-            "completion_tokens": 54,
+            "key": "4bfb64d1260bdb32f302be5fda3d29ad2a2912442564f72acc78171ea9afb8ab",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 3306.4792919903994,
+            "prompt_tokens": 864,
+            "completion_tokens": 48,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000093,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:40:38.237605Z"
+            "recorded_at": "2026-10-06T09:10:13.478074Z"
           },
           "checks": [
             {
@@ -6753,22 +6771,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-700145\",\n  \"summary\": \"Customer requests cancellation of order TS-700145 while keeping order TS-700112.\"\n}",
+          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-700145\",\n  \"summary\": \"Cancel order TS-700145, keep TS-700112.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "9e4670cd90ea3dc69ee19ac527c535336138539e4f4d0eb8ca688b9db9d20d86",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 980.8023680234328,
-            "prompt_tokens": 971,
-            "completion_tokens": 68,
+            "key": "9e0babba6e345def570e84f793c71ac8d8dfe425d34bebb42bcfef426f4b5301",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 4228.203224018216,
+            "prompt_tokens": 882,
+            "completion_tokens": 59,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000974375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:40:39.226470Z"
+            "recorded_at": "2026-10-06T09:10:17.782243Z"
           },
           "checks": [
             {
@@ -6818,22 +6836,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-700145\",\n  \"summary\": \"Customer requests cancellation of order TS-700145 while keeping order TS-700112.\"\n}",
+          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-700145\",\n  \"summary\": \"Cancel order TS-700145, keep TS-700112.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "af4c664aa6adfa5edf95f6d2f270db007cc4d7f20e1334dab7ab41920dbcc2a8",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 978.8640369661152,
-            "prompt_tokens": 971,
-            "completion_tokens": 68,
+            "key": "803a2024a589c9f12c70385a04885e244ee398616adad861759d97563106b291",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2555.2044729702175,
+            "prompt_tokens": 882,
+            "completion_tokens": 59,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00007795,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:40:42.557901Z"
+            "recorded_at": "2026-10-06T09:10:20.406945Z"
           },
           "checks": [
             {
@@ -6883,22 +6901,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-700145\",\n  \"summary\": \"Customer requests cancellation of order TS-700145 while keeping order TS-700112.\"\n}",
+          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-700145\",\n  \"summary\": \"Cancel order TS-700145, keep TS-700112.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "82d4d76f2840e9f4d95426d231de544f5757fb6cea43ea2b53c9f08661a51797",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 913.2700120098889,
-            "prompt_tokens": 971,
-            "completion_tokens": 68,
+            "key": "6a801b8f59f183224b01816ec9c3ba1473ede30c881cd43a33fbdf0f65f62b99",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2954.715022002347,
+            "prompt_tokens": 882,
+            "completion_tokens": 59,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000974375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:40:45.825704Z"
+            "recorded_at": "2026-10-06T09:10:24.139852Z"
           },
           "checks": [
             {
@@ -6960,22 +6978,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\"category\":\"order_status\",\"priority\":\"normal\",\"order_id\":\"TS-091827\",\"summary\":\"Customer cannot see order TS-091827 in their account despite having a tracking number.\"}",
+          "output": "{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-091827\",\n  \"summary\": \"Customer cannot see order in their account.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "e262e0a597d3f0920ae7de529c7ce93ae6320f26f5d3a60a3049cfa87c6f73ca",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1012.0568620041013,
-            "prompt_tokens": 982,
-            "completion_tokens": 47,
+            "key": "e6b256f3930c8a1fb97b48b7a5f0c2a13aace09368319fbffc8837f67b1412cd",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2699.0036049392074,
+            "prompt_tokens": 893,
+            "completion_tokens": 46,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009521875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:40:49.257813Z"
+            "recorded_at": "2026-10-06T09:10:27.217469Z"
           },
           "checks": [
             {
@@ -7025,22 +7043,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\"category\":\"order_status\",\"priority\":\"normal\",\"order_id\":\"TS-091827\",\"summary\":\"Customer cannot see order TS-091827 in their account despite having a tracking number.\"}",
+          "output": "```json\n{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-091827\",\n  \"summary\": \"Customer cannot see order in their account.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "a3a6cbd0911f4b1a440ff1837adc0c1645a0a2ba12784983299be57f1df4467b",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 826.0920939501375,
-            "prompt_tokens": 982,
-            "completion_tokens": 47,
+            "key": "1d07dde04ecda30771b75ba270c32d341d1dfc282b5eff887644da21894154ac",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2229.451213032007,
+            "prompt_tokens": 893,
+            "completion_tokens": 50,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009621875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:40:52.405792Z"
+            "recorded_at": "2026-10-06T09:10:30.081240Z"
           },
           "checks": [
             {
@@ -7090,22 +7108,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\"category\":\"order_status\",\"priority\":\"normal\",\"order_id\":\"TS-091827\",\"summary\":\"Customer cannot see order TS-091827 in their account despite having a tracking number.\"}",
+          "output": "```json\n{\n  \"category\": \"order_status\",\n  \"priority\": \"normal\",\n  \"order_id\": \"TS-091827\",\n  \"summary\": \"Customer cannot see order in account.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "c0cba4eee585a4398b1d787a4312fc10b1b2386055e01bdfc42c5f6a2d51f08e",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1089.6758509334177,
-            "prompt_tokens": 982,
-            "completion_tokens": 47,
+            "key": "c22584a6f411481f8a1e72aabe9e05808e6b849d3a83a9a6f63fdba22585ac58",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1697.2477730596438,
+            "prompt_tokens": 893,
+            "completion_tokens": 49,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009596875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:41:26.267909Z"
+            "recorded_at": "2026-10-06T09:10:32.882370Z"
           },
           "checks": [
             {
@@ -7167,22 +7185,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks if a Brennan 18V battery is compatible with their other Brennan 18V tools.\"\n}",
+          "output": "```json\n{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Will a Brennan 18 V battery fit my other Brennan 18 V tools?\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "2397b32b5a39b77e1615932f7766eda6ad7c5f4491eeeb05d48246c061599fdc",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 936.6488279774785,
-            "prompt_tokens": 954,
-            "completion_tokens": 57,
+            "key": "b7a987c1241e6fe7adb1ca539915a365d49224906fd2309b75872a371d5da87b",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2429.082334972918,
+            "prompt_tokens": 865,
+            "completion_tokens": 52,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009409375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:41:29.448310Z"
+            "recorded_at": "2026-10-06T09:10:36.947540Z"
           },
           "checks": [
             {
@@ -7232,22 +7250,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks if a Brennan 18V battery is compatible with their other Brennan 18V tools.\"\n}",
+          "output": "```json\n{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Will a Brennan 18 V battery fit my other Brennan 18 V tools?\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "38370242948c69b70371a2bcd49faf0f1cb97093b204fd063bd8951d4eac7014",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1252.2902770433575,
-            "prompt_tokens": 954,
-            "completion_tokens": 57,
+            "key": "ca95ce361c173d7324d407fbc36e842e413a9adf504714adc3c93d27bbb93d02",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2552.8686239849776,
+            "prompt_tokens": 865,
+            "completion_tokens": 52,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009409375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:41:33.097249Z"
+            "recorded_at": "2026-10-06T09:10:40.404706Z"
           },
           "checks": [
             {
@@ -7297,22 +7315,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks if a Brennan 18V battery is compatible with their other Brennan 18V tools.\"\n}",
+          "output": "```json\n{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Will a Brennan 18 V battery fit my other Brennan 18 V tools?\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "7298e13704484081a1281be426a2ef5c58c4a7250862eb70a371383e4b04c3f2",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 777.9573530424386,
-            "prompt_tokens": 954,
-            "completion_tokens": 57,
+            "key": "4a69d1d313297b562639aa35b66a93b9892167ae800488e2f5e6ad8556c5772b",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1481.7838110029697,
+            "prompt_tokens": 865,
+            "completion_tokens": 52,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009409375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:41:35.956251Z"
+            "recorded_at": "2026-10-06T09:10:42.666919Z"
           },
           "checks": [
             {
@@ -7374,22 +7392,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer is asking whether the Brennan hammer drill includes a side handle.\"\n}",
+          "output": "```json\n{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Does the Brennan hammer drill come with a side handle?\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "8ed71c5c2b42d67dfd7f14a1ac02a4c368d841d7e7b87a8b3d154ea792363cfa",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 5680.423783021979,
-            "prompt_tokens": 947,
-            "completion_tokens": 48,
+            "key": "34a06a7361fa987c47d129814c6b9f53d0e9a6d4d21c684cf422944d9bf28ade",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 6072.86124501843,
+            "prompt_tokens": 858,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000916875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:41:44.193624Z"
+            "recorded_at": "2026-10-06T09:10:50.591353Z"
           },
           "checks": [
             {
@@ -7439,22 +7457,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks whether the Brennan hammer drill includes a side handle.\"\n}",
+          "output": "```json\n{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Does the Brennan hammer drill come with a side handle?\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "50cdd1e94301e25fb011d04f1346ef79f963a42abc13415bc35ae78d17b4654e",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 4587.007503956556,
-            "prompt_tokens": 947,
-            "completion_tokens": 47,
+            "key": "faad0c135bdeee52df5948b3a4b996a355f234fb692b562d2a052efddeacde35",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1895.3183030243963,
+            "prompt_tokens": 858,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000916875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:42:19.069435Z"
+            "recorded_at": "2026-10-06T09:10:52.493840Z"
           },
           "checks": [
             {
@@ -7504,22 +7522,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks if the Brennan hammer drill includes a side handle.\"\n}",
+          "output": "```json\n{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Does the Brennan hammer drill come with a side handle?\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "7abcaf4edce0bebd5f8e3d8cfb90c6191389dc050190ba9b98c03a6486ebece9",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1365.412802901119,
-            "prompt_tokens": 947,
-            "completion_tokens": 47,
+            "key": "5dbe0b330a8e9daa728437f6f43a0d2d7fb940a6b321e1cd52c2192e3ed52d44",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1621.3299439987168,
+            "prompt_tokens": 858,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000916875,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:42:20.441300Z"
+            "recorded_at": "2026-10-06T09:10:55.553268Z"
           },
           "checks": [
             {
@@ -7581,22 +7599,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks for recommended charge level for long-term battery storage.\"\n}",
+          "output": "```json\n{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"What charge level should I keep batteries at for long storage?\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "c258a07887cb6f929b28acc2912bd3ad727e618baaac1e4dba5141fe2399d111",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1060.4318239493296,
-            "prompt_tokens": 963,
-            "completion_tokens": 47,
+            "key": "e73914e711e74a408b933b68415c66896625831245df840fb11b9ac8ce272f5e",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2059.866514056921,
+            "prompt_tokens": 876,
+            "completion_tokens": 46,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000093625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:42:23.469789Z"
+            "recorded_at": "2026-10-06T09:10:59.325132Z"
           },
           "checks": [
             {
@@ -7646,22 +7664,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks for recommended charge level for long-term battery storage.\"\n}",
+          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"What charge level should I keep batteries at for long storage?\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "8f18d20a0e2ab0997753fe5e275cae6568d900e5ed061872976cfd039035d7bf",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1107.8077190322801,
-            "prompt_tokens": 963,
-            "completion_tokens": 47,
+            "key": "e937763afad3413315796a953e7922d3a938a986dc681c404f67054ca650c12e",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2035.230966983363,
+            "prompt_tokens": 876,
+            "completion_tokens": 42,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000741,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:42:26.850475Z"
+            "recorded_at": "2026-10-06T09:11:02.633814Z"
           },
           "checks": [
             {
@@ -7711,22 +7729,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks for recommended charge level for long-term battery storage.\"\n}",
+          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"What charge level should I keep batteries at for long storage?\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "015e420c08fda4e5d5aa49609140fa26d8c3d0d4cbc3c1cd97b85043d9a65eb1",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 940.0184589903802,
-            "prompt_tokens": 963,
-            "completion_tokens": 47,
+            "key": "17c2e0335b80ec947b1680aa3ee200daeba68564557fdd79e8b57b93559f7f0a",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2552.4005849147215,
+            "prompt_tokens": 876,
+            "completion_tokens": 42,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000092625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:42:30.016019Z"
+            "recorded_at": "2026-10-06T09:11:06.484317Z"
           },
           "checks": [
             {
@@ -7788,22 +7806,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks if the site specifies whether a saw can cut aluminium.\"\n}",
+          "output": "```json\n{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks whether a saw can cut aluminium.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "19d51496a4da8f1acc0a3235ee1a084c8993089550bb7e99de2d192c6a5fdcc4",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 849.5108850765973,
-            "prompt_tokens": 958,
-            "completion_tokens": 48,
+            "key": "a071f15c31d8ebe736bfe871f46154cb3c4b7379cc33195858c518653f243dad",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2145.3936339821666,
+            "prompt_tokens": 880,
+            "completion_tokens": 43,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009325,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:42:33.258828Z"
+            "recorded_at": "2026-10-06T09:11:09.410649Z"
           },
           "checks": [
             {
@@ -7853,22 +7871,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks whether a specific saw can cut aluminium, noting the lack of this information on the product page.\"\n}",
+          "output": "```json\n{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Asking whether a saw can cut aluminium.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "443df558f22069038eb165474c223b5fcfa63d13462d480b88899df470454209",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1414.152269018814,
-            "prompt_tokens": 958,
-            "completion_tokens": 56,
+            "key": "e88580ef3567341d36fa4ddc9880995525027d686a7fab4b62537c046d1a114f",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1739.3583169905469,
+            "prompt_tokens": 880,
+            "completion_tokens": 43,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009325,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:42:37.156778Z"
+            "recorded_at": "2026-10-06T09:11:12.337974Z"
           },
           "checks": [
             {
@@ -7918,22 +7936,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer asks whether a specific saw can cut aluminium, noting the information is missing from the product page.\"\n}",
+          "output": "```json\n{\n  \"category\": \"product_question\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Asks whether a saw can cut aluminium.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "eff0eacd9c19000301e9192d80bc3f8f64744242747a8dd638aa3e46c12f18a1",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1015.7065299572423,
-            "prompt_tokens": 958,
-            "completion_tokens": 55,
+            "key": "964c8bc0af100c58e114b87c213a38d89248a451aea403b871d928e050008dcd",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1611.0066529363394,
+            "prompt_tokens": 880,
+            "completion_tokens": 43,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000746,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:42:40.091644Z"
+            "recorded_at": "2026-10-06T09:11:15.542948Z"
           },
           "checks": [
             {
@@ -7995,22 +8013,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"other\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer requests deletion of their Toolshop account and all associated personal data.\"\n}",
+          "output": "```json\n{\n  \"category\": \"other\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer requests deletion of their Toolshop account and all data.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "cf829fda1c1db27f9ed5ed984e7f858bd72396507b534b5fb2bd4fbb639826be",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 743.399832979776,
-            "prompt_tokens": 947,
-            "completion_tokens": 48,
+            "key": "97908be0d4b67ee2c47b4ed9e71bb9b4d73d63426911042b2f4ad167b19f7118",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1068.1258849799633,
+            "prompt_tokens": 858,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00005744,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:42:43.153100Z"
+            "recorded_at": "2026-10-06T09:11:18.333398Z"
           },
           "checks": [
             {
@@ -8060,22 +8078,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"other\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer requests deletion of their Toolshop account and all associated personal data.\"\n}",
+          "output": "```json\n{\n  \"category\": \"other\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer requests deletion of their Toolshop account and all data.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "eed10f5da8e8f77336682db7eaca565da5be38036f8686bf20d250285ecf9636",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 963.8809749158099,
-            "prompt_tokens": 947,
-            "completion_tokens": 48,
+            "key": "a25117b11e91a7d93ca13db0c94d6e72a4b170c9fc304a75ab47c625727fb988",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1159.6515639685094,
+            "prompt_tokens": 858,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000568,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:42:46.706510Z"
+            "recorded_at": "2026-10-06T09:11:21.758231Z"
           },
           "checks": [
             {
@@ -8125,22 +8143,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"other\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer requests deletion of their Toolshop account and all associated personal data.\"\n}",
+          "output": "```json\n{\n  \"category\": \"other\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer requests deletion of their Toolshop account and all data.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "e6f1e580f872b4bc06f1efdbdb7a836b04426fcbc1a1cf98aac06c42aaa1755c",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 39318.24255594984,
-            "prompt_tokens": 947,
-            "completion_tokens": 48,
+            "key": "b6ccc0523d1ebeb0dae5647728fb5e83c4d7873db746ddd0b9947860697dc57e",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 1480.033282074146,
+            "prompt_tokens": 858,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.0000568,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:43:58.722835Z"
+            "recorded_at": "2026-10-06T09:11:25.411978Z"
           },
           "checks": [
             {
@@ -8202,22 +8220,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"other\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer provided positive feedback regarding a quick pickup at the Springfield store.\"\n}",
+          "output": "{\n  \"category\": \"other\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer feedback about a quick pickup at the Springfield store.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "cd0f2e65bdd170db0c16bd98477037832ea5ce64565942263d36869c0a720258",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 5977.355165989138,
-            "prompt_tokens": 952,
-            "completion_tokens": 47,
+            "key": "60c0abf0d7a6c656805f5c163713ae1b638d89ae47092c9be843570436bdb9dc",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 5495.9173910319805,
+            "prompt_tokens": 863,
+            "completion_tokens": 40,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.000072725,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:44:35.041649Z"
+            "recorded_at": "2026-10-06T09:11:32.761191Z"
           },
           "checks": [
             {
@@ -8267,22 +8285,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"other\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer provided positive feedback regarding a quick pickup at the Springfield store.\"\n}",
+          "output": "{\n  \"category\": \"other\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer feedback on a quick pickup at the Springfield store.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "6a7a8d4313ce2995468b7947cb188bf5d2196ae34712690fd54ae09c9d3c3ad9",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 880.0874849548563,
-            "prompt_tokens": 952,
-            "completion_tokens": 47,
+            "key": "0d36d3f9665091dc24b6a506139fcb89b41a5d61977614092d33e42e8cb1c5dc",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2749.60210302379,
+            "prompt_tokens": 863,
+            "completion_tokens": 40,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009090625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:44:35.927742Z"
+            "recorded_at": "2026-10-06T09:11:35.517750Z"
           },
           "checks": [
             {
@@ -8332,22 +8350,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"other\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer provided positive feedback regarding a quick pickup at the Springfield store.\"\n}",
+          "output": "{\n  \"category\": \"other\",\n  \"priority\": \"low\",\n  \"order_id\": null,\n  \"summary\": \"Customer feedback on pickup at the Springfield store.\"\n}",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "abd3f606ee8d526b2c27788af53466446cdaece82c1ae1df5f1b681540d7e014",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 709.4759939936921,
-            "prompt_tokens": 952,
-            "completion_tokens": 47,
+            "key": "f5193be356a35b6e83b2cf160011f720d71a099d33c2fb175eff0c540829b86d",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 2314.324015052989,
+            "prompt_tokens": 863,
+            "completion_tokens": 38,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009040625,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:44:39.090546Z"
+            "recorded_at": "2026-10-06T09:11:38.415847Z"
           },
           "checks": [
             {
@@ -8409,22 +8427,22 @@
       "runs": [
         {
           "repeat": 0,
-          "output": "{\n  \"category\": \"other\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer cannot sign in because the password reset email is not arriving.\"\n}",
+          "output": "```json\n{\n  \"category\": \"other\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer cannot sign in and did not receive a password reset email.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "3def4769fa96d71a8eeff06e51f015343f43dc86cbe9d6668cb818ba82547311",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 669.7222410002723,
-            "prompt_tokens": 962,
-            "completion_tokens": 47,
+            "key": "8b02408d21ed93fd26f02a3b2360523bfec3915d3ac97bd3a09726dc5c8fd627",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 3041.335346060805,
+            "prompt_tokens": 873,
+            "completion_tokens": 46,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009334375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:44:42.384116Z"
+            "recorded_at": "2026-10-06T09:11:42.476159Z"
           },
           "checks": [
             {
@@ -8474,22 +8492,22 @@
         },
         {
           "repeat": 1,
-          "output": "{\n  \"category\": \"other\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer cannot sign in because the password reset email is not arriving.\"\n}",
+          "output": "```json\n{\n  \"category\": \"other\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer cannot sign in and does not receive password reset email.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "e21e4fd7a0a1121606e4d80fe1457285ed2e9dc1db6c87f868ccf9a40cad3624",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 1903.6908219568431,
-            "prompt_tokens": 962,
-            "completion_tokens": 47,
+            "key": "d8ad57fcc719101f9f287c4954c406099a69982f947291d97eb1f07f3114a2fc",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 4319.113437086344,
+            "prompt_tokens": 873,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009309375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:44:46.951406Z"
+            "recorded_at": "2026-10-06T09:11:47.087334Z"
           },
           "checks": [
             {
@@ -8539,22 +8557,22 @@
         },
         {
           "repeat": 2,
-          "output": "{\n  \"category\": \"other\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Customer cannot sign in because the password reset email is not arriving.\"\n}",
+          "output": "```json\n{\n  \"category\": \"other\",\n  \"priority\": \"normal\",\n  \"order_id\": null,\n  \"summary\": \"Can't sign in and the password reset email never arrives.\"\n}\n```",
           "error": null,
           "retrieved": null,
           "cited": null,
           "call": {
-            "key": "3db07ae1a8163aaab3e5a25e2d69fa28491846bc88327ffc1b19a8dce7c704a7",
-            "model_used": "qwen/qwen3.8-27b:free",
-            "latency_ms": 36930.068068089895,
-            "prompt_tokens": 962,
-            "completion_tokens": 47,
+            "key": "d71c5551b4ca95fad1798ee7d386118e7ea3ec5998b81cdb70f91fa061098ecd",
+            "model_used": "mistralai/mistral-small-3.2-24b-instruct",
+            "latency_ms": 6198.972081067041,
+            "prompt_tokens": 873,
+            "completion_tokens": 45,
             "reasoning_tokens": 0,
-            "cost_usd": 0.0,
+            "cost_usd": 0.00009309375,
             "cost_source": "provider",
             "finish_reason": "stop",
             "empty_reason": null,
-            "recorded_at": "2026-10-05T10:45:55.613890Z"
+            "recorded_at": "2026-10-06T09:11:53.293031Z"
           },
           "checks": [
             {

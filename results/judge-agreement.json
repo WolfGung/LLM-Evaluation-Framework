@@ -1,124 +1,214 @@
 {
   "schema_version": 1,
-  "status": "complete",
+  "status": "pending human labels",
   "note": "Agreement is measured on labels/sample.json, which oversamples judge failures so both classes are present; it is not the population rate.",
   "question": "Would you send this answer to the customer as is? Pass if it is grounded in the shown documents, answers the question (or says honestly that the documents do not cover it), and is polite. Fail otherwise.",
   "standards": "The author answers the question above for each answer. The judge passes an answer when it scores groundedness at least 4, helpfulness at least 3 and tone at least 3 (rubrics/judge.md). Both ask the same three things: grounded is groundedness, answering the question or saying honestly that the documents do not cover it is helpfulness, polite is tone. The author's one decision can be stricter: an answer that misses part of the question can score helpfulness 3 and pass the judge, yet not be sent as is.",
-  "judge_model": "nvidia/nemotron-3-super-120b-a12b:free",
+  "judge_model": "nvidia/nemotron-3-super-120b-a12b",
   "rubric_sha256": "68d6910f30641b27ad22c6d98dfbf9d962457eb438ffeee2c3002e2981ae1e0e",
   "sample": {
     "size": 30,
     "seed": 2026,
-    "judge_pass": 23,
-    "judge_fail": 7
+    "judge_pass": 7,
+    "judge_fail": 23
   },
-  "labelled": 30,
-  "agreed": 24,
-  "agreement_rate": 0.8,
-  "kappa": 0.3023,
-  "kappa_note": null,
+  "labelled": 0,
+  "agreed": 0,
+  "agreement_rate": null,
+  "kappa": null,
+  "kappa_note": "no labelled answers",
   "confusion": {
     "judge_pass": {
-      "human_pass": 22,
-      "human_fail": 1
+      "human_pass": 0,
+      "human_fail": 0
     },
     "judge_fail": {
-      "human_pass": 5,
-      "human_fail": 2
+      "human_pass": 0,
+      "human_fail": 0
     }
   },
-  "disagreements": [
+  "disagreements": [],
+  "stale": [
+    {
+      "case": "rag-001",
+      "version": "v2",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-003",
+      "version": "v2",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-004",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
+    },
+    {
+      "case": "rag-004",
+      "version": "v2",
+      "repeat": 0,
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
+    },
+    {
+      "case": "rag-008",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-008",
+      "version": "v2",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-011",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-014",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-015",
+      "version": "v2",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-017",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-018",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
+    },
     {
       "case": "rag-018",
       "version": "v2",
       "repeat": 0,
-      "category": "answerable",
-      "judge": "fail",
-      "human": "pass",
-      "judge_scores": {
-        "groundedness": 3,
-        "helpfulness": 5,
-        "tone": 5
-      },
-      "judge_reasons": "The answer adds that batteries should be stored at 50‑77 °F, but the documents only state that temperature range for tools, not batteries. Otherwise it correctly states the 40‑60 % charge and 3‑month recharge guideline from kb‑tool‑care. It answers the storage question fully and politely.",
-      "human_comment": ""
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
+    },
+    {
+      "case": "rag-020",
+      "version": "v2",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-021",
+      "version": "v2",
+      "repeat": 0,
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
+    },
+    {
+      "case": "rag-022",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
     },
     {
       "case": "rag-023",
       "version": "v2",
       "repeat": 0,
-      "category": "multi_doc",
-      "judge": "pass",
-      "human": "fail",
-      "judge_scores": {
-        "groundedness": 5,
-        "helpfulness": 5,
-        "tone": 5
-      },
-      "judge_reasons": "The answer correctly states that the documents do not specify return shipping cost, which is accurate. It provides the refund timeline and details about refund method, all supported by kb-refunds. No part of the question is left unanswered, and the tone is polite and professional.",
-      "human_comment": ""
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-025",
+      "version": "v2",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-027",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-028",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
     },
     {
       "case": "rag-028",
       "version": "v2",
       "repeat": 0,
-      "category": "multi_doc",
-      "judge": "fail",
-      "human": "pass",
-      "judge_scores": {
-        "groundedness": 3,
-        "helpfulness": 5,
-        "tone": 5
-      },
-      "judge_reasons": "The answer adds a statement about not knowing other recycling locations that is not in the documents. It fully answers where to recycle and store hours, providing the address and opening times.",
-      "human_comment": ""
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-029",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
+    },
+    {
+      "case": "rag-029",
+      "version": "v2",
+      "repeat": 0,
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
     },
     {
       "case": "rag-032",
       "version": "v1",
       "repeat": 0,
-      "category": "unanswerable",
-      "judge": "fail",
-      "human": "pass",
-      "judge_scores": {
-        "groundedness": 3,
-        "helpfulness": 5,
-        "tone": 5
-      },
-      "judge_reasons": "The answer includes an unsupported statement that 'Toolshop is an online shop for hand and power tools,' which is not found in the documents. It correctly states that no rental information is available and advises contacting support or checking the website, thus addressing the question.",
-      "human_comment": ""
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
+    },
+    {
+      "case": "rag-032",
+      "version": "v2",
+      "repeat": 0,
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
     },
     {
       "case": "rag-033",
       "version": "v2",
       "repeat": 0,
-      "category": "unanswerable",
-      "judge": "fail",
-      "human": "pass",
-      "judge_scores": {
-        "groundedness": 3,
-        "helpfulness": 5,
-        "tone": 5
-      },
-      "judge_reasons": "The answer adds a suggestion to contact Toolshop support, which is not stated in the documents. It correctly notes that the documents mention keeping saw blades sharp but do not list a price for sharpening. It addresses the question by indicating the price information is unavailable.",
-      "human_comment": ""
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-034",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the answer is not in the sample"
+    },
+    {
+      "case": "rag-037",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
+    },
+    {
+      "case": "rag-038",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
     },
     {
       "case": "rag-039",
       "version": "v1",
       "repeat": 0,
-      "category": "multi_doc",
-      "judge": "fail",
-      "human": "pass",
-      "judge_scores": {
-        "groundedness": 3,
-        "helpfulness": 4,
-        "tone": 5
-      },
-      "judge_reasons": "The answer adds that a physical street address is required for delivery, which is not explicitly stated in the documents. It fully addresses the customer's question about cost, delivery time, and PO box eligibility, though it does not direct the customer to Toolshop support for the unspecified freight transit time.",
-      "human_comment": ""
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
+    },
+    {
+      "case": "rag-040",
+      "version": "v1",
+      "repeat": 0,
+      "reason": "stale: the sample names another answer now (its cassette key changed)"
     }
   ],
-  "stale": [],
   "unjudged": []
 }
