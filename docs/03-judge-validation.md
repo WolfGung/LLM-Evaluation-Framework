@@ -21,16 +21,11 @@ Pavel Zhukov Atum, the author, labels a sample of judged answers by hand with `m
 
 <!-- agreement:start -->
 
-| Judge's verdict | Author: pass | Author: fail |
-|---|---:|---:|
-| Judge: pass | 22 | 1 |
-| Judge: fail | 5 | 2 |
+pending human labels
 
-Percent agreement: 24 of 30 (80.0%). Cohen's kappa: 0.30. Disagreements: 6, listed in results/judge-agreement.json with the judge's reasons.
+None of the author's 30 labels in labels/human.jsonl is of an answer in the current sample: the answers or the sample changed after he labelled them. Stale labels are not used; each is listed with its reason in results/judge-agreement.json.
 
-Labelled: 30 of 30 sample answers.
-
-Pavel Zhukov Atum, the author, labelled 30 judged answers by hand, blind to the judge's verdict (make label): all 7 answers the judge failed and 23 it passed. The sample oversamples judge failures, so agreement on it is not the agreement over all answers.
+Pavel Zhukov Atum, the author, labels 30 judged answers by hand, blind to the judge's verdict (make label), and this sample awaits his labels: all 23 answers the judge failed and 7 it passed. The sample oversamples judge failures, so agreement on it is not the agreement over all answers.
 
 <!-- agreement:end -->
 
@@ -44,24 +39,24 @@ When labels exist, [`results/judge-agreement.json`](../results/judge-agreement.j
 |---|---:|---:|
 | Answers graded | 40 | 40 |
 | Valid verdicts | 40 of 40 | 40 of 40 |
-| Pass by the rubric rule | 36 of 40 | 37 of 40 |
+| Pass by the rubric rule | 26 of 40 | 31 of 40 |
 | The judge's own pass differs from the rule | 0 | 0 |
-| Mean groundedness | 4.70 | 4.85 |
-| Mean helpfulness | 4.68 | 4.98 |
+| Mean groundedness | 3.75 | 4.45 |
+| Mean helpfulness | 3.95 | 4.25 |
 | Mean tone | 5.00 | 5.00 |
-| Answer length and groundedness (Spearman) | -0.40 | -0.28 |
-| Answer length and helpfulness (Spearman) | -0.47 | -0.18 |
+| Answer length and groundedness (Spearman) | -0.53 | -0.21 |
+| Answer length and helpfulness (Spearman) | -0.55 | -0.32 |
 | Answer length and tone (Spearman) | — | — |
 
 A dash: no correlation can be computed, because every graded answer got the same score or fewer than three answers were graded.
 
 No criterion has a positive correlation: longer answers did not get higher scores.
 
-Position: where the judge chose a side in both orders, it chose the answer shown first 17 of 28 times (60.7%). Half would mean no lean.
+Position: where the judge chose a side in both orders, it chose the answer shown first 14 of 30 times (46.7%). Half would mean no lean.
 
-Length: of those choices between answers of different lengths, it chose the longer answer 17 of 28 times (60.7%).
+Length: of those choices between answers of different lengths, it chose the longer answer 7 of 30 times (23.3%).
 
-The system model is qwen/qwen3.8-27b:free (vendor qwen) and the judge is nvidia/nemotron-3-super-120b-a12b:free (vendor nvidia): different vendors, so the judge does not grade answers written by its own model family.
+The system model is mistralai/mistral-small-3.2-24b-instruct (vendor mistralai) and the judge is nvidia/nemotron-3-super-120b-a12b (vendor nvidia): different vendors, so the judge does not grade answers written by its own model family.
 
 <!-- judge:end -->
 
@@ -77,15 +72,15 @@ The judge compared the first answers of rag v1 and rag v2 case by case, asked tw
 
 | Outcome over 40 cases | Cases |
 |---|---:|
-| v1 preferred in both orders | 7 |
-| v2 preferred in both orders | 4 |
-| A tie in both orders | 9 |
-| Inconsistent: the two orders disagree | 18 |
-| Identical answers, not compared | 2 |
+| v1 preferred in both orders | 3 |
+| v2 preferred in both orders | 11 |
+| A tie in both orders | 11 |
+| Inconsistent: the two orders disagree | 11 |
+| Identical answers, not compared | 4 |
 
-Position consistency: 20 of 38 compared pairs (52.6%) got the same verdict in both orders.
+Position consistency: 25 of 36 compared pairs (69.4%) got the same verdict in both orders.
 
-In 18 of the 38 compared pairs, the judge's preference changed when the two answers swapped places: 3 times it chose the answer shown first in both orders, and 15 times it called a tie in one order and chose a side in the other. An inconsistent pair is never settled by picking one order.
+In 11 of the 36 compared pairs, the judge's preference changed when the two answers swapped places: 1 time it chose the answer shown second in both orders, and 10 times it called a tie in one order and chose a side in the other. An inconsistent pair is never settled by picking one order.
 
 With this many flips, the comparison says more about the judge's position bias than about the two prompts, so it picks no winner. The main table rests on the rules and the per-answer grades.
 
@@ -104,6 +99,12 @@ Judges tend to prefer text written by their own model family. The system and the
 ### Instructions inside the material
 
 A document can tell an AI to do something, as the supplier page in the knowledge base does. The rubric says such text is not shop information and that an answer repeating it is not grounded. The safety cases are not graded by the judge at all: rules own safety ([docs/04](04-safety-cases.md)).
+
+## The first recording, on free models
+
+<!-- history:start -->
+The first recording (commit 66b4a3a, 2026-10-05, with the judge calls re-recorded in commit 1fc63b9) ran on free model variants: qwen/qwen3.8-27b:free as the system and nvidia/nemotron-3-super-120b-a12b:free as the judge, at no cost. The author labelled 30 of its judged answers by hand (commit d2e9856; the agreement they gave is on that commit's pages). On 2026-10-06 both roles were recorded again on paid models, the judge on the paid variant of the same model, so that the cost row shows what a run costs. Every answer changed, so the author's labels now label answers that no longer exist: they stay in labels/human.jsonl, unused, and the sample was drawn again from the new judge's verdicts.
+<!-- history:end -->
 
 ## A finding from the first recording: the judge's token budget
 

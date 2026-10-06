@@ -11,7 +11,7 @@ An evaluation is a measurement with a range and an error, like any other. This p
 | rag | 52 | answerable 25, multi_doc 7, unanswerable 8, safety 12 |
 | triage | 40 | shipping 7, returns 7, payment 6, warranty 7, order_status 6, product_question 4, other 3 |
 
-Each case ran 3 times. The judge graded 40 answers of each rag version, and compared the two versions on 38 cases (2 more with identical answers were not compared). Recorded on 2026-10-05 (UTC): 706 calls.
+Each case ran 3 times. The judge graded 40 answers of each rag version, and compared the two versions on 36 cases (4 more with identical answers were not compared). Recorded on 2026-10-06 (UTC): 700 calls.
 
 <!-- scope:end -->
 
@@ -22,11 +22,11 @@ Each case ran 3 times. The judge graded 40 answers of each rag version, and comp
 
 ## What a recording cannot catch
 
-- **Drift.** The cassettes hold the answers of one day. Free model variants are updated, rerouted and retired without notice. A replay cannot see that; only a live run can ([`live.yml`](../.github/workflows/live.yml), started by hand, or `make live`).
+- **Drift.** The cassettes hold the answers of one day. Models and the providers behind them are updated, rerouted and retired without notice. A replay cannot see that; only a live run can ([`live.yml`](../.github/workflows/live.yml), started by hand, or `make live`).
 - **Changes to the inputs.** A cassette key is a hash of the whole request: prompt, documents, model, parameters and, for the judge, the rubric. Any change to a prompt, the knowledge base, the retrieved documents or a model setting makes new keys, and replay fails with "no recording for …" instead of reusing old answers. The price is a new recording after every such change.
-- **Production latency and cost.** The latencies are those of free, shared endpoints on one day. The cost is zero because the default models are free variants. A paid model, another provider or a busy day gives other numbers.
+- **Production latency and cost.** The latencies and costs are those of the providers OpenRouter chose on one day. The judge's model had a single provider that served everything the judge needs, and its calls were slow. Another provider, another day or a busy hour gives other numbers.
 - **The provider behind a model id.** OpenRouter may serve one model id from different providers. The record keeps the model that answered, not the provider or its hardware.
-- **Free-tier limits.** Free variants are limited per minute and per day ([docs/06](06-tools-and-versions.md)). A full live run needs more requests than the smaller daily allowance holds, and `make live` refuses to start when the key's free requests left today cannot cover the run. When the shared free capacity is busy (HTTP 429 without a reset time), a live run waits and retries as recording does, while the key has free requests left. If the provider is still busy after the last wait, the run stops and writes nothing; start it again later.
+- **Free-tier limits.** A free variant in the config (an id ending in `:free`) is limited per minute and per day ([docs/06](06-tools-and-versions.md)). A full live run needs more requests than the smaller daily allowance holds, and `make live` refuses to start when the key's free requests left today cannot cover the run. When the shared free capacity is busy (HTTP 429 without a reset time), a live run waits and retries as recording does, while the key has free requests left. If the provider is still busy after the last wait, the run stops and writes nothing; start it again later.
 
 ## Where trust in the judge ends
 
@@ -75,8 +75,8 @@ Each check documents its own limits in [`llmeval/checks/`](../llmeval/checks/). 
 ## Operational limits
 
 - **A request the provider always refuses.** Recording skips a refused request and goes on, and the next run asks it again, after the fresh calls. If the provider refuses it every time, the recording never completes and the manifest is not written; every stop lists the missing calls. A whole refused block at the very end of a function's plan can still go first on each new day and use part of the daily allowance.
-- **A free model that is removed.** Every call then fails with HTTP 404, "No endpoints found". The run does not stop early on it; change the model in [`config/models.yaml`](../config/models.yaml).
-- **The service in replay mode** answers only the recorded dataset questions. Any other question gets HTTP 503 with a hint to run it live with free models.
+- **A model that is removed.** Every call then fails with HTTP 404, "No endpoints found". The run does not stop early on it; change the model in [`config/models.yaml`](../config/models.yaml).
+- **The service in replay mode** answers only the recorded dataset questions. Any other question gets HTTP 503 with a hint to run it live with free models. Live mode starts only when both configured models are free, so with the committed paid models it refuses to start.
 - **Docker and file permissions.** The service reads `cassettes/` through a read-only mount. A restrictive umask when recording can leave cassette files the container cannot read.
 - **New cases.** The gate checks every case the baseline lists. A case that a live run has and the baseline does not is not gated until the baseline is updated.
 

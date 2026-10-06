@@ -98,8 +98,11 @@ def test_the_findings_follow_the_legend_right_after_the_first_screen():
     assert text.index("<!-- findings:end -->") < text.index("## What this shows")
     agreement, pairwise = section("Findings")[1:-1]  # one bullet each, inside the markers
     assert agreement.startswith("- **") and pairwise.startswith("- **")
-    assert "Cohen's kappa" in agreement and "conventionally called" in agreement
-    assert "(results/judge-agreement.json)" in agreement
+    # Measured: the kappa in plain words and the disagreements; not yet: the
+    # sample that awaits the author's labels.
+    assert ("Cohen's kappa" in agreement and "conventionally called" in agreement) or (
+        "not measured yet" in agreement and "awaits the author's labels" in agreement
+    )
     assert "(docs/03-judge-validation.md#agreement-with-a-person)" in agreement
     assert "compared pairs" in pairwise and "swapped places" in pairwise
 

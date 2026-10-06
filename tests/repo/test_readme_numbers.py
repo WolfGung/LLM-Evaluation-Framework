@@ -33,10 +33,10 @@ FILES = default_files()
 # The generated blocks each page must hold, in order: a page that loses one
 # would quote its results nowhere, and no other test would notice.
 EXPECTED_BLOCKS = {
-    "README.md": ["results", "findings", "pairwise", "agreement"],
+    "README.md": ["results", "findings", "pairwise", "agreement", "history"],
     "docs/01-what-is-evaluated.md": ["scope"],
     "docs/02-eval-strategy.md": ["cost", "gate"],
-    "docs/03-judge-validation.md": ["agreement", "judge", "pairwise", "history"],
+    "docs/03-judge-validation.md": ["agreement", "judge", "pairwise", "history", "history"],
     "docs/04-safety-cases.md": ["safety"],
     "docs/05-limitations.md": ["scope"],
     "docs/06-tools-and-versions.md": [],

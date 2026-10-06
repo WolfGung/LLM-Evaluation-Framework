@@ -11,20 +11,20 @@ Layered checks that show in CI what a prompt or model change made better or wors
 
 | Metric | rag v1 | rag v2 | triage v1 | triage v2 |
 |---|---:|---:|---:|---:|
-| All checks | 77.6% | 86.5% | 65.0% | 89.2% |
+| All checks | 62.2% | 82.7% | 57.5% | 92.5% |
 | Retrieval layer | 81.8% | 81.8% | — | — |
-| Deterministic layer | 92.3% | 96.2% | 97.5% | 97.5% |
-| Reference layer | 80.8% | 81.8% | 65.0% | 89.2% |
-| Safety layer | 95.5% | 100.0% | — | — |
-| Judge layer | 90.0% | 92.5% | — | — |
-| Safety cases with no safety failure | 9 of 12 | 12 of 12 | — | — |
-| Stable cases | 86.5% | 100.0% | 92.5% | 97.5% |
-| Cost (system + judge calls) | $0.00 (free models) | $0.00 (free models) | $0.00 (free models) | $0.00 (free models) |
-| Latency p50 / p95 (system calls) | 1.8 s / 25.3 s | 0.9 s / 25.3 s | 0.9 s / 13.0 s | 1.0 s / 10.7 s |
+| Deterministic layer | 78.2% | 94.2% | 97.5% | 97.5% |
+| Reference layer | 79.8% | 83.8% | 57.5% | 92.5% |
+| Safety layer | 88.5% | 98.7% | — | — |
+| Judge layer | 65.0% | 77.5% | — | — |
+| Safety cases with no safety failure | 8 of 12 | 11 of 12 | — | — |
+| Stable cases | 76.9% | 92.3% | 87.5% | 95.0% |
+| Cost (system + judge calls) | $0.027318 | $0.031958 | $0.005947 | $0.010457 |
+| Latency p50 / p95 (system calls) | 1.3 s / 3.0 s | 1.2 s / 2.4 s | 2.5 s / 5.2 s | 1.5 s / 4.3 s |
 
-Each column is one prompt version. Each case ran 3 times; each layer's rate is over the runs that layer checks (the judge graded the first run of each judged case). A safety case has no safety failure when every safety check passed on every run. The pairwise comparison calls are not counted in any column. Recorded on 2026-10-05 (UTC) with qwen/qwen3.8-27b:free (system) and nvidia/nemotron-3-super-120b-a12b:free (judge), 706 calls.
+Each column is one prompt version. Each case ran 3 times; each layer's rate is over the runs that layer checks (the judge graded the first run of each judged case). A safety case has no safety failure when every safety check passed on every run. The pairwise comparison calls are not counted in any column. Recorded on 2026-10-06 (UTC) with mistralai/mistral-small-3.2-24b-instruct (system) and nvidia/nemotron-3-super-120b-a12b (judge), 700 calls.
 
-Latency: 29 of the 30 system calls at or above their column's p95 took at least twice as long as a repeat of the same request (a median of 26 times as long) while writing a median of 60 answer tokens against the repeats' 64, so most of the tail is time spent waiting at the provider's shared free endpoint, not the time the system needs to answer.
+Latency: 18 of the 30 system calls at or above their column's p95 took at least twice as long as a repeat of the same request (a median of 3.4 times as long) while writing a median of 47 answer tokens against the repeats' 48, so most of the tail is delay at the provider, not time the request needs.
 
 <!-- results:end -->
 
@@ -34,8 +34,8 @@ How to read the table: rag is the support assistant (retrieval-augmented generat
 
 <!-- findings:start -->
 
-- **Trust the judge's passes more than its fails.** The judge agreed with the author on 24 of 30 sample answers (80.0%), while two raters who pass answers as often as these two do would agree on 71.3% by chance alone: Cohen's kappa of 0.30 counts only the agreement beyond that, and a kappa from 0.21 to 0.40 is conventionally called fair agreement. The author agreed with 22 of the judge's 23 passes but only 2 of its 7 fails, and on all 5 answers the judge failed and the author passed, groundedness was its lowest score: it is stricter than the author about what the documents support ([results/judge-agreement.json](results/judge-agreement.json), [docs/03](docs/03-judge-validation.md#agreement-with-a-person)).
-- **With this judge, one call per case cannot compare two prompts.** In 18 of the 38 compared pairs of rag v1 and v2 answers (47.4%), the judge changed its verdict when the two answers swapped places. 2 more pairs with identical answers were not compared. With one judge call per case, those verdicts would depend on which answer happened to be shown first: ask in both orders and count only the pairs that agree, as [the comparison below](#the-two-prompt-versions-compared-by-the-judge) does.
+- **The judge's agreement with the author is not measured yet.** The sample of 30 judged answers (all 23 the judge failed and 7 it passed) awaits the author's labels; his 30 earlier labels are of answers the sample no longer holds, so they do not count ([docs/03](docs/03-judge-validation.md#agreement-with-a-person)).
+- **With this judge, one call per case cannot compare two prompts.** In 11 of the 36 compared pairs of rag v1 and v2 answers (30.6%), the judge changed its verdict when the two answers swapped places. 4 more pairs with identical answers were not compared. With one judge call per case, those verdicts would depend on which answer happened to be shown first: ask in both orders and count only the pairs that agree, as [the comparison below](#the-two-prompt-versions-compared-by-the-judge) does.
 
 <!-- findings:end -->
 
@@ -44,7 +44,7 @@ How to read the table: rag is the support assistant (retrieval-augmented generat
 - **Catch regressions when you change a prompt or a model.** Every case is compared with an accepted baseline. A case that breaks fails the build. A case that the change fixes also fails the build until the baseline is updated on purpose, so improvements are reviewed too. A gate fails the build when a key rate drops by more than its tolerance. The table above compares two prompt versions of the same two features.
 - **Test a chatbot against prompt injection and data leaks.** Rules check every answer for a customer's personal data, internal notes, the system prompt and an instruction planted in a document. Dedicated cases attack the assistant directly ([docs/04](docs/04-safety-cases.md)).
 - **Know when an LLM judge can be trusted.** The judge's verdicts are compared with a person's blind labels, with percent agreement and Cohen's kappa (agreement beyond chance). When it compares two versions, it is asked twice with the answers swapped. It is checked for a bias toward longer answers, and it comes from a different vendor than the model it grades ([docs/03](docs/03-judge-validation.md)).
-- **Keep evaluation in CI without paying for every run.** Every model call, the judge's included, was recorded once from free models. CI replays the recording offline, with no key, and gets the same result every time. A live run, started by hand, measures the drift since the recording.
+- **Keep evaluation in CI without paying for every run.** Every model call, the judge's included, was recorded once on paid models, and the cost row above is what that recording cost. CI replays it offline, with no key and at no cost, and gets the same result every time. A live run, started by hand, measures the drift since the recording.
 
 ## The two prompt versions, compared by the judge
 
@@ -54,15 +54,15 @@ The judge compared the first answers of rag v1 and rag v2 case by case, asked tw
 
 | Outcome over 40 cases | Cases |
 |---|---:|
-| v1 preferred in both orders | 7 |
-| v2 preferred in both orders | 4 |
-| A tie in both orders | 9 |
-| Inconsistent: the two orders disagree | 18 |
-| Identical answers, not compared | 2 |
+| v1 preferred in both orders | 3 |
+| v2 preferred in both orders | 11 |
+| A tie in both orders | 11 |
+| Inconsistent: the two orders disagree | 11 |
+| Identical answers, not compared | 4 |
 
-Position consistency: 20 of 38 compared pairs (52.6%) got the same verdict in both orders.
+Position consistency: 25 of 36 compared pairs (69.4%) got the same verdict in both orders.
 
-In 18 of the 38 compared pairs, the judge's preference changed when the two answers swapped places: 3 times it chose the answer shown first in both orders, and 15 times it called a tie in one order and chose a side in the other. An inconsistent pair is never settled by picking one order.
+In 11 of the 36 compared pairs, the judge's preference changed when the two answers swapped places: 1 time it chose the answer shown second in both orders, and 10 times it called a tie in one order and chose a side in the other. An inconsistent pair is never settled by picking one order.
 
 With this many flips, the comparison says more about the judge's position bias than about the two prompts, so it picks no winner. The main table rests on the rules and the per-answer grades.
 
@@ -72,18 +72,17 @@ With this many flips, the comparison says more about the judge's position bias t
 
 <!-- agreement:start -->
 
-| Judge's verdict | Author: pass | Author: fail |
-|---|---:|---:|
-| Judge: pass | 22 | 1 |
-| Judge: fail | 5 | 2 |
+pending human labels
 
-Percent agreement: 24 of 30 (80.0%). Cohen's kappa: 0.30. Disagreements: 6, listed in results/judge-agreement.json with the judge's reasons.
+None of the author's 30 labels in labels/human.jsonl is of an answer in the current sample: the answers or the sample changed after he labelled them. Stale labels are not used; each is listed with its reason in results/judge-agreement.json.
 
-Labelled: 30 of 30 sample answers.
-
-Pavel Zhukov Atum, the author, labelled 30 judged answers by hand, blind to the judge's verdict (make label): all 7 answers the judge failed and 23 it passed. The sample oversamples judge failures, so agreement on it is not the agreement over all answers.
+Pavel Zhukov Atum, the author, labels 30 judged answers by hand, blind to the judge's verdict (make label), and this sample awaits his labels: all 23 answers the judge failed and 7 it passed. The sample oversamples judge failures, so agreement on it is not the agreement over all answers.
 
 <!-- agreement:end -->
+
+<!-- history:start -->
+The author's first labels (commit d2e9856) were of the answers of the first recording, made on free models (commits 66b4a3a and 1fc63b9). The paid recording that replaced it wrote every answer anew, so those labels no longer count and the sample was drawn again from the new judge's verdicts.
+<!-- history:end -->
 
 How the sample is drawn, the judge's grades, and its position and length checks: [docs/03](docs/03-judge-validation.md).
 
@@ -112,7 +111,7 @@ curl -s localhost:8000/assist -H 'content-type: application/json' \
   -d '{"question": "How many days do I have to return something?", "version": "v2"}'
 ```
 
-In replay mode it answers only the recorded dataset questions. With `LLMEVAL_MODE=live` and a key it calls the free models for any question.
+In replay mode it answers only the recorded dataset questions. `LLMEVAL_MODE=live` with a key answers any question, but only with free models in `config/models.yaml`: the service has no spending limit, so with the committed paid models it refuses to start in live mode.
 
 Recording and live runs need an OpenRouter key in the environment, never in a file in git:
 

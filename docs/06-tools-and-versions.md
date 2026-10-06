@@ -25,16 +25,18 @@ Python 3.12 (`requires-python = ">=3.12,<3.13"`); the checks ran on 3.12.14. Eac
 
 ## Models
 
-The model ids live in [`config/models.yaml`](../config/models.yaml) and nowhere in the code. Both are OpenRouter free variants (ids ending in `:free`).
+The model ids live in [`config/models.yaml`](../config/models.yaml) and nowhere in the code. Both are paid OpenRouter models, from different vendors. The first recording used free variants of other models ([docs/03](03-judge-validation.md#the-first-recording-on-free-models)).
 
-| Role | Model id | Settings | Checked on 2026-10-05 |
+| Role | Model id | Settings | Checked on 2026-10-06 |
 |---|---|---|---|
-| system | `qwen/qwen3.8-27b:free` | temperature 0.2, max_tokens 600, reasoning off; no seed and no enforced output format, because the model lists neither `seed` nor `response_format` | listed by `GET https://openrouter.ai/api/v1/models` at price 0, with `structured_outputs` but without `response_format` and `seed` |
-| judge | `nvidia/nemotron-3-super-120b-a12b:free` | temperature 0, seed 7, max_tokens 4096, reasoning effort low, a strict JSON schema with `require_parameters` | listed at price 0, with `structured_outputs`, `response_format` and `seed` |
+| system | `mistralai/mistral-small-3.2-24b-instruct` | temperature 0.2, max_tokens 600, no reasoning; no seed and no enforced output format: the schema goes in the prompt and the reply is validated | listed by `GET https://openrouter.ai/api/v1/models` at USD 0.094 per million input tokens and 0.25 per million output tokens, served by four providers; lists `response_format`, `structured_outputs` and `seed`, and no reasoning |
+| judge | `nvidia/nemotron-3-super-120b-a12b` | temperature 0, seed 7, max_tokens 4096, reasoning effort low, a strict JSON schema with `require_parameters` | listed at USD 0.08 per million input tokens and 0.45 per million output tokens, with `structured_outputs`, `response_format`, `seed` and reasoning; one provider serves all of them, so the judge has a single route |
+
+Each recorded call keeps the cost OpenRouter reported with it (`usage.cost`); when that is missing, the published price of the tokens used, and a call with neither counts as unknown, never as zero. Replay reads those costs from the cassettes and calls nothing, so CI costs nothing.
 
 The run these results come from is named in the line under the README's main table: the models, the date and the number of calls, read from [`cassettes/manifest.json`](../cassettes/manifest.json).
 
-OpenRouter's free variants are limited to 20 requests per minute and 50 requests per day, or 1000 requests per day once an account has bought at least 10 USD of credits ([limits](https://openrouter.ai/docs/api-reference/limits), checked on 2026-10-05). Recording keeps to 18 requests per minute (`rpm` in the config) and continues over several days when the daily allowance runs out.
+Recording keeps to 18 requests per minute (`rpm` in the config). A provider that answers HTTP 429 without a reset time is waited out (30, 60, 120 and 240 seconds) and the same call is sent again. OpenRouter's free variants (ids ending in `:free`) are limited to 20 requests per minute and 50 requests per day, or 1000 requests per day once an account has bought at least 10 USD of credits ([limits](https://openrouter.ai/docs/api-reference/limits), checked on 2026-10-05); with a free model in the config, recording continues over several days when the daily allowance runs out.
 
 ## How the concepts map to other evaluation tools
 

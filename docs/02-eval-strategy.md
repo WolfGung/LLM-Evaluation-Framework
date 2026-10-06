@@ -39,23 +39,23 @@ The judge also compares the two prompt versions directly: it sees both answers t
 
 | Calls | Count | Mean tokens in / out | Latency p50 / p95 | Cost |
 |---|---:|---:|---:|---:|
-| rag v1 answers (system) | 156 | 561 / 87 | 1.8 s / 25.3 s | $0.00 (free model) |
-| rag v2 answers (system) | 156 | 886 / 41 | 0.9 s / 25.3 s | $0.00 (free model) |
-| triage v1 answers (system) | 120 | 513 / 56 | 0.9 s / 13.0 s | $0.00 (free model) |
-| triage v2 answers (system) | 120 | 959 / 56 | 1.0 s / 10.7 s | $0.00 (free model) |
-| Judge grades of rag v1 | 40 | 1509 / 668 (588 reasoning) | 7.2 s / 15.2 s | $0.00 (free model) |
-| Judge grades of rag v2 | 40 | 1468 / 615 (530 reasoning) | 5.5 s / 12.3 s | $0.00 (free model) |
-| Pairwise questions, rag v1 vs v2 | 76 | 1571 / 898 (835 reasoning) | 7.4 s / 26.3 s | $0.00 (free model) |
+| rag v1 answers (system) | 156 | 529 / 56 | 1.3 s / 3.0 s | $0.00832 |
+| rag v2 answers (system) | 156 | 849 / 34 | 1.2 s / 2.4 s | $0.01265 |
+| triage v1 answers (system) | 120 | 439 / 50 | 2.5 s / 5.2 s | $0.005947 |
+| triage v2 answers (system) | 120 | 871 / 50 | 1.5 s / 4.3 s | $0.010457 |
+| Judge grades of rag v1 | 40 | 1475 / 793 (689 reasoning) | 39.1 s / 108.1 s | $0.018998 |
+| Judge grades of rag v2 | 40 | 1460 / 813 (714 reasoning) | 32.5 s / 86.0 s | $0.019308 |
+| Pairwise questions, rag v1 vs v2 | 72 | 1524 / 814 (734 reasoning) | 35.2 s / 101.7 s | $0.035153 |
 
 The rule-based layers (retrieval, deterministic, reference, safety and stability) call no model: they read the answers above, so they add no calls and no cost.
 
-The rows add up to 708 calls; the recording holds 706. On 2 cases both prompt versions wrote the same answer, so 2 recorded gradings are counted in both versions' rows.
+The rows add up to 704 calls; the recording holds 700. On 4 cases both prompt versions wrote the same answer, so 4 recorded gradings are counted in both versions' rows.
 
 <!-- cost:end -->
 
 A judge call is longer and slower than an answer: it reads the rubric, the documents and the answer, and it reasons before its verdict. That is why the judge grades the first run of each case only (`judge_repeats: first` in [`config/models.yaml`](../config/models.yaml)): the stability layer uses the rule-based checks, so grading every repeat would buy calls and nothing the reports use.
 
-On a paid model the same table is the bill. `make estimate` prices the calls still to record from OpenRouter's published prices before anything is sent, and `make record` and `make live` refuse to start above `MAX_RUN_COST_USD`.
+The table is the bill of the recording: each call's cost as OpenRouter reported it (`usage.cost`), or the published price of its tokens when that is missing; a call with neither counts as unknown, never as zero. Replaying the recording costs nothing. Before a new recording, `make estimate` prices the calls still to record from OpenRouter's published prices, each at its full token budget, and `make record` and `make live` refuse to start above `MAX_RUN_COST_USD`.
 
 ## Stability
 
@@ -81,14 +81,14 @@ So a prompt change that fixes cases shows up as clearly as one that breaks them,
 
 | Gated rate | Allowed drop | Largest move between single repeats |
 |---|---:|---:|
-| All checks | 5.0 pp | 5.8 pp (rag v1) |
+| All checks | 5.0 pp | 11.5 pp (rag v2) |
 | Retrieval layer | 0.0 pp | 0.0 pp (rag v1) |
-| Deterministic layer | 5.0 pp | 5.8 pp (rag v1) |
-| Reference layer | 5.0 pp | 3.0 pp (rag v1) |
-| Safety layer | 2.0 pp | 1.9 pp (rag v1) |
+| Deterministic layer | 5.0 pp | 1.9 pp (rag v1) |
+| Reference layer | 5.0 pp | 10.0 pp (triage v1) |
+| Safety layer | 2.0 pp | 3.8 pp (rag v1) |
 | Judge layer | 10.0 pp | — |
-| Category accuracy | 5.0 pp | 2.5 pp (triage v1) |
-| Priority accuracy | 5.0 pp | 2.5 pp (triage v2) |
+| Category accuracy | 5.0 pp | 2.5 pp (triage v2) |
+| Priority accuracy | 5.0 pp | 10.0 pp (triage v1) |
 | Stable cases | 10.0 pp | — |
 | Pass by the rubric rule | 10.0 pp | — |
 | Valid judge verdicts | 5.0 pp | — |
@@ -118,7 +118,7 @@ Why these tolerances:
 | record | `make record` | yes, once per call; recorded calls are skipped, so a stopped run continues | `cassettes/` |
 | live | `make live`, or [`live.yml`](../.github/workflows/live.yml) by hand | yes, every call again | `results-live/` (ignored by git) |
 
-A live run followed by `llmeval gate --results-dir results-live` shows the drift since the recording: free models are updated, rerouted and retired without notice.
+A live run followed by `llmeval gate --results-dir results-live` shows the drift since the recording: models and the providers that serve them are updated, rerouted and retired without notice.
 
 ## Reading the Allure report
 

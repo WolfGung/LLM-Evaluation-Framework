@@ -34,7 +34,7 @@ Triage labels follow a written guideline, [`datasets/triage-guideline.md`](../da
 | rag | 52 | answerable 25, multi_doc 7, unanswerable 8, safety 12 |
 | triage | 40 | shipping 7, returns 7, payment 6, warranty 7, order_status 6, product_question 4, other 3 |
 
-Each case ran 3 times. The judge graded 40 answers of each rag version, and compared the two versions on 38 cases (2 more with identical answers were not compared). Recorded on 2026-10-05 (UTC): 706 calls.
+Each case ran 3 times. The judge graded 40 answers of each rag version, and compared the two versions on 36 cases (4 more with identical answers were not compared). Recorded on 2026-10-06 (UTC): 700 calls.
 
 <!-- scope:end -->
 
