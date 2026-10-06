@@ -261,6 +261,49 @@ def test_a_run_without_judged_answers_needs_no_agreement_file(ws):
 def test_both_blocks_are_pending_without_a_recorded_run(ws):
     assert body(ws, "pairwise") == "\npending first recorded run\n\n"
     assert body(ws, "agreement") == "\npending first recorded run\n\n"
+    assert body(ws, "findings") == "\npending first recorded run\n\n"
+
+
+# --- findings ---------------------------------------------------------------------------
+
+
+def test_the_findings_read_the_position_flips_in_plain_words(ws):
+    record_rag(ws, PAIRS)
+    assert body(ws, "findings") == (
+        "\n- **With this judge, one call per case cannot compare two prompts.** In 2 of the 5 "
+        "compared pairs of rag v1 and v2 answers (40.0%), the judge changed its verdict when the "
+        "two answers swapped places. 1 more pair with identical answers and 1 more pair with an "
+        "invalid verdict were not compared. With one judge call per case, those verdicts would "
+        "depend on which answer happened to be shown first: ask in both orders and count only "
+        "the pairs that agree, as [the comparison below]"
+        "(#the-two-prompt-versions-compared-by-the-judge) does.\n\n"
+    )
+
+
+def test_a_comparison_without_flips_says_the_order_did_not_sway_the_judge(ws):
+    record_rag(ws, [syn.pair_case("rag-001", "tie", "tie"), identical("rag-002")])
+    assert body(ws, "findings") == (
+        "\n"
+        "- **The order of the answers did not sway the judge.** In none of the 1 compared pairs "
+        "of rag v1 and v2 answers did the judge change its verdict when the two answers swapped "
+        "places, so one order would have given the same verdicts here; asking in both orders is "
+        "what shows it. 1 more pair with identical answers was not compared.\n\n"
+    )
+
+
+def test_a_few_flips_above_the_consistency_threshold_ask_for_both_orders(ws):
+    consistent = [syn.pair_case(f"rag-00{n}", "tie", "tie") for n in range(1, 5)]
+    record_rag(ws, [*consistent, syn.pair_case("rag-005", "A", "A")])  # 4 of 5: 80.0%
+    text = body(ws, "findings")
+    assert "- **Ask the judge in both orders.** In 1 of the 5 compared pairs" in text
+    assert "were not compared" not in text and "was not compared" not in text
+
+
+def test_a_run_without_a_pairwise_comparison_has_no_findings(ws):
+    write_manifest(ws / "cassettes", syn.manifest({"triage": ("v1",)}))
+    case = syn.case_record("tri-001", (), checks=syn.TRIAGE_CHECKS)
+    write_results(syn.function_results("triage", "v1", [case]), ws / "results")
+    assert body(ws, "findings") == "\nNo pairwise comparison in this run.\n\n"
 
 
 # --- the docs blocks: judge, safety, cost, gate, scope ----------------------------------

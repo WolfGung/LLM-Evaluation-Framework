@@ -15,8 +15,8 @@ manifest without its results files is an error (run make eval), never
 "pending". The block names (`BLOCKS`):
 
 - `results`: the main table (below);
-- `pairwise`, `agreement`, `judge`, `safety`, `cost`, `gate`, `scope`: see
-  `tools.sections`;
+- `findings`, `pairwise`, `agreement`, `judge`, `safety`, `cost`, `gate`,
+  `scope`: see `tools.sections`;
 - `history`: never rendered. It quotes a fact that is not in results/, such
   as one from an earlier recording, and names the commit it comes from; the
   repository test checks that it does.
@@ -340,6 +340,7 @@ def _results_block(recorded: Recorded) -> list[Part]:
 
 BLOCKS: dict[str, BlockFn] = {
     "results": _results_block,
+    "findings": sections.findings,
     "pairwise": sections.pairwise,
     "agreement": sections.agreement,
     "judge": sections.judge,

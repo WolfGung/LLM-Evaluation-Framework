@@ -5,7 +5,7 @@
 
 The CI workflow builds this page on a push to main, puts the Allure report
 of the same run next to it under `report/`, and publishes both on GitHub
-Pages. The page shows the blocks the README shows, from the same parts
+Pages. The page shows three of the README's blocks, from the same parts
 (`tools.render` and `tools.sections`): the main table with the lines under
 it, the pairwise comparison and the judge's agreement with the author's
 labels. They are read from `results/` and `cassettes/manifest.json` only, so

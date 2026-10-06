@@ -33,7 +33,7 @@ FILES = default_files()
 # The generated blocks each page must hold, in order: a page that loses one
 # would quote its results nowhere, and no other test would notice.
 EXPECTED_BLOCKS = {
-    "README.md": ["results", "pairwise", "agreement"],
+    "README.md": ["results", "findings", "pairwise", "agreement"],
     "docs/01-what-is-evaluated.md": ["scope"],
     "docs/02-eval-strategy.md": ["cost", "gate"],
     "docs/03-judge-validation.md": ["agreement", "judge", "pairwise", "history"],
@@ -54,8 +54,9 @@ def test_the_readme_has_one_results_block():
     assert block_names(text).count("results") == 1
 
 
-def test_the_readme_shows_the_pairwise_comparison_and_the_judge_agreement():
+def test_the_readme_shows_the_findings_the_pairwise_comparison_and_the_judge_agreement():
     names = block_names(README.read_text(encoding="utf-8"))
+    assert names.count("findings") == 1, "README.md needs one findings block"
     assert names.count("pairwise") == 1, "README.md needs one pairwise block"
     assert names.count("agreement") == 1, "README.md needs one agreement block"
 

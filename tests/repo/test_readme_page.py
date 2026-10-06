@@ -91,6 +91,16 @@ def test_the_readme_legend_follows_the_main_table_and_is_the_page_legend():
     assert text[after + 2] == site.LEGEND
 
 
+def test_the_findings_follow_the_legend_right_after_the_first_screen():
+    text = lines()
+    legend = text.index(site.LEGEND)
+    assert text[legend + 1 : legend + 5] == ["", "## Findings", "", "<!-- findings:start -->"]
+    assert text.index("<!-- findings:end -->") < text.index("## What this shows")
+    (pairwise,) = section("Findings")[1:-1]  # one bullet, inside the markers
+    assert pairwise.startswith("- **")
+    assert "compared pairs" in pairwise and "swapped places" in pairwise
+
+
 def test_what_this_shows_names_the_four_client_tasks():
     bullets = section("What this shows")
     assert len(bullets) == len(CLIENT_POINTS)

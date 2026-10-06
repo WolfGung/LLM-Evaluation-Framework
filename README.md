@@ -30,6 +30,14 @@ Latency: 29 of the 30 system calls at or above their column's p95 took at least 
 
 How to read the table: rag is the support assistant (retrieval-augmented generation: it searches the knowledge base, then answers), and triage turns a ticket into JSON. Retrieval: the search found the expected documents. Deterministic: rules a program can decide, such as valid JSON, citations, forbidden claims and length. Reference: the required facts, or the expected category, priority and order id. Safety: nothing leaked and no attack worked. Judge: a second model graded the answer as grounded, helpful and polite. Stable cases: every repeat got the same verdicts. p50 / p95: half the calls were faster than the first figure, and 95 percent were faster than the second.
 
+## Findings
+
+<!-- findings:start -->
+
+- **With this judge, one call per case cannot compare two prompts.** In 18 of the 38 compared pairs of rag v1 and v2 answers (47.4%), the judge changed its verdict when the two answers swapped places. 2 more pairs with identical answers were not compared. With one judge call per case, those verdicts would depend on which answer happened to be shown first: ask in both orders and count only the pairs that agree, as [the comparison below](#the-two-prompt-versions-compared-by-the-judge) does.
+
+<!-- findings:end -->
+
 ## What this shows
 
 - **Catch regressions when you change a prompt or a model.** Every case is compared with an accepted baseline. A case that breaks fails the build. A case that the change fixes also fails the build until the baseline is updated on purpose, so improvements are reviewed too. A gate fails the build when a key rate drops by more than its tolerance. The table above compares two prompt versions of the same two features.

@@ -11,6 +11,9 @@ in `config/gate.yaml` or the datasets; the same files give the same text.
   counted over every case; position consistency only over the pairs the
   judge really compared (two different answers, two valid verdicts), so an
   identical or invalid pair never counts as consistent.
+- `findings`: what the run shows a reader, in plain words. From each
+  pairwise comparison: how many compared pairs flipped with the order, and
+  what that means for a comparison made with one judge call per case.
 - `agreement`: the judge against the author's labels on the label sample:
   `pending human labels` with the sample until there are labels, then
   percent agreement, Cohen's kappa, the confusion and the disagreements,
@@ -273,6 +276,62 @@ def agreement(recorded: Recorded) -> list[Part]:
     if not recorded.graded():
         return ["No answer in this run was graded by the judge."]
     return agreement_parts(recorded.agreement(), _judge_failures(recorded))
+
+
+# --- findings ----------------------------------------------------------------------------
+
+PAIRWISE_SECTION = "#the-two-prompt-versions-compared-by-the-judge"
+
+
+def _pairwise_finding(result: PairwiseResults) -> str:
+    summary = result.summary
+    first, second = result.versions
+    flipped, compared = summary.inconsistent.count, summary.inconsistent.total
+    skipped = [
+        (count, what)
+        for what, count in (
+            ("identical answers", summary.outcomes.get("identical", 0)),
+            ("an invalid verdict", summary.outcomes.get("invalid", 0)),
+        )
+        if count
+    ]
+    left_out = " and ".join(
+        f"{count} more {'pair' if count == 1 else 'pairs'} with {what}" for count, what in skipped
+    )
+    verb = "was" if sum(count for count, _ in skipped) == 1 else "were"
+    not_compared = f" {left_out} {verb} not compared." if skipped else ""
+    pairs = f"{result.function} {first} and {second} answers"
+    if not compared:
+        return f"- **No pair was compared.** The judge compared no pair of {pairs}."
+    if not flipped:
+        return (
+            "- **The order of the answers did not sway the judge.** In none of the "
+            f"{compared} compared pairs of {pairs} did the judge change its verdict when the "
+            "two answers swapped places, so one order would have given the same verdicts "
+            f"here; asking in both orders is what shows it.{not_compared}"
+        )
+    low = Fraction(compared - flipped, compared) < PAIRWISE_TRUSTED_CONSISTENCY
+    headline = (
+        "With this judge, one call per case cannot compare two prompts."
+        if low
+        else "Ask the judge in both orders."
+    )
+    return (
+        f"- **{headline}** In {flipped} of the {compared} compared pairs of {pairs} "
+        f"({percent(flipped, compared)}), the judge changed its verdict when the two answers "
+        f"swapped places.{not_compared} With one judge call per case, those verdicts would "
+        "depend on which answer happened to be shown first: ask in both orders and count only "
+        f"the pairs that agree, as [the comparison below]({PAIRWISE_SECTION}) does."
+    )
+
+
+def findings(recorded: Recorded) -> list[Part]:
+    """What each pairwise comparison means (see the module docstring), one
+    bullet each."""
+    bullets = [_pairwise_finding(result) for result in recorded.run.pairwise]
+    if not bullets:
+        return ["No pairwise comparison in this run."]
+    return ["\n".join(bullets)]
 
 
 # --- judge -------------------------------------------------------------------------------
