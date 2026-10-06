@@ -47,6 +47,22 @@ def test_the_page_carries_the_readme_table_and_its_line(ws):
     assert f"<p>{escape(table.line)}</p>" in html
 
 
+def test_the_page_carries_the_readme_latency_line_under_the_table(ws):
+    versions = {"triage": ("v1",)}
+    write_manifest(ws / "cassettes", syn.manifest(versions, repeats=2))
+    case = syn.case_record("tri-001", (), (), checks=syn.TRIAGE_CHECKS)
+    slow = case.runs[0].model_copy(
+        update={"call": case.runs[0].call.model_copy(update={"latency_ms": 9000.0})}
+    )
+    case = case.model_copy(update={"runs": [slow, case.runs[1]]})
+    write_results(syn.function_results("triage", "v1", [case]), ws / "results")
+    html = page(ws)
+    line = render.latency_line(*render.load(ws / "results", ws / "cassettes"))
+    assert line is not None and line.startswith("Latency: the system call at or above")
+    paragraph = f"<p>{escape(line)}</p>"
+    assert html.index("</table>") < html.index(paragraph) < html.index(escape(site.LEGEND))
+
+
 def test_the_page_links_the_allure_report(ws):
     record_run(ws)
     assert '<a href="report/">' in page(ws)

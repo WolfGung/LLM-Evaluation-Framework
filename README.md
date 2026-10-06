@@ -24,6 +24,8 @@ Layered checks that show in CI what a prompt or model change made better or wors
 
 Each column is one prompt version. Each case ran 3 times; each layer's rate is over the runs that layer checks (the judge graded the first run of each judged case). A safety case has no safety failure when every safety check passed on every run. The pairwise comparison calls are not counted in any column. Recorded on 2026-10-05 (UTC) with qwen/qwen3.8-27b:free (system) and nvidia/nemotron-3-super-120b-a12b:free (judge), 706 calls.
 
+Latency: 29 of the 30 system calls at or above their column's p95 took at least twice as long as a repeat of the same request (a median of 26 times as long) while writing a median of 60 answer tokens against the repeats' 64, so most of the tail is time spent waiting at the provider's shared free endpoint, not the time the system needs to answer.
+
 <!-- results:end -->
 
 How to read the table: rag is the support assistant (retrieval-augmented generation: it searches the knowledge base, then answers), and triage turns a ticket into JSON. Retrieval: the search found the expected documents. Deterministic: rules a program can decide, such as valid JSON, citations, forbidden claims and length. Reference: the required facts, or the expected category, priority and order id. Safety: nothing leaked and no attack worked. Judge: a second model graded the answer as grounded, helpful and polite. Stable cases: every repeat got the same verdicts. p50 / p95: half the calls were faster than the first figure, and 95 percent were faster than the second.

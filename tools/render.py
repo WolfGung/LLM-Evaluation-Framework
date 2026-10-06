@@ -53,6 +53,20 @@ which runs a layer counts, what "no safety failure" means, and the
 recording: dates, models and calls. Percentages and seconds have one
 decimal, and a half rounds up (`percent`, `seconds`); the page built by
 `tools.site` uses the same table.
+
+A second line reads the p95 latency (`latency_line`), from the tail each
+column's summary keeps (`llmeval.perf.TailCall`): the system calls at or
+above that column's p95, each next to the fastest other repeat of the same
+request. A call that took at least twice as long as a repeat of the same
+request (`WAITED`), with that repeat's time first scaled up by the token
+ratio when the slow call wrote a longer answer, spent at least half its time
+on something the same work did not need: waiting for the provider. The line
+counts those calls, gives the median of their latency over their repeat's
+and their answers' median length next to the repeats', and says what the
+tail is, by what it shows: waiting when such calls are there (most or part
+of the tail when not every call is one), the requests themselves when none
+is. A free system model (its id ends in `:free`) is named as the shared
+free endpoint. Without a tail call that has a repeat there is no line.
 """
 
 from __future__ import annotations
@@ -60,6 +74,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import re
+import statistics
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -71,7 +86,7 @@ from llmeval.callplan import plural
 from llmeval.cassettes import PENDING_RECORDED_RUN, CassetteError, RunManifest, load_manifest
 from llmeval.datasets import RAG_PATH
 from llmeval.gate import GATE_CONFIG_PATH
-from llmeval.perf import COST_PLACES
+from llmeval.perf import COST_PLACES, TailCall
 from llmeval.pricing import format_usd
 from llmeval.results import LAYERS, CaseRecord, FunctionResults
 from tools import sections
@@ -80,6 +95,7 @@ from tools.formatting import (
     Part,
     RenderError,
     Table,
+    decimal,
     markdown,
     percent,
     seconds,
@@ -101,6 +117,9 @@ END_MARKER = "<!-- results:end -->"
 HISTORY = "history"
 FREE_SUFFIX = ":free"
 SAFETY = "safety"  # the safety layer, and the RAG category of the attack cases
+# A tail call that took at least this many times as long as a repeat of the
+# same request spent at least half its time waiting, not working.
+WAITED = 2
 
 
 def load(results_dir: Path, cassettes_dir: Path) -> tuple[RunManifest, RunResults] | None:
@@ -228,13 +247,95 @@ def table(manifest: RunManifest, run: RunResults) -> Table:
     return Table(header=header, rows=tuple(rows), line=_line(manifest, run))
 
 
+def _times_as_long(ratio: float) -> str:
+    return decimal(ratio, 0 if ratio >= 10 else 1)
+
+
+def _answer_tokens(count: float) -> str:
+    text = decimal(count, 0)
+    return f"{text} answer token" + ("" if text == "1" else "s")
+
+
+def _waited(call: TailCall) -> bool:
+    """At least `WAITED` times as long as the repeat would need for the same
+    answer: a longer answer first scales the repeat's time up by the ratio of
+    completion tokens, so writing more is never taken for waiting."""
+    repeat_ms = call.fastest_repeat_latency_ms or 0.0
+    longer = call.completion_tokens / max(call.fastest_repeat_completion_tokens or 0, 1)
+    return call.latency_ms >= WAITED * repeat_ms * max(1.0, longer)
+
+
+def latency_line(manifest: RunManifest, run: RunResults) -> str | None:
+    """What the p95 latency of the system calls is made of (see the module
+    docstring); None when no tail call has a repeat to compare with."""
+    tail = [call for result in run.functions for call in result.summary.performance.tail or []]
+    compared = [call for call in tail if call.fastest_repeat_latency_ms is not None]
+    if not compared:
+        return None
+    total = len(compared)
+    ran_again = " whose case ran more than once" if total < len(tail) else ""
+    calls = (
+        f"the system call at or above its column's p95{ran_again}"
+        if total == 1
+        else f"the {total} system calls at or above their column's p95{ran_again}"
+    )
+    waited = [call for call in compared if _waited(call)]
+    if not waited:
+        never = "it did not take" if total == 1 else "none of them took"
+        return (
+            f"Latency: of {calls}, {never} even twice as long as a repeat of the same request "
+            "would need for the same answer, so the slow requests were slow on every try: the "
+            "tail comes from the requests themselves, not from waiting at the provider."
+        )
+    ratio = statistics.median(
+        call.latency_ms / (call.fastest_repeat_latency_ms or 1.0) for call in waited
+    )
+    own = statistics.median(call.completion_tokens for call in waited)
+    repeats = statistics.median(call.fastest_repeat_completion_tokens or 0 for call in waited)
+    if len(waited) == total:
+        subject = calls if total == 1 else f"each of {calls}"
+        share = "the tail"
+    else:
+        subject = f"{len(waited)} of {calls}"
+        share = "most of the tail" if 2 * len(waited) > total else "part of the tail"
+    where = (
+        "the provider's shared free endpoint"
+        if manifest.models["system"].endswith(FREE_SUFFIX)
+        else "the provider"
+    )
+    times = f"{_times_as_long(ratio)} times as long"
+    if len(waited) == 1:
+        measured = (
+            f"({times}) while writing {_answer_tokens(own)} against the repeat's "
+            f"{decimal(repeats, 0)}"
+        )
+    else:
+        measured = (
+            f"(a median of {times}) while writing a median of {_answer_tokens(own)} against "
+            f"the repeats' {decimal(repeats, 0)}"
+        )
+    return (
+        f"Latency: {subject} took at least twice as long as a repeat of the same request "
+        f"{measured}, so {share} is time spent waiting at {where}, not the time the system "
+        "needs to answer."
+    )
+
+
+def results_parts(manifest: RunManifest, run: RunResults) -> list[Part]:
+    """The main table, then the latency line when there is one."""
+    parts: list[Part] = [table(manifest, run)]
+    if line := latency_line(manifest, run):
+        parts.append(line)
+    return parts
+
+
 # --- blocks ----------------------------------------------------------------------------
 
 BlockFn = Callable[[Recorded], Sequence[Part]]
 
 
 def _results_block(recorded: Recorded) -> list[Part]:
-    return [table(recorded.manifest, recorded.run)]
+    return results_parts(recorded.manifest, recorded.run)
 
 
 BLOCKS: dict[str, BlockFn] = {

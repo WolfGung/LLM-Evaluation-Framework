@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from llmeval.perf import Performance, cost_sum, percentile, performance
+from llmeval.perf import Performance, TailCall, cost_sum, percentile, performance, tail_calls
 from llmeval.results import (
     CallRecord,
     CaseRecord,
@@ -113,6 +113,77 @@ def test_without_a_case_count_there_is_no_per_case_cost():
     assert performance([call(cost=0.001)]).cost.per_case_usd is None
 
 
+def test_the_tail_is_the_calls_at_or_above_p95_next_to_the_fastest_other_repeat():
+    # (latency ms, completion tokens) of each repeat. Ten calls: p95 by the nearest
+    # rank is the 10th value, so the tail is the slowest call and every call as slow;
+    # 9000.04 ms is stored as 9000.0, so rag-002 repeat 1 ties it.
+    runs = {
+        "rag-001": [(9000.04, 40), (100, 38), (300, 40)],
+        "rag-002": [(200, 50), (9000.0, 52), (150, 50)],
+        "rag-003": [(120, 30), (130, 30), (140, 30)],
+        "rag-004": [(110, 60)],
+    }
+    calls = [call(latency=ms, completion=n) for repeats in runs.values() for ms, n in repeats]
+    requests = [(case, repeat) for case, repeats in runs.items() for repeat in range(len(repeats))]
+    assert tail_calls(calls, requests) == [
+        TailCall(
+            case="rag-001",
+            repeat=0,
+            latency_ms=9000.0,
+            completion_tokens=40,
+            fastest_repeat=1,
+            fastest_repeat_latency_ms=100.0,
+            fastest_repeat_completion_tokens=38,
+        ),
+        TailCall(
+            case="rag-002",
+            repeat=1,
+            latency_ms=9000.0,
+            completion_tokens=52,
+            fastest_repeat=2,
+            fastest_repeat_latency_ms=150.0,
+            fastest_repeat_completion_tokens=50,
+        ),
+    ]
+
+
+def test_a_tail_call_whose_request_ran_once_has_no_repeat():
+    calls = [call(latency=100), call(latency=900, completion=70)]
+    tail = tail_calls(calls, [("tri-001", 0), ("tri-002", 0)])
+    assert tail == [
+        TailCall(
+            case="tri-002",
+            repeat=0,
+            latency_ms=900.0,
+            completion_tokens=70,
+            fastest_repeat=None,
+            fastest_repeat_latency_ms=None,
+            fastest_repeat_completion_tokens=None,
+        )
+    ]
+    assert tail_calls([], []) == []
+
+
+def test_the_tail_needs_one_request_per_call():
+    with pytest.raises(ValueError, match="one request per call"):
+        tail_calls([call()], [])
+
+
+def test_the_tail_is_measured_only_when_the_requests_are_named():
+    assert performance([call()]).tail is None
+    assert performance([call()], requests=[("rag-001", 0)]).tail == [
+        TailCall(
+            case="rag-001",
+            repeat=0,
+            latency_ms=100.0,
+            completion_tokens=50,
+            fastest_repeat=None,
+            fastest_repeat_latency_ms=None,
+            fastest_repeat_completion_tokens=None,
+        )
+    ]
+
+
 def run(repeat, latency, cost=0.0, judge=None):
     check = CheckRecord(layer="deterministic", name="has_text", passed=True, detail="synthetic")
     return RunRecord(
@@ -165,6 +236,12 @@ def test_the_summary_measures_the_system_calls_and_the_judge_calls_apart():
     assert judge.latency.p95_ms == 1100.0
     assert judge.cost.total_usd == 0.04
     assert judge.cost.per_case_usd == 0.02
+    # The repeats of a case send the same request: the system calls have a tail, and
+    # the judge's grades of different answers do not.
+    assert [(c.case, c.repeat, c.fastest_repeat) for c in summary.performance.tail] == [
+        ("rag-001", 1, 0)
+    ]
+    assert judge.tail is None
 
 
 def test_the_judge_summary_alone_has_no_case_count():
@@ -207,6 +284,7 @@ def test_the_pairwise_summary_measures_the_questions_asked():
     ]
     perf = summarise_pairwise(cases, ("v1", "v2")).performance
     assert perf.calls == 2
+    assert perf.tail is None  # the two orders are two different requests
     assert perf.cost.total_usd == 0.006
     # The identical pair is a compared case that cost nothing.
     assert perf.cost.per_case_usd == 0.003

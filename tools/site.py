@@ -6,11 +6,12 @@
 The CI workflow builds this page on a push to main, puts the Allure report
 of the same run next to it under `report/`, and publishes both on GitHub
 Pages. The page shows the blocks the README shows, from the same parts
-(`tools.render` and `tools.sections`): the main table, the pairwise
-comparison and the judge's agreement with the author's labels. They are read
-from `results/` and `cassettes/manifest.json` only, so the same files give
-the same page; the legend under the main table is the README's. Without a
-recorded run each section says `pending first recorded run`.
+(`tools.render` and `tools.sections`): the main table with the lines under
+it, the pairwise comparison and the judge's agreement with the author's
+labels. They are read from `results/` and `cassettes/manifest.json` only, so
+the same files give the same page; the legend under the main table is the
+README's. Without a recorded run each section says `pending first recorded
+run`.
 
 The page also says how to read the report: Allure's Behaviors tab groups the
 per-case tests by layer, so its counts are tests, not layer pass rates.
@@ -27,7 +28,16 @@ from pathlib import Path
 from llmeval.cassettes import PENDING_RECORDED_RUN
 from tools import sections
 from tools.formatting import Part, Table
-from tools.render import CASSETTES, RESULTS, ROOT, RenderError, Sources, recorded, table
+from tools.render import (
+    CASSETTES,
+    RESULTS,
+    ROOT,
+    RenderError,
+    Sources,
+    latency_line,
+    recorded,
+    table,
+)
 
 SITE = ROOT / "site" / "index.html"
 # Where the Allure report sits next to the page.
@@ -119,8 +129,10 @@ def build(results_dir: Path = RESULTS, cassettes_dir: Path = CASSETTES) -> str:
     if run is None:
         main = pairwise = agreement = [f"<p>{PENDING_RECORDED_RUN}</p>"]
     else:
+        latency = latency_line(run.manifest, run.run)
         main = [
             *_table_html(table(run.manifest, run.run), MAIN_CAPTION),
+            *([f"<p>{escape(latency)}</p>"] if latency else []),
             f"<p>{escape(LEGEND)}</p>",
         ]
         pairwise = _parts_html(sections.pairwise(run))

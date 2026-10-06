@@ -15,6 +15,12 @@ from the cassettes, so the measures below are reproducible.
   zero, and then no mean is given, because it would understate the cost.
   `per_case_usd` divides by the cases, `per_run_usd` by the runs; a run (one
   repeat of one case, or one pairwise question) is one call.
+- Tail: the calls at or above p95, slowest first, each next to the fastest
+  other repeat of the same request (`TailCall`). Only for calls whose repeats
+  send the same request, the system's answers: when a repeat of the same
+  request wrote as much in far less time, the slow call's extra time went to
+  waiting for the provider, not to the work. None for the judge's grades and
+  the pairwise questions.
 
 Two prompt versions that wrote the same answer share one grading recording;
 each version's measures count it, so the sum over versions can exceed what
@@ -50,6 +56,20 @@ class Cost(_Record):
     per_run_usd: float | None
 
 
+class TailCall(_Record):
+    """One call at or above p95: its case, repeat, latency and completion
+    tokens, and the same of the fastest other repeat of the same request
+    (None when the request ran once)."""
+
+    case: str
+    repeat: int
+    latency_ms: float
+    completion_tokens: int
+    fastest_repeat: int | None
+    fastest_repeat_latency_ms: float | None
+    fastest_repeat_completion_tokens: int | None
+
+
 class Performance(_Record):
     calls: int
     latency: Latency
@@ -57,6 +77,7 @@ class Performance(_Record):
     mean_completion_tokens: float | None
     mean_reasoning_tokens: float | None
     cost: Cost
+    tail: list[TailCall] | None = None
 
 
 class CallMeasures(Protocol):
@@ -102,8 +123,58 @@ def _per(total: float, unknown: int, count: int | None) -> float | None:
     return round(total / count, COST_PLACES)
 
 
-def performance(calls: Sequence[CallMeasures], *, cases: int | None = None) -> Performance:
-    """The measures of `calls`. `cases` is how many cases they cover (None: unknown)."""
+def _ms(value: float) -> float:
+    return round(value, 1)
+
+
+def tail_calls(
+    calls: Sequence[CallMeasures], requests: Sequence[tuple[str, int]]
+) -> list[TailCall]:
+    """The calls at or above the p95 latency of `calls`, slowest first, each
+    with the fastest other repeat of its request. `requests` names each
+    call's request and repeat, as (case, repeat): calls with the same case
+    sent the same request. Latencies are compared as stored, to 0.1 ms."""
+    if len(calls) != len(requests):
+        raise ValueError("one request per call")
+    timed = [
+        (case, repeat, _ms(call.latency_ms), call.completion_tokens)
+        for call, (case, repeat) in zip(calls, requests, strict=True)
+    ]
+    p95 = percentile([ms for _, _, ms, _ in timed], 95)
+    if p95 is None:
+        return []
+    by_case: dict[str, list[tuple[str, int, float, int]]] = {}
+    for item in timed:
+        by_case.setdefault(item[0], []).append(item)
+    tail = []
+    for case, repeat, ms, tokens in sorted(timed, key=lambda item: (-item[2], item[0], item[1])):
+        if ms < p95:
+            break
+        others = [item for item in by_case[case] if item[1] != repeat]
+        fastest = min(others, key=lambda item: (item[2], item[1])) if others else None
+        tail.append(
+            TailCall(
+                case=case,
+                repeat=repeat,
+                latency_ms=ms,
+                completion_tokens=tokens,
+                fastest_repeat=fastest[1] if fastest else None,
+                fastest_repeat_latency_ms=fastest[2] if fastest else None,
+                fastest_repeat_completion_tokens=fastest[3] if fastest else None,
+            )
+        )
+    return tail
+
+
+def performance(
+    calls: Sequence[CallMeasures],
+    *,
+    cases: int | None = None,
+    requests: Sequence[tuple[str, int]] | None = None,
+) -> Performance:
+    """The measures of `calls`. `cases` is how many cases they cover (None:
+    unknown). `requests` names each call's request as (case, repeat) when the
+    repeats of a case send the same request; only then is the tail measured."""
     latencies = [call.latency_ms for call in calls]
     p50, p95 = percentile(latencies, 50), percentile(latencies, 95)
     total, unknown = cost_sum(call.cost_usd for call in calls)
@@ -122,4 +193,5 @@ def performance(calls: Sequence[CallMeasures], *, cases: int | None = None) -> P
             per_case_usd=_per(total, unknown, cases),
             per_run_usd=_per(total, unknown, len(calls)),
         ),
+        tail=None if requests is None else tail_calls(calls, requests),
     )

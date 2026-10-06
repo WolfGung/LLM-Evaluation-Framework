@@ -84,13 +84,15 @@ TABLE = """\
 | Latency p50 / p95 (system calls) | 1.0 s / 2.6 s | 0.4 s / 0.4 s |"""
 
 
-def test_the_block_is_the_main_table_and_one_line_under_it(ws):
+def test_the_block_is_the_main_table_and_the_lines_under_it(ws):
     record_run(
         ws,
         rag_v1(),
         triage_v1(),
         manifest=syn.manifest({"rag": ("v1",), "triage": ("v1",)}, repeats=2),
     )
+    # The p95 call of rag v1 (rag-047, 2550 ms) has a repeat of 1000 ms; the one
+    # call of triage v1 ran once and has none.
     assert block(ws) == (
         f"\n{TABLE}\n\n"
         "Each column is one prompt version. Each case ran 2 times; each layer's rate is over the "
@@ -99,6 +101,10 @@ def test_the_block_is_the_main_table_and_one_line_under_it(ws):
         "safety failure when every safety check passed on every run. Recorded on 2026-01-01 "
         "(UTC) with synthetic/system:free (system) and synthetic/judge:free (judge), "
         "2 calls.\n\n"
+        "Latency: the system call at or above its column's p95 whose case ran more than once "
+        "took at least twice as long as a repeat of the same request (2.6 times as long) while "
+        "writing 1 answer token against the repeat's 1, so the tail is time spent waiting at "
+        "the provider's shared free endpoint, not the time the system needs to answer.\n\n"
     )
 
 
@@ -132,6 +138,91 @@ def test_seconds_have_one_decimal_and_a_half_rounds_up():
     assert render.seconds(2550.0) == "2.6 s"
     assert render.seconds(25290.3) == "25.3 s"
     assert render.seconds(None) == "—"
+
+
+def repeated(case_id, *runs):
+    """A triage case with one run per (latency ms, completion tokens)."""
+    record = syn.case_record(case_id, *([()] * len(runs)), checks=syn.TRIAGE_CHECKS)
+    calls = [
+        run.call.model_copy(update={"latency_ms": ms, "completion_tokens": tokens})
+        for run, (ms, tokens) in zip(record.runs, runs, strict=True)
+    ]
+    return record.model_copy(
+        update={
+            "runs": [
+                run.model_copy(update={"call": call})
+                for run, call in zip(record.runs, calls, strict=True)
+            ]
+        }
+    )
+
+
+def latency_line(ws, *cases, manifest=None):
+    """The latency line of triage v1 with these cases: the block after the table's line."""
+    manifest = manifest or syn.manifest({"triage": ("v1",)}, repeats=3)
+    record_run(ws, syn.function_results("triage", "v1", list(cases)), manifest=manifest)
+    parts = block(ws).strip().split("\n\n")
+    return parts[2] if len(parts) > 2 else None
+
+
+# Sixteen cases of three repeats at 1 s with 50 tokens. With four slow cases
+# that makes 60 calls: p95 is the 57th value, so the tail is the slow call of
+# each slow case, and its two repeats (at repeat_ms) stay out of it.
+QUICK = [repeated(f"tri-{n:03d}", (1000, 50), (1000, 50), (1000, 50)) for n in range(5, 21)]
+
+
+def slow(n, ms, tokens=50, repeat_ms=1000):
+    return repeated(f"tri-00{n}", (ms, tokens), (repeat_ms, 50), (repeat_ms, 50))
+
+
+def test_a_tail_slower_than_its_repeats_is_named_as_waiting(ws):
+    line = latency_line(
+        ws, *QUICK, slow(1, 30000), slow(2, 20000, 40), slow(3, 9000), slow(4, 10000)
+    )
+    assert line == (
+        "Latency: each of the 4 system calls at or above their column's p95 took at least twice "
+        "as long as a repeat of the same request (a median of 15 times as long) while writing a "
+        "median of 50 answer tokens against the repeats' 50, so the tail is time spent waiting "
+        "at the provider's shared free endpoint, not the time the system needs to answer."
+    )
+
+
+def test_a_tail_slow_on_every_repeat_comes_from_the_requests(ws):
+    line = latency_line(ws, *QUICK, *(slow(n, 3000, repeat_ms=2000) for n in (1, 2, 3, 4)))
+    assert line == (
+        "Latency: of the 4 system calls at or above their column's p95, none of them took even "
+        "twice as long as a repeat of the same request would need for the same answer, so the "
+        "slow requests were slow on every try: the tail comes from the requests themselves, not "
+        "from waiting at the provider."
+    )
+
+
+@pytest.mark.parametrize(("waiting", "share"), [(3, "most of the tail"), (1, "part of the tail")])
+def test_a_tail_that_partly_waited_says_how_much(ws, waiting, share):
+    tail = [slow(n, 9000 if n <= waiting else 3000, repeat_ms=2000) for n in (1, 2, 3, 4)]
+    line = latency_line(ws, *QUICK, *tail)
+    assert line.startswith(f"Latency: {waiting} of the 4 system calls at or above their column")
+    assert f"so {share} is time spent waiting" in line
+
+
+def test_a_longer_answer_is_not_taken_for_waiting(ws):
+    # 2.5 times as long as the repeat, but with 3 times its tokens: the work, not a wait.
+    line = latency_line(ws, *QUICK, *(slow(n, 2500, 150) for n in (1, 2, 3, 4)))
+    assert "none of them took even twice as long" in line
+
+
+def test_a_tail_without_repeats_gets_no_latency_line(ws):
+    once = [repeated(f"tri-{n:03d}", (1000 * n, 50)) for n in range(1, 4)]
+    assert latency_line(ws, *once, manifest=syn.manifest({"triage": ("v1",)})) is None
+
+
+def test_a_paid_system_model_is_not_called_a_free_endpoint(ws):
+    paid = syn.manifest({"triage": ("v1",)}, repeats=3).model_copy(
+        update={"models": {"system": "synthetic/system", "judge": "synthetic/judge"}}
+    )
+    tail = [slow(n, 30000) for n in (1, 2, 3, 4)]
+    line = latency_line(ws, *QUICK, *tail, manifest=paid)
+    assert line.endswith("waiting at the provider, not the time the system needs to answer.")
 
 
 def test_a_paid_run_shows_the_provider_cost(ws):

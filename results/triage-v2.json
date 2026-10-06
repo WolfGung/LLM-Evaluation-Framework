@@ -255,7 +255,72 @@
         "unknown_calls": 0,
         "per_case_usd": 0.0,
         "per_run_usd": 0.0
-      }
+      },
+      "tail": [
+        {
+          "case": "tri-038",
+          "repeat": 2,
+          "latency_ms": 39318.2,
+          "completion_tokens": 48,
+          "fastest_repeat": 0,
+          "fastest_repeat_latency_ms": 743.4,
+          "fastest_repeat_completion_tokens": 48
+        },
+        {
+          "case": "tri-040",
+          "repeat": 2,
+          "latency_ms": 36930.1,
+          "completion_tokens": 47,
+          "fastest_repeat": 0,
+          "fastest_repeat_latency_ms": 669.7,
+          "fastest_repeat_completion_tokens": 47
+        },
+        {
+          "case": "tri-019",
+          "repeat": 0,
+          "latency_ms": 18114.4,
+          "completion_tokens": 51,
+          "fastest_repeat": 2,
+          "fastest_repeat_latency_ms": 831.5,
+          "fastest_repeat_completion_tokens": 51
+        },
+        {
+          "case": "tri-003",
+          "repeat": 1,
+          "latency_ms": 16946.6,
+          "completion_tokens": 65,
+          "fastest_repeat": 0,
+          "fastest_repeat_latency_ms": 961.3,
+          "fastest_repeat_completion_tokens": 65
+        },
+        {
+          "case": "tri-006",
+          "repeat": 2,
+          "latency_ms": 16153.8,
+          "completion_tokens": 67,
+          "fastest_repeat": 1,
+          "fastest_repeat_latency_ms": 1006.9,
+          "fastest_repeat_completion_tokens": 67
+        },
+        {
+          "case": "tri-008",
+          "repeat": 0,
+          "latency_ms": 13095.8,
+          "completion_tokens": 61,
+          "fastest_repeat": 2,
+          "fastest_repeat_latency_ms": 863.1,
+          "fastest_repeat_completion_tokens": 61
+        },
+        {
+          "case": "tri-026",
+          "repeat": 1,
+          "latency_ms": 10689.9,
+          "completion_tokens": 65,
+          "fastest_repeat": 0,
+          "fastest_repeat_latency_ms": 972.3,
+          "fastest_repeat_completion_tokens": 65
+        }
+      ]
     }
   },
   "cases": [

@@ -249,7 +249,8 @@
           "unknown_calls": 0,
           "per_case_usd": 0.0,
           "per_run_usd": 0.0
-        }
+        },
+        "tail": null
       }
     },
     "stability": {
@@ -367,7 +368,81 @@
         "unknown_calls": 0,
         "per_case_usd": 0.0,
         "per_run_usd": 0.0
-      }
+      },
+      "tail": [
+        {
+          "case": "rag-019",
+          "repeat": 0,
+          "latency_ms": 50995.8,
+          "completion_tokens": 60,
+          "fastest_repeat": 2,
+          "fastest_repeat_latency_ms": 970.3,
+          "fastest_repeat_completion_tokens": 64
+        },
+        {
+          "case": "rag-034",
+          "repeat": 0,
+          "latency_ms": 50102.9,
+          "completion_tokens": 119,
+          "fastest_repeat": 2,
+          "fastest_repeat_latency_ms": 1737.2,
+          "fastest_repeat_completion_tokens": 119
+        },
+        {
+          "case": "rag-025",
+          "repeat": 2,
+          "latency_ms": 34752.6,
+          "completion_tokens": 151,
+          "fastest_repeat": 1,
+          "fastest_repeat_latency_ms": 2036.5,
+          "fastest_repeat_completion_tokens": 151
+        },
+        {
+          "case": "rag-041",
+          "repeat": 2,
+          "latency_ms": 32894.5,
+          "completion_tokens": 135,
+          "fastest_repeat": 0,
+          "fastest_repeat_latency_ms": 1159.6,
+          "fastest_repeat_completion_tokens": 76
+        },
+        {
+          "case": "rag-020",
+          "repeat": 2,
+          "latency_ms": 32620.9,
+          "completion_tokens": 44,
+          "fastest_repeat": 1,
+          "fastest_repeat_latency_ms": 1879.0,
+          "fastest_repeat_completion_tokens": 44
+        },
+        {
+          "case": "rag-008",
+          "repeat": 1,
+          "latency_ms": 30230.3,
+          "completion_tokens": 46,
+          "fastest_repeat": 0,
+          "fastest_repeat_latency_ms": 797.5,
+          "fastest_repeat_completion_tokens": 46
+        },
+        {
+          "case": "rag-041",
+          "repeat": 1,
+          "latency_ms": 28903.4,
+          "completion_tokens": 76,
+          "fastest_repeat": 0,
+          "fastest_repeat_latency_ms": 1159.6,
+          "fastest_repeat_completion_tokens": 76
+        },
+        {
+          "case": "rag-028",
+          "repeat": 0,
+          "latency_ms": 25290.3,
+          "completion_tokens": 73,
+          "fastest_repeat": 1,
+          "fastest_repeat_latency_ms": 1221.4,
+          "fastest_repeat_completion_tokens": 73
+        }
+      ]
     }
   },
   "cases": [

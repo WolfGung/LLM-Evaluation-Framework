@@ -296,7 +296,72 @@
         "unknown_calls": 0,
         "per_case_usd": 0.0,
         "per_run_usd": 0.0
-      }
+      },
+      "tail": [
+        {
+          "case": "tri-030",
+          "repeat": 1,
+          "latency_ms": 24725.6,
+          "completion_tokens": 60,
+          "fastest_repeat": 2,
+          "fastest_repeat_latency_ms": 979.7,
+          "fastest_repeat_completion_tokens": 70
+        },
+        {
+          "case": "tri-013",
+          "repeat": 2,
+          "latency_ms": 22683.8,
+          "completion_tokens": 53,
+          "fastest_repeat": 1,
+          "fastest_repeat_latency_ms": 577.9,
+          "fastest_repeat_completion_tokens": 53
+        },
+        {
+          "case": "tri-005",
+          "repeat": 1,
+          "latency_ms": 16674.7,
+          "completion_tokens": 48,
+          "fastest_repeat": 0,
+          "fastest_repeat_latency_ms": 843.1,
+          "fastest_repeat_completion_tokens": 48
+        },
+        {
+          "case": "tri-020",
+          "repeat": 2,
+          "latency_ms": 14533.7,
+          "completion_tokens": 69,
+          "fastest_repeat": 1,
+          "fastest_repeat_latency_ms": 1029.4,
+          "fastest_repeat_completion_tokens": 70
+        },
+        {
+          "case": "tri-027",
+          "repeat": 1,
+          "latency_ms": 14311.4,
+          "completion_tokens": 66,
+          "fastest_repeat": 0,
+          "fastest_repeat_latency_ms": 1158.3,
+          "fastest_repeat_completion_tokens": 66
+        },
+        {
+          "case": "tri-001",
+          "repeat": 2,
+          "latency_ms": 13172.5,
+          "completion_tokens": 68,
+          "fastest_repeat": 0,
+          "fastest_repeat_latency_ms": 8184.2,
+          "fastest_repeat_completion_tokens": 68
+        },
+        {
+          "case": "tri-033",
+          "repeat": 1,
+          "latency_ms": 13045.4,
+          "completion_tokens": 64,
+          "fastest_repeat": 2,
+          "fastest_repeat_latency_ms": 1008.8,
+          "fastest_repeat_completion_tokens": 64
+        }
+      ]
     }
   },
   "cases": [

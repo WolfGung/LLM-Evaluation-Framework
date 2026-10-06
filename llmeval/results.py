@@ -239,8 +239,10 @@ class Summary(_Record):
     - `judge`: the judge layer's reliability and scores, when runs were graded.
     - `stability`: the share of repeated cases whose repeats agree on every
       rule-based check (see `llmeval.stability`); None when no case repeats.
-    - `performance`: latency, tokens and cost of the system calls (see
-      `llmeval.perf`); the judge's calls are in `judge.performance`.
+    - `performance`: latency, tokens and cost of the system calls, and their
+      tail: the calls at or above p95 next to the fastest other repeat of the
+      same case (see `llmeval.perf`); the judge's calls are in
+      `judge.performance`.
     """
 
     cases: int
@@ -457,7 +459,12 @@ def summarise(function: str, cases: Sequence[CaseRecord]) -> Summary:
         graded_cases = len({case.id for case, run in runs if run.judge is not None})
         summary["judge"] = summarise_judge(graded, cases=graded_cases)
     summary["stability"] = stability(function, cases)
-    summary["performance"] = performance([run.call for _, run in runs], cases=len(cases))
+    # The repeats of a case send the same request, so the tail can compare them.
+    summary["performance"] = performance(
+        [run.call for _, run in runs],
+        cases=len(cases),
+        requests=[(case.id, run.repeat) for case, run in runs],
+    )
     return Summary(**summary)
 
 

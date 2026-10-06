@@ -59,7 +59,8 @@
         "unknown_calls": 0,
         "per_case_usd": 0.0,
         "per_run_usd": 0.0
-      }
+      },
+      "tail": null
     }
   },
   "cases": [
