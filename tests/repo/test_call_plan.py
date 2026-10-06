@@ -1,9 +1,11 @@
 """The call plan of the repository's own config and datasets, and the commands that need no key.
 
-No model is called and no key is used: the default models are `:free` ids, so
-the estimate needs no price lookup, and status without a key reads nothing.
-The cassettes directory is an empty one in `tmp_path`, so the repository's
-`cassettes/` and `results/` are never touched.
+No model is called, no key is used and nothing reaches the network. A paid
+model in the config makes the estimate read the published prices, and the
+only request answered is that public model list, served here with synthetic
+prices; a `:free` id needs no price at all. Status without a key reads
+nothing. The cassettes directory is an empty one in `tmp_path`, so the
+repository's `cassettes/` and `results/` are never touched.
 """
 
 from pathlib import Path
@@ -29,10 +31,25 @@ def no_key_no_network(monkeypatch):
     for name in ("OPENROUTER_API_KEY", "LLMEVAL_MODE", "MAX_RUN_COST_USD"):
         monkeypatch.delenv(name, raising=False)
 
-    def refuse(request):
+    models = load_models_config(ROOT / "config" / "models.yaml")
+    # Synthetic prices (USD per token) for the configured models, in the shape
+    # of GET /api/v1/models; any other request fails the test.
+    listing = {
+        "data": [
+            {"id": role.model, "pricing": {"prompt": "0.0000001", "completion": "0.0000003"}}
+            for role in (models.system, models.judge)
+        ]
+    }
+
+    def published_prices_only(request):
+        if request.method == "GET" and request.url.path == "/api/v1/models":
+            assert "authorization" not in request.headers, "the model list needs no key"
+            return httpx.Response(200, json=listing)
         raise AssertionError(f"no request expected: {request.url}")
 
-    monkeypatch.setattr(cli, "_network", lambda: cli.Network(httpx.MockTransport(refuse)))
+    monkeypatch.setattr(
+        cli, "_network", lambda: cli.Network(httpx.MockTransport(published_prices_only))
+    )
 
 
 def test_the_plan_follows_the_config_and_the_datasets():

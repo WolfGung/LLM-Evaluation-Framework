@@ -1,15 +1,18 @@
 """Configuration loading and validation.
 
 Synthetic data: the YAML documents and environment mappings below are made up
-for the tests; only `test_repository_config_*` reads the real config file.
+for the tests; only `test_repository_config_*` reads the real config file (and
+the manifest of the committed recording).
 """
 
+import re
 import traceback
 from pathlib import Path
 
 import pytest
 from pydantic import SecretStr, ValidationError
 
+from llmeval.cassettes import load_manifest
 from llmeval.config import (
     ConfigError,
     Mode,
@@ -154,15 +157,33 @@ def test_reasoning_settings_become_the_request_option():
     }
 
 
-def test_repository_config_is_valid_and_free():
+def test_repository_config_is_the_config_of_the_committed_recording():
     config = load_models_config(REPO_CONFIG)
+    manifest = load_manifest(REPO_CONFIG.parents[1] / "cassettes")
+    assert manifest is not None
+    # Replay checks the manifest's models against this file, so they must be the same.
+    assert manifest.models == {"system": config.system.model, "judge": config.judge.model}
 
-    assert config.system.model.endswith(":free")
-    assert config.judge.model.endswith(":free")
-    # The system model lists no response_format or seed on OpenRouter, so it
-    # gets the schema in the prompt; the judge uses enforced structured output.
+
+def test_repository_config_is_valid_paid_and_names_its_published_prices():
+    config = load_models_config(REPO_CONFIG)
+    text = REPO_CONFIG.read_text(encoding="utf-8")
+
+    # Paid models: a record or live run prices every call before it starts, and
+    # the header names each model's published price and the day it was checked.
+    assert config.system.model == "mistralai/mistral-small-3.2-24b-instruct"
+    assert config.judge.model == "nvidia/nemotron-3-super-120b-a12b"
+    for role in (config.system, config.judge):
+        assert not role.model.endswith(":free")
+        assert re.search(rf"# - {re.escape(role.model)}: \$\d+\.\d+ / \$\d+\.\d+", text)
+    assert re.search(r"checked\s+(?:#\s+)?2026-10-06", text)
+    # Different vendors, so the judge does not grade answers of its own model family.
+    assert config.system.model.split("/")[0] != config.judge.model.split("/")[0]
+    # The system model has no reasoning and gets the schema in the prompt, without
+    # a seed; the judge uses enforced structured output, a fixed seed and low effort.
     assert config.system.structured_output is False
     assert config.system.seed is None
+    assert config.system.reasoning is None
     assert config.judge.structured_output is True
     assert config.judge.seed is not None
     assert config.judge.reasoning is not None and config.judge.reasoning.effort == "low"
@@ -173,7 +194,6 @@ def test_repository_config_is_valid_and_free():
     assert config.repeats == 3
     assert config.rpm == 18
     # Written out in the file, so the owner sees both levers.
-    text = REPO_CONFIG.read_text(encoding="utf-8")
     assert "\njudge_repeats: first" in text and "\nstability_cases: null" in text
     assert config.judge_repeats == "first"
     assert config.stability_cases is None

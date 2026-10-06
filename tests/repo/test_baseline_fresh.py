@@ -76,15 +76,6 @@ def set_value(*path: str, value: Any) -> Callable[[dict], None]:
     return edit
 
 
-def add_known_failure(data: dict) -> None:
-    case = data["functions"]["rag"]["v1"]["cases"]["rag-021"]
-    case["failed_checks"].append(["safety", "no_trap_leak"])
-
-
-def delete_case(data: dict) -> None:
-    del data["functions"]["triage"]["v1"]["cases"]["tri-036"]
-
-
 def delete_every_triage_v1_failure(data: dict) -> None:
     cases = data["functions"]["triage"]["v1"]["cases"]
     for case_id in [case_id for case_id, case in cases.items() if not case["passed"]]:
@@ -92,76 +83,110 @@ def delete_every_triage_v1_failure(data: dict) -> None:
 
 
 RAG_V1 = ("functions", "rag", "v1", "metrics")
+PAIRWISE = ("pairwise", "rag", "v1-vs-v2")
+# An edit of the rebuilt baseline's data; it returns the differences it expects.
+Edit = Callable[[dict], list[str]]
+
+
+def get(data: dict, *path: str) -> Any:
+    for key in path:
+        data = data[key]
+    return data
+
+
+def moved(data: dict, path: tuple[str, ...], by: float) -> tuple[float, str]:
+    """The value at `path` moved by `by` (rounded as the baseline stores rates),
+    and the message naming the edit against the rebuilt value."""
+    rebuilt = get(data, *path)
+    edited = round(rebuilt + by, 4)
+    return edited, f"committed {edited}, rebuilt {rebuilt}"
+
+
+def metric_edit(path: tuple[str, ...], by: float, label: str) -> Edit:
+    def edit(data: dict) -> list[str]:
+        edited, message = moved(data, path, by)
+        set_value(*path, value=edited)(data)
+        return [f"{label}: {message}"]
+
+    return edit
+
+
+def provenance_edit(key: str, value: str) -> Edit:
+    def edit(data: dict) -> list[str]:
+        rebuilt = get(data, "provenance", *key.split("."))
+        set_value("provenance", *key.split("."), value=value)(data)
+        return [f"provenance {key}: committed {value}, rebuilt {rebuilt}"]
+
+    return edit
+
+
+def invent_known_failure(data: dict) -> list[str]:
+    case_id, case = next(
+        (case_id, case)
+        for case_id, case in get(data, "functions", "rag", "v1", "cases").items()
+        if ["safety", "no_trap_leak"] not in case["failed_checks"]
+    )
+    before = case["failed_checks"]
+    case["failed_checks"] = [*before, ["safety", "no_trap_leak"]]
+    case["passed"] = False
+    named = ", ".join("/".join(check) for check in case["failed_checks"])
+    rebuilt = f"fails {', '.join('/'.join(check) for check in before)}" if before else "passes"
+    return [f"rag v1 {case_id}: committed fails {named}; rebuilt {rebuilt}"]
+
+
+def delete_case(data: dict) -> list[str]:
+    cases = get(data, "functions", "triage", "v1", "cases")
+    case_id = sorted(cases)[-1]
+    del cases[case_id]
+    return [f"triage v1 {case_id}: not in the committed baseline"]
 
 
 @pytest.mark.parametrize(
-    ("edit", "expected"),
+    "edit",
     [
         pytest.param(
-            set_value(*RAG_V1, "all_checks", value=0.70),
-            ["rag v1 metric all_checks: committed 0.7, rebuilt 0.7756"],
+            metric_edit((*RAG_V1, "all_checks"), -0.05, "rag v1 metric all_checks"),
             id="a-lower-all-checks",
         ),
         pytest.param(
-            set_value(*RAG_V1, "all_checks", value=0.80),
-            ["rag v1 metric all_checks: committed 0.8, rebuilt 0.7756"],
+            metric_edit((*RAG_V1, "all_checks"), 0.05, "rag v1 metric all_checks"),
             id="b-raise-all-checks",
         ),
         pytest.param(
-            set_value(*RAG_V1, "layers", "safety", value=0.90),
-            ["rag v1 metric layers.safety: committed 0.9, rebuilt 0.9551"],
+            metric_edit((*RAG_V1, "layers", "safety"), -0.05, "rag v1 metric layers.safety"),
             id="c-lower-safety",
         ),
         pytest.param(
-            set_value("pairwise", "rag", "v1-vs-v2", "consistent", value=0.40),
-            ["rag v1 vs v2 metric consistent: committed 0.4, rebuilt 0.5263"],
+            metric_edit((*PAIRWISE, "consistent"), -0.1, "rag v1 vs v2 metric consistent"),
             id="d-lower-consistency",
         ),
-        pytest.param(
-            set_value("provenance", "models", "system", value="synthetic/other:free"),
-            [
-                "provenance models.system: committed synthetic/other:free, "
-                "rebuilt qwen/qwen3.8-27b:free"
-            ],
-            id="e-change-model",
-        ),
-        pytest.param(
-            set_value("provenance", "recorded_from", value="2026-10-04T07:53:29.210228Z"),
-            [
-                "provenance recorded_from: committed 2026-10-04T07:53:29.210228Z, "
-                "rebuilt 2026-10-05T07:53:29.210228Z"
-            ],
-            id="e-change-date",
-        ),
-        pytest.param(
-            add_known_failure,
-            [
-                "rag v1 rag-021: committed fails reference/required_facts, safety/no_trap_leak; "
-                "rebuilt fails reference/required_facts"
-            ],
-            id="f-invent-a-known-failure",
-        ),
-        pytest.param(
-            delete_case,
-            ["triage v1 tri-036: not in the committed baseline"],
-            id="g-delete-a-case",
-        ),
+        pytest.param(provenance_edit("models.system", "synthetic/other:free"), id="e-change-model"),
+        pytest.param(provenance_edit("recorded_from", "2026-01-01T00:00:00Z"), id="e-change-date"),
+        pytest.param(invent_known_failure, id="f-invent-a-known-failure"),
+        pytest.param(delete_case, id="g-delete-a-case"),
     ],
 )
-def test_a_hand_edit_of_the_baseline_is_named(rebuilt, edit, expected):
+def test_a_hand_edit_of_the_baseline_is_named(rebuilt, edit):
     # Each edit starts from the rebuilt baseline, so these cases test the
     # message of baseline_differences alone: a drift of the committed file
-    # fails only the test above.
+    # fails only the test above. Each edit returns the message it expects,
+    # with the rebuilt values read from the rebuilt baseline.
     data = rebuilt.model_dump(mode="json")
-    edit(data)
+    expected = edit(data)
     differences = baseline_differences(Baseline.model_validate(data), rebuilt)
     assert differences == expected
 
 
 def test_deleting_every_known_failure_of_a_version_is_named_case_by_case(rebuilt):
     data = rebuilt.model_dump(mode="json")
+    failing = [
+        case_id
+        for case_id, case in get(data, "functions", "triage", "v1", "cases").items()
+        if not case["passed"]
+    ]
+    assert failing, "triage v1 has no known failure to delete"
     delete_every_triage_v1_failure(data)
     differences = baseline_differences(Baseline.model_validate(data), rebuilt)
-    assert len(differences) == 15
-    assert all(d.endswith(": not in the committed baseline") for d in differences)
-    assert "triage v1 tri-036: not in the committed baseline" in differences
+    assert differences == [
+        f"triage v1 {case_id}: not in the committed baseline" for case_id in failing
+    ]

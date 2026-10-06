@@ -37,14 +37,18 @@ def fake_app(model, role=UNSTRUCTURED):
     return create_app(client=model, role=role)
 
 
+FREE_MODELS = {"system": "synthetic/system:free", "judge": "synthetic-judge/judge:free"}
+
+
 def config(mode: Mode, key: str | None = None, *, paid: str | None = None) -> Config:
-    """The repository's model config; `paid` swaps that role to a non-free model id."""
+    """The repository's model config with synthetic free model ids in both roles,
+    so the live-mode tests do not depend on what the repository records with;
+    `paid` swaps that role to a non-free model id."""
     models = load_models_config()
-    if paid is not None:
-        role = getattr(models, paid)
-        models = models.model_copy(
-            update={paid: role.model_copy(update={"model": "vendor-x/paid-model"})}
-        )
+    ids = {**FREE_MODELS, **({paid: "vendor-x/paid-model"} if paid else {})}
+    models = models.model_copy(
+        update={name: getattr(models, name).model_copy(update={"model": ids[name]}) for name in ids}
+    )
     return Config(
         models=models,
         settings=Settings(mode=mode, api_key=SecretStr(key) if key else None),
@@ -210,9 +214,7 @@ def test_the_replay_miss_hint_points_ad_hoc_questions_to_live_mode():
         "/assist",
         json={"question": "Q?", "version": "v1"},
     )
-    assert response.json()["detail"] == (
-        f"{REPLAY_MISS_HINT} No recording for key aaaaaaaaaaaa/0."
-    )
+    assert response.json()["detail"] == (f"{REPLAY_MISS_HINT} No recording for key aaaaaaaaaaaa/0.")
 
 
 def test_build_client_uses_the_configured_mode_and_cassettes(tmp_path):
@@ -240,6 +242,24 @@ def test_live_mode_refuses_a_paid_model(tmp_path, paid):
     assert "vendor-x/paid-model" in message
     assert "no per-run budget" in message
     assert "make record" in message
+
+
+def test_live_mode_refuses_the_repository_config_while_it_names_a_paid_model(tmp_path):
+    models = load_models_config()
+    paid = [
+        f"{name}={role.model}"
+        for name, role in (("system", models.system), ("judge", models.judge))
+        if not role.model.endswith(":free")
+    ]
+    repository = Config(
+        models=models,
+        settings=Settings(mode=Mode.LIVE, api_key=SecretStr("synthetic-key-123")),
+    )
+    if not paid:
+        pytest.skip("the repository config names free models only")
+    with pytest.raises(ServiceConfigError) as caught:
+        build_client(repository, tmp_path)
+    assert all(name in str(caught.value) for name in paid)
 
 
 def test_live_mode_starts_with_free_roles(tmp_path):
