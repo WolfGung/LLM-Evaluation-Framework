@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "models": {
-    "system": "qwen/qwen3.8-27b:free",
-    "judge": "nvidia/nemotron-3-super-120b-a12b:free"
+    "system": "mistralai/mistral-small-3.2-24b-instruct",
+    "judge": "nvidia/nemotron-3-super-120b-a12b"
   },
   "prompt_versions": {
     "rag": [
@@ -19,10 +19,10 @@
     "rag.jsonl": "2d9a32d6aac7de53190fe03d57d783012b25c6ebe143087f4b817d47cfbb91a3",
     "triage.jsonl": "4dd4f087b2d93ab318741b5fb105e50e12e55ea768f84543cc08db9afdb33245"
   },
-  "recorded_from": "2026-10-05T07:53:29.210228Z",
-  "recorded_to": "2026-10-05T12:22:58.911175Z",
-  "planned_calls": 706,
-  "recorded_calls": 706,
+  "recorded_from": "2026-10-06T08:39:23.377845Z",
+  "recorded_to": "2026-10-06T12:47:55.644043Z",
+  "planned_calls": 700,
+  "recorded_calls": 700,
   "stability_cases": null,
   "judge_repeats": "first",
   "rubric_sha256": "68d6910f30641b27ad22c6d98dfbf9d962457eb438ffeee2c3002e2981ae1e0e"

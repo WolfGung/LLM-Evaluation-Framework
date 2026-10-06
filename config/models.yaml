@@ -1,36 +1,49 @@
 # Models used by the evaluation. Model ids live here and nowhere in code.
 #
-# Both default models are OpenRouter free variants (ids end in ":free"), so a
-# run costs nothing. Free variants allow about 20 requests per minute and
-# 50 requests per day, so recording is resumable across days.
+# Both roles are paid models, recorded once on 2026-10-06 so that the cost row
+# of the results shows what an evaluation run really costs. Replay (make eval,
+# CI) reads the recording and costs nothing; make record and make live price
+# every call first and refuse to start above MAX_RUN_COST_USD.
 #
-# Facts from GET https://openrouter.ai/api/v1/models on 2026-10-04:
-# - qwen/qwen3.8-27b:free lists structured_outputs, reasoning and
-#   reasoning_effort, but NOT response_format or seed. So the system role sends
-#   no schema and no seed: the caller puts the schema in the prompt and
-#   validates the reply, and repeats measure how stable the answers are.
-# - nvidia/nemotron-3-super-120b-a12b:free lists response_format,
-#   structured_outputs, seed and reasoning. So the judge uses enforced
-#   structured output and a fixed seed.
-# The two models come from different vendors, so the judge does not grade
-# answers written by its own model family.
+# Facts from GET https://openrouter.ai/api/v1/models and .../endpoints, checked
+# 2026-10-06 (USD per million tokens, input / output):
+# - mistralai/mistral-small-3.2-24b-instruct: $0.094 / $0.25 published, served
+#   by four providers ($0.075-$0.10 / $0.20-$0.30). It has no reasoning, so the
+#   system role sends no reasoning option. It lists response_format and seed,
+#   but the system role sends neither: the caller puts the schema in the prompt
+#   and validates the reply, and repeats measure how stable the answers are.
+# - nvidia/nemotron-3-super-120b-a12b: $0.08 / $0.45 published. It lists
+#   response_format, structured_outputs, seed and reasoning (efforts medium and
+#   low), so the judge uses enforced structured output and a fixed seed. Only
+#   one provider (DekaLLM) serves all of them, and the judge requires them, so
+#   the judge has a single route.
+# Why these: cheap models that meet each role's needs, from different vendors,
+# so the judge does not grade answers written by its own model family. The
+# judge is the paid variant of the judge of the first, free-model recording.
 #
-# Reasoning tokens are billed and count towards the answer length. The system
-# role turns reasoning off; the judge reasons a little, and its max_tokens
-# leaves room for that plus the verdict. In the first recording (2026-10-05)
-# the judge had max_tokens 1500, and its reasoning used the whole budget in
-# 13 of 154 judge calls. Finished calls used up to 1416 reasoning tokens
-# (p50 543, p95 1297). 4096 leaves room.
+# The recording (2026-10-06, 700 calls): every call finished with "stop". The
+# provider reported $0.109387 in all: $0.037374 for the 552 system calls and
+# $0.072013 for the 148 judge calls. The estimate before it, every call at its
+# full token budget, was $0.4643. The judge's single route was slow (p50 35 s
+# per call) and twice stopped the run with HTTP 429, which recording now waits
+# out.
+#
+# Reasoning tokens are billed and count towards the answer length. The judge
+# reasons a little, and its max_tokens leaves room for that plus the verdict.
+# In the first recording (2026-10-05) the judge had max_tokens 1500, and its
+# reasoning used the whole budget in 13 of 154 judge calls. In this one,
+# finished calls used up to 2173 reasoning tokens (p50 570, p95 1741). 4096
+# leaves room.
 
 system:                       # answers questions and triages tickets
-  model: qwen/qwen3.8-27b:free
+  model: mistralai/mistral-small-3.2-24b-instruct
   temperature: 0.2
   max_tokens: 600
-  reasoning: {effort: none}
+  reasoning: null             # the model has no reasoning
   structured_output: false
 
 judge:                        # grades what rules cannot check
-  model: nvidia/nemotron-3-super-120b-a12b:free
+  model: nvidia/nemotron-3-super-120b-a12b
   temperature: 0
   seed: 7
   max_tokens: 4096
@@ -42,4 +55,4 @@ stability_cases: null         # null: every case runs `repeats` times; or a list
                               # case ids (rag-001, tri-004, ...): only those repeat,
                               # every other case runs once
 judge_repeats: first          # first: the judge grades repeat 0 only; all: every repeat
-rpm: 18                       # stay under the free limit of 20 requests per minute
+rpm: 18                       # requests per minute; also under the free limit of 20
